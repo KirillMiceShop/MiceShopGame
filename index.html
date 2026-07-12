@@ -853,6 +853,10 @@ const G = {
   pendingSlot: null,
 };
 
+// Все перемещаемые предметы внутри магазина (кассы и декор) увеличены
+// в 1,5 раза. Размер самого помещения, дверей и окон не меняется.
+const INTERIOR_OBJECT_SIZE_MULT = 1.5;
+
 const SHOP_TYPES = {
   clothing: {
     name: 'магазин одежды',
@@ -1640,7 +1644,7 @@ canvas.addEventListener('touchmove', e=>{
       if (decor) {
         const def = getDecorDef(decor.type);
         if (def.place === 'wall') {
-          const target = getWindowTargetFromScreen(t.clientX, t.clientY, decor.axis || 'z', def.width || 1);
+          const target = getWindowTargetFromScreen(t.clientX, t.clientY, decor.axis || 'z', getDecorScaledWidth(def));
           if (target) moveWallDecorTo(decor.id, target.axis, target.pos);
         } else {
           const pt=getFloorPoint(t.clientX, t.clientY);
@@ -2858,7 +2862,7 @@ function getShelfRect(idx, extra = 0, xOverride = null, zOverride = null, rotati
 
 function getCashFootprint(cr, extra = 0, rotationOverride = null) {
   const rot = rotationOverride === null ? (cr.rotation || 0) : rotationOverride;
-  const fp = rotatedFootprint(2.0, 0.9, rot);
+  const fp = rotatedFootprint(2.0 * INTERIOR_OBJECT_SIZE_MULT, 0.9 * INTERIOR_OBJECT_SIZE_MULT, rot);
   return { w: fp.w + extra * 2, d: fp.d + extra * 2 };
 }
 
@@ -2869,8 +2873,20 @@ function getCashRect(cr, extra = 0, xOverride = null, zOverride = null, rotation
   return rectFromCenter(x, z, fp.w, fp.d, 0);
 }
 
+function getDecorScaledWidth(def) {
+  return (def.width || 0.8) * INTERIOR_OBJECT_SIZE_MULT;
+}
+
+function getDecorScaledHeight(def) {
+  return (def.height || 0.8) * INTERIOR_OBJECT_SIZE_MULT;
+}
+
 function getDecorFootprint(def, rotation = 0, extra = 0) {
-  const fp = rotatedFootprint(def.width || 0.7, def.depth || 0.7, rotation || 0);
+  const fp = rotatedFootprint(
+    (def.width || 0.7) * INTERIOR_OBJECT_SIZE_MULT,
+    (def.depth || 0.7) * INTERIOR_OBJECT_SIZE_MULT,
+    rotation || 0
+  );
   return { w: fp.w + extra * 2, d: fp.d + extra * 2 };
 }
 
@@ -2890,7 +2906,7 @@ function wallSpanHasOpeningsOrDecor(axis, minPos, maxPos) {
   for (const d of decorations) {
     const def = getDecorDef(d.type);
     if (!def || def.place !== 'wall' || d.axis !== axis) continue;
-    const w = def.width || 0.8;
+    const w = getDecorScaledWidth(def);
     if (intervalOverlap(minPos, maxPos, d.pos - w / 2, d.pos + w / 2, 0.12)) return true;
   }
 
@@ -3270,7 +3286,7 @@ function canPlaceFloorDecor(def, x, z, ignoreId = null, rotation = 0) {
 }
 
 function canPlaceWallDecor(def, axis, pos, ignoreId = null) {
-  const width = def.width || 0.8;
+  const width = getDecorScaledWidth(def);
   pos = clampOpeningPos(pos, width);
 
   for (const o of openingsOnWalls()) {
@@ -3283,7 +3299,7 @@ function canPlaceWallDecor(def, axis, pos, ignoreId = null) {
     if (d.id === ignoreId) continue;
     const od = getDecorDef(d.type);
     if (od.place !== 'wall' || d.axis !== axis) continue;
-    const minDist = ((od.width || 0.8) + width) / 2 + 0.15;
+    const minDist = (getDecorScaledWidth(od) + width) / 2 + 0.15;
     if (Math.abs(d.pos - pos) < minDist) return false;
   }
   return true;
@@ -3297,6 +3313,7 @@ function getWallDecorWorldPosition(axis, pos) {
 function makeDecorMesh(decor) {
   const def = getDecorDef(decor.type);
   const group = new THREE.Group();
+  group.scale.setScalar(INTERIOR_OBJECT_SIZE_MULT);
   const parts = [];
 
   function add(parent, w, h, d, color, x, y, z, rx = 0, ry = 0) {
@@ -3313,7 +3330,7 @@ function makeDecorMesh(decor) {
 
   if (def.place === 'wall') {
     const wp = getWallDecorWorldPosition(decor.axis, decor.pos);
-    group.position.set(wp.x, 0, wp.z);
+    group.position.set(wp.x, 2.45 * (1 - INTERIOR_OBJECT_SIZE_MULT), wp.z);
     const y = 2.45;
     const w = def.width || 0.8;
     const h = def.height || 0.8;
@@ -3372,18 +3389,22 @@ function makeDecorMesh(decor) {
 
   let hitGeo;
   if (def.place === 'wall') {
+    const hitW = getDecorScaledWidth(def) + 0.2;
+    const hitH = getDecorScaledHeight(def) + 0.25;
     hitGeo = decor.axis === 'z'
-      ? new THREE.BoxGeometry((def.width || 0.8) + 0.2, (def.height || 0.8) + 0.25, 0.45)
-      : new THREE.BoxGeometry(0.45, (def.height || 0.8) + 0.25, (def.width || 0.8) + 0.2);
+      ? new THREE.BoxGeometry(hitW, hitH, 0.55)
+      : new THREE.BoxGeometry(0.55, hitH, hitW);
   } else {
-    hitGeo = new THREE.BoxGeometry((def.width || 0.7) + 0.15, 1.0, (def.depth || 0.7) + 0.15);
+    const hitW = (def.width || 0.7) * INTERIOR_OBJECT_SIZE_MULT + 0.15;
+    const hitD = (def.depth || 0.7) * INTERIOR_OBJECT_SIZE_MULT + 0.15;
+    hitGeo = new THREE.BoxGeometry(hitW, 1.5, hitD);
   }
   const hitZone = new THREE.Mesh(hitGeo, new THREE.MeshBasicMaterial({ visible:false }));
   if (def.place === 'wall') {
     const wp = getWallDecorWorldPosition(decor.axis, decor.pos);
     hitZone.position.set(wp.x, 2.45, wp.z);
   } else {
-    hitZone.position.set(decor.x, 0.5, decor.z);
+    hitZone.position.set(decor.x, 0.75, decor.z);
     hitZone.rotation.y = decor.rotation || 0;
   }
   hitZone.userData.decorId = decor.id;
@@ -3423,11 +3444,11 @@ function setDecorVisualPosition(decor) {
   const def = getDecorDef(decor.type);
   if (def.place === 'wall') {
     const wp = getWallDecorWorldPosition(decor.axis, decor.pos);
-    if (decor.group) decor.group.position.set(wp.x, 0, wp.z);
+    if (decor.group) decor.group.position.set(wp.x, 2.45 * (1 - INTERIOR_OBJECT_SIZE_MULT), wp.z);
     if (decor.hitZone) decor.hitZone.position.set(wp.x, 2.45, wp.z);
   } else {
     if (decor.group) { decor.group.position.set(decor.x, 0, decor.z); decor.group.rotation.y = decor.rotation || 0; }
-    if (decor.hitZone) { decor.hitZone.position.set(decor.x, 0.5, decor.z); decor.hitZone.rotation.y = decor.rotation || 0; }
+    if (decor.hitZone) { decor.hitZone.position.set(decor.x, 0.75, decor.z); decor.hitZone.rotation.y = decor.rotation || 0; }
   }
 }
 
@@ -3446,7 +3467,7 @@ function moveWallDecorTo(id, axis, pos) {
   const decor = decorations.find(d => d.id === id);
   if (!decor) return false;
   const def = getDecorDef(decor.type);
-  pos = clampOpeningPos(pos, def.width || 0.8);
+  pos = clampOpeningPos(pos, getDecorScaledWidth(def));
   if (!canPlaceWallDecor(def, axis, pos, id)) return false;
 
   const axisChanged = decor.axis !== axis;
@@ -3522,9 +3543,9 @@ function placeDecorFromTap(clientX, clientY) {
   if (!fromStorage && G.money < DECOR_PRICE) { showToast('❌ Нужно 150₽'); stopDecorPlaceMode(); return; }
 
   if (def.place === 'wall') {
-    const target = getWindowTargetFromScreen(clientX, clientY, null, def.width || 1);
+    const target = getWindowTargetFromScreen(clientX, clientY, null, getDecorScaledWidth(def));
     if (!target || !canPlaceWallDecor(def, target.axis, target.pos)) { showToast('❌ Тут нельзя повесить декор', '#e94560ee'); return; }
-    addDecor(def.id, { axis: target.axis, pos: clampOpeningPos(target.pos, def.width || 1) });
+    addDecor(def.id, { axis: target.axis, pos: clampOpeningPos(target.pos, getDecorScaledWidth(def)) });
   } else {
     const pt = getFloorPoint(clientX, clientY);
     if (!pt) return;
@@ -4282,6 +4303,7 @@ const cashRegisterTargets = [];
 function makeCashRegisterModel(x, z, variant, index) {
   const group = new THREE.Group();
   group.position.set(x, 0, z);
+  group.scale.setScalar(INTERIOR_OBJECT_SIZE_MULT);
 
   function addBox(w, h, d, color, x, y, z) {
     const m = new THREE.Mesh(
@@ -4309,10 +4331,10 @@ function makeCashRegisterModel(x, z, variant, index) {
   scene.add(group);
 
   const hitZone = new THREE.Mesh(
-    new THREE.BoxGeometry(2.2, 2.0, 1.8),
+    new THREE.BoxGeometry(2.2 * INTERIOR_OBJECT_SIZE_MULT, 2.0 * INTERIOR_OBJECT_SIZE_MULT, 1.8 * INTERIOR_OBJECT_SIZE_MULT),
     new THREE.MeshBasicMaterial({ visible: false })
   );
-  hitZone.position.set(x, 1.0, z);
+  hitZone.position.set(x, 1.0 * INTERIOR_OBJECT_SIZE_MULT, z);
   hitZone.userData.isCashier = true;
   hitZone.userData.cashRegisterIndex = index;
   scene.add(hitZone);
@@ -4360,7 +4382,7 @@ function setCashRegisterPosition(idx, x, z) {
   cr.z = z;
   cr.group.position.set(x, 0, z);
   cr.group.rotation.y = cr.rotation || 0;
-  cr.hitZone.position.set(x, 1.0, z);
+  cr.hitZone.position.set(x, 1.0 * INTERIOR_OBJECT_SIZE_MULT, z);
   cr.hitZone.rotation.y = cr.rotation || 0;
 }
 
@@ -4537,7 +4559,7 @@ function getCashServicePoint(cr) {
 
   // Точка обслуживания кассы должна быть не вплотную к кассе.
   // После разворота кассы/витрины слишком близкая точка загоняла продавца в угол.
-  const dist = 1.65;
+  const dist = 1.65 * INTERIOR_OBJECT_SIZE_MULT;
   const candidates = [
     new THREE.Vector3(cr.x - Math.sin(rot) * dist, 0.6, cr.z - Math.cos(rot) * dist),
     new THREE.Vector3(cr.x + Math.sin(rot) * dist, 0.6, cr.z + Math.cos(rot) * dist),
@@ -4566,7 +4588,7 @@ function getCashCustomerPoint(cr) {
   if (!cr) return randomCustomerPoint();
   const rot = normalizeRotation(cr.rotation || 0);
   const service = getCashServicePoint(cr);
-  const dist = 1.10;
+  const dist = 1.10 * INTERIOR_OBJECT_SIZE_MULT;
   const candidates = [
     new THREE.Vector3(cr.x + Math.sin(rot) * dist, 0.6, cr.z + Math.cos(rot) * dist),
     new THREE.Vector3(cr.x - Math.sin(rot) * dist, 0.6, cr.z - Math.cos(rot) * dist),
