@@ -853,9 +853,11 @@ const G = {
   pendingSlot: null,
 };
 
-// Все перемещаемые предметы внутри магазина (кассы и декор) увеличены
-// в 1,5 раза. Размер самого помещения, дверей и окон не меняется.
+// Перемещаемый декор внутри магазина увеличен в 1,5 раза.
+// Кассы тоже имеют итоговый масштаб 1,5 от изначального размера.
+// Размер самого помещения, дверей и окон не меняется.
 const INTERIOR_OBJECT_SIZE_MULT = 1.5;
+const CASH_REGISTER_SIZE_MULT = 1.5;
 
 const SHOP_TYPES = {
   clothing: {
@@ -2862,7 +2864,7 @@ function getShelfRect(idx, extra = 0, xOverride = null, zOverride = null, rotati
 
 function getCashFootprint(cr, extra = 0, rotationOverride = null) {
   const rot = rotationOverride === null ? (cr.rotation || 0) : rotationOverride;
-  const fp = rotatedFootprint(2.0 * INTERIOR_OBJECT_SIZE_MULT, 0.9 * INTERIOR_OBJECT_SIZE_MULT, rot);
+  const fp = rotatedFootprint(2.0 * CASH_REGISTER_SIZE_MULT, 0.9 * CASH_REGISTER_SIZE_MULT, rot);
   return { w: fp.w + extra * 2, d: fp.d + extra * 2 };
 }
 
@@ -4303,7 +4305,7 @@ const cashRegisterTargets = [];
 function makeCashRegisterModel(x, z, variant, index) {
   const group = new THREE.Group();
   group.position.set(x, 0, z);
-  group.scale.setScalar(INTERIOR_OBJECT_SIZE_MULT);
+  group.scale.setScalar(CASH_REGISTER_SIZE_MULT);
 
   function addBox(w, h, d, color, x, y, z) {
     const m = new THREE.Mesh(
@@ -4331,10 +4333,10 @@ function makeCashRegisterModel(x, z, variant, index) {
   scene.add(group);
 
   const hitZone = new THREE.Mesh(
-    new THREE.BoxGeometry(2.2 * INTERIOR_OBJECT_SIZE_MULT, 2.0 * INTERIOR_OBJECT_SIZE_MULT, 1.8 * INTERIOR_OBJECT_SIZE_MULT),
+    new THREE.BoxGeometry(2.2 * CASH_REGISTER_SIZE_MULT, 2.0 * CASH_REGISTER_SIZE_MULT, 1.8 * CASH_REGISTER_SIZE_MULT),
     new THREE.MeshBasicMaterial({ visible: false })
   );
-  hitZone.position.set(x, 1.0 * INTERIOR_OBJECT_SIZE_MULT, z);
+  hitZone.position.set(x, 1.0 * CASH_REGISTER_SIZE_MULT, z);
   hitZone.userData.isCashier = true;
   hitZone.userData.cashRegisterIndex = index;
   scene.add(hitZone);
@@ -4382,7 +4384,7 @@ function setCashRegisterPosition(idx, x, z) {
   cr.z = z;
   cr.group.position.set(x, 0, z);
   cr.group.rotation.y = cr.rotation || 0;
-  cr.hitZone.position.set(x, 1.0 * INTERIOR_OBJECT_SIZE_MULT, z);
+  cr.hitZone.position.set(x, 1.0 * CASH_REGISTER_SIZE_MULT, z);
   cr.hitZone.rotation.y = cr.rotation || 0;
 }
 
@@ -4559,7 +4561,7 @@ function getCashServicePoint(cr) {
 
   // Точка обслуживания кассы должна быть не вплотную к кассе.
   // После разворота кассы/витрины слишком близкая точка загоняла продавца в угол.
-  const dist = 1.65 * INTERIOR_OBJECT_SIZE_MULT;
+  const dist = 1.65 * CASH_REGISTER_SIZE_MULT;
   const candidates = [
     new THREE.Vector3(cr.x - Math.sin(rot) * dist, 0.6, cr.z - Math.cos(rot) * dist),
     new THREE.Vector3(cr.x + Math.sin(rot) * dist, 0.6, cr.z + Math.cos(rot) * dist),
@@ -4588,7 +4590,7 @@ function getCashCustomerPoint(cr) {
   if (!cr) return randomCustomerPoint();
   const rot = normalizeRotation(cr.rotation || 0);
   const service = getCashServicePoint(cr);
-  const dist = 1.10 * INTERIOR_OBJECT_SIZE_MULT;
+  const dist = 1.10 * CASH_REGISTER_SIZE_MULT;
   const candidates = [
     new THREE.Vector3(cr.x + Math.sin(rot) * dist, 0.6, cr.z + Math.cos(rot) * dist),
     new THREE.Vector3(cr.x - Math.sin(rot) * dist, 0.6, cr.z - Math.cos(rot) * dist),
