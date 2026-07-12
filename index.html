@@ -138,6 +138,63 @@
   .style-color { width:18px; height:18px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); }
 
 
+  /* ПЕРВЫЙ ЗАПУСК — ВЫБОР ТИПА МАГАЗИНА */
+  #shop-type-screen {
+    position:fixed;
+    inset:0;
+    z-index:100;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:22px;
+    background:radial-gradient(circle at top, rgba(73,49,110,0.96), rgba(8,8,24,0.99) 62%);
+  }
+  #shop-type-screen.hidden { display:none; }
+  .shop-type-panel {
+    width:min(520px, 100%);
+    background:rgba(19,19,42,0.96);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:24px;
+    padding:24px 18px;
+    box-shadow:0 22px 70px rgba(0,0,0,0.45);
+    text-align:center;
+  }
+  .shop-type-logo { font-size:22px; font-weight:900; color:#f5c518; margin-bottom:10px; }
+  .shop-type-title { font-size:21px; font-weight:900; color:#fff; }
+  .shop-type-sub { font-size:13px; color:#aaa; margin-top:7px; line-height:1.45; }
+  .shop-type-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:22px; }
+  .shop-type-card {
+    aspect-ratio:1 / 1;
+    border:1px solid rgba(255,255,255,0.13);
+    border-radius:20px;
+    background:rgba(255,255,255,0.055);
+    color:#fff;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:9px;
+    cursor:pointer;
+    padding:14px;
+    transition:transform .16s, border-color .16s, background .16s;
+  }
+  .shop-type-card:active { transform:scale(.96); }
+  .shop-type-card:hover { border-color:#f5c518; background:rgba(245,197,24,0.10); }
+  .shop-type-icon { font-size:48px; }
+  .shop-type-name { font-size:15px; font-weight:900; }
+  .shop-type-desc { font-size:11px; color:#999; line-height:1.35; }
+  #shop-type-confirm { display:none; padding:28px 8px 18px; }
+  #shop-type-confirm.show { display:block; }
+  .shop-type-confirm-icon { font-size:58px; }
+  .shop-type-confirm-title { font-size:21px; font-weight:900; color:#fff; margin-top:12px; }
+  .shop-type-confirm-name { color:#f5c518; }
+  @media (max-width:420px) {
+    .shop-type-panel { padding:21px 14px; }
+    .shop-type-grid { gap:9px; }
+    .shop-type-icon { font-size:42px; }
+    .shop-type-name { font-size:14px; }
+  }
+
   /* НАСТРОЙКИ */
   #settings-btn {
     position:fixed;
@@ -457,6 +514,33 @@
 </head>
 <body>
 
+<!-- ПЕРВЫЙ ЗАПУСК: ВЫБОР ТИПА МАГАЗИНА -->
+<div id="shop-type-screen">
+  <div class="shop-type-panel">
+    <div id="shop-type-choice">
+      <div class="shop-type-logo">🐭 MiceShop</div>
+      <div class="shop-type-title">Выберите, с какого магазина начать</div>
+      <div class="shop-type-sub">Выбор определит доступные товары и витрины.</div>
+      <div class="shop-type-grid">
+        <button class="shop-type-card" onclick="chooseShopType('clothing')">
+          <div class="shop-type-icon">👕</div>
+          <div class="shop-type-name">Магазин одежды</div>
+          <div class="shop-type-desc">Одежда, обувь и витрины для них</div>
+        </button>
+        <button class="shop-type-card" onclick="chooseShopType('electronics')">
+          <div class="shop-type-icon">📱</div>
+          <div class="shop-type-name">Магазин электроники</div>
+          <div class="shop-type-desc">Телефоны, ноутбуки, наушники и техно-витрины</div>
+        </button>
+      </div>
+    </div>
+    <div id="shop-type-confirm">
+      <div class="shop-type-confirm-icon" id="shop-type-confirm-icon">✅</div>
+      <div class="shop-type-confirm-title">Отлично! Вы выбрали<br><span class="shop-type-confirm-name" id="shop-type-confirm-name"></span></div>
+    </div>
+  </div>
+</div>
+
 <!-- HUD -->
 <div id="hud-name" onclick="openRatingModal()">
   <div class="title">🐭 MiceShop</div>
@@ -662,6 +746,7 @@
 // ══════════════════════════════════════
 const G = {
   money: 5000, crystals: 20, xp: 0, level: 1, shopStage: 1,
+  shopType: null,
   totalEarned: 0, totalSold: 0,
   slots: Array(1).fill(null), // each: {product, qty, maxQty, nextSaleAt, soldOut}
   storage: {}, // productId -> qty
@@ -675,6 +760,60 @@ const G = {
   shelfRotations: Array(1).fill(0), // поворот витрин
   pendingSlot: null,
 };
+
+const SHOP_TYPE_SAVE_KEY = 'miceshop_shop_type_v1';
+const SHOP_TYPES = {
+  clothing: {
+    name: 'магазин одежды',
+    icon: '👕',
+    productCats: ['Одежда', 'Обувь'],
+    categoryIds: ['clothes', 'store', 'design'],
+    shelfVariants: ['shelf_brown', 'shoe_cubby', 'rack_simple', 'rack_wardrobe'],
+    starterShelf: 'shelf_brown'
+  },
+  electronics: {
+    name: 'магазин электроники',
+    icon: '📱',
+    productCats: ['Техника'],
+    categoryIds: ['tech', 'store', 'design'],
+    shelfVariants: ['tech_island'],
+    starterShelf: 'tech_island'
+  }
+};
+
+function loadSavedShopType() {
+  try {
+    const value = localStorage.getItem(SHOP_TYPE_SAVE_KEY);
+    return SHOP_TYPES[value] ? value : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveShopType(type) {
+  try { localStorage.setItem(SHOP_TYPE_SAVE_KEY, type); } catch (e) {}
+}
+
+function getShopTypeConfig() {
+  return SHOP_TYPES[G.shopType] || null;
+}
+
+function getDefaultShelfVariantId() {
+  const config = getShopTypeConfig();
+  return config ? config.starterShelf : 'shelf_brown';
+}
+
+function isProductAllowedForShop(product) {
+  const config = getShopTypeConfig();
+  return !!(product && config && config.productCats.includes(product.cat));
+}
+
+function isShelfVariantAllowedForShop(variant) {
+  const config = getShopTypeConfig();
+  return !!(variant && config && config.shelfVariants.includes(variant.id));
+}
+
+G.shopType = loadSavedShopType();
 
 
 const STAFF_TYPES_INFO = {
@@ -5468,10 +5607,10 @@ function canShelfAcceptProduct(slotIdx, productOrId) {
 // Максимум витрин
 const MAX_SHELVES = 12;
 // Храним цвета купленных витрин
-G.shelfVariants = Array(1).fill('shelf_brown');
+G.shelfVariants = Array(1).fill(getDefaultShelfVariantId());
 G.shelfRotations = Array(1).fill(0);
 
-let activeCat = 'clothes';
+let activeCat = G.shopType === 'electronics' ? 'tech' : 'clothes';
 let pendingProduct = null; // товар ожидающий размещения
 let pendingQty = 1;
 let pendingFromStorage = false;
@@ -5547,7 +5686,7 @@ function getStaffCount(type) {
 
 function buyProductDelivery(productId, qty = 1) {
   const p = PRODUCTS.find(x => x.id === productId);
-  if (!p) return;
+  if (!p || !isProductAllowedForShop(p)) return;
   qty = Math.max(1, qty || 1);
   const cost = getBuyCost(p, qty);
   if (G.money < cost) { showToast('❌ Недостаточно денег'); return; }
@@ -5666,10 +5805,18 @@ document.getElementById('shopModal').addEventListener('click', e => {
   if (e.target === document.getElementById('shopModal')) closeShopModal();
 });
 
+function getAvailableCategories() {
+  const config = getShopTypeConfig();
+  if (!config) return [];
+  return CATEGORIES.filter(c => config.categoryIds.includes(c.id));
+}
+
 function renderCatTabs() {
   const tabs = document.getElementById('cat-tabs');
   tabs.innerHTML = '';
-  CATEGORIES.forEach(c => {
+  const available = getAvailableCategories();
+  if (!available.some(c => c.id === activeCat) && available.length) activeCat = available[0].id;
+  available.forEach(c => {
     const t = document.createElement('div');
     t.className = 'cat-tab' + (c.id === activeCat ? ' active' : '');
     t.textContent = c.name;
@@ -5935,7 +6082,7 @@ function renderProductList() {
       addDiv.textContent = `Витрин: ${currentCount} / ${MAX_SHELVES} · Купи новую и размести в редакторе`;
       list.appendChild(addDiv);
     }
-    SHELF_VARIANTS.forEach(sv => {
+    SHELF_VARIANTS.filter(isShelfVariantAllowedForShop).forEach(sv => {
       const can = G.money >= sv.price;
       const el = document.createElement('div');
       el.className = 'prod-row' + (can ? '' : ' cant');
@@ -6012,7 +6159,7 @@ function renderProductList() {
   }
 
   const cat = CATEGORIES.find(c => c.id === activeCat);
-  const filtered = PRODUCTS.filter(p => cat.cats.includes(p.cat));
+  const filtered = cat ? PRODUCTS.filter(p => cat.cats.includes(p.cat) && isProductAllowedForShop(p)) : [];
   filtered.forEach(p => {
     const shelfReady = getProductShelfKinds(p).length > 0;
     const can = G.money >= p.cost && shelfReady;
@@ -6140,6 +6287,7 @@ function getAutoShelfPosition(idx) {
 
 // ── ПОКУПКА ВИТРИНЫ ──
 function buyShelf(sv) {
+  if (!isShelfVariantAllowedForShop(sv)) return;
   if (G.money < sv.price) { showToast('❌ Недостаточно денег'); return; }
   if (SHELF_POSITIONS.length >= MAX_SHELVES) { showToast('❌ Достигнут лимит витрин'); return; }
   G.money -= sv.price;
@@ -6262,6 +6410,80 @@ function addShelfMesh(i, x, z, bodyColor, topColor, variantId = 'shelf_brown') {
   shelfClickTargets.push(stand, hitZone);
   shelfMeshes.push({ group, base, stand, glass: null, topShelf, label, pos: new THREE.Vector3(x, 0, z) });
   applyShelfRotation(i);
+}
+
+function rebuildStarterShelfForShopType() {
+  if (!G.shopType || !SHELF_POSITIONS[0]) return;
+
+  const starterId = getDefaultShelfVariantId();
+  const variant = getShelfVariantById(starterId);
+  G.shelfVariants[0] = starterId;
+  G.shelfRotations[0] = 0;
+
+  const old = shelfMeshes[0];
+  if (old) {
+    [old.group, old.base, old.stand, old.topShelf, old.label].forEach(m => {
+      if (m) scene.remove(m);
+    });
+  }
+
+  for (let i = shelfClickTargets.length - 1; i >= 0; i--) {
+    const target = shelfClickTargets[i];
+    if (target && target.userData && target.userData.shelfIndex === 0) {
+      scene.remove(target);
+      shelfClickTargets.splice(i, 1);
+    }
+  }
+
+  if (shelfItemMeshes[0]) {
+    scene.remove(shelfItemMeshes[0]);
+    delete shelfItemMeshes[0];
+  }
+
+  shelfMeshes.splice(0, 1);
+  const [x, , z] = SHELF_POSITIONS[0];
+  addShelfMesh(0, x, z, variant.color, variant.topColor, starterId);
+}
+
+let shopTypeChoiceLocked = false;
+function chooseShopType(type) {
+  if (shopTypeChoiceLocked || !SHOP_TYPES[type]) return;
+  shopTypeChoiceLocked = true;
+
+  G.shopType = type;
+  activeCat = type === 'electronics' ? 'tech' : 'clothes';
+  saveShopType(type);
+  rebuildStarterShelfForShopType();
+
+  const config = SHOP_TYPES[type];
+  const choice = document.getElementById('shop-type-choice');
+  const confirm = document.getElementById('shop-type-confirm');
+  const icon = document.getElementById('shop-type-confirm-icon');
+  const name = document.getElementById('shop-type-confirm-name');
+  if (choice) choice.style.display = 'none';
+  if (icon) icon.textContent = config.icon;
+  if (name) name.textContent = config.name;
+  if (confirm) confirm.classList.add('show');
+
+  setTimeout(() => {
+    const screen = document.getElementById('shop-type-screen');
+    if (screen) screen.classList.add('hidden');
+    gameStarted = true;
+    updateHUD();
+    logEvent(config.icon + ' Открыт ' + config.name);
+  }, 900);
+}
+
+function initializeShopTypeScreen() {
+  const screen = document.getElementById('shop-type-screen');
+  if (G.shopType && SHOP_TYPES[G.shopType]) {
+    rebuildStarterShelfForShopType();
+    if (screen) screen.classList.add('hidden');
+    gameStarted = true;
+  } else {
+    if (screen) screen.classList.remove('hidden');
+    gameStarted = false;
+  }
 }
 
 // ── РЕЖИМЫ ОКОН ──
@@ -6874,7 +7096,8 @@ function canEditorSell(sel = editorSelection) {
   if (!sel) return false;
   if (sel.type === 'shelf') return SHELF_POSITIONS.length > 1;
   if (sel.type === 'door') return doors.length > 1;
-  if (sel.type === 'cash') return !isCashRegisterLockedForEditing();
+  // В магазине всегда должна оставаться минимум одна касса.
+  if (sel.type === 'cash') return cashRegisters.length > 1 && !isCashRegisterLockedForEditing();
   return true;
 }
 
@@ -7032,6 +7255,8 @@ function editorActionSell() {
       removeWindowById(sel.id);
     }
   } else if (sel.type === 'cash') {
+    // Дополнительная защита: последнюю кассу продать нельзя даже при прямом вызове.
+    if (cashRegisters.length <= 1) return;
     const cr = cashRegisters[sel.index];
     if (cr) {
       const variantId = cr.variantId || 'cash_classic';
@@ -7857,6 +8082,7 @@ document.getElementById('cashModal').addEventListener('click', e => {
 //  ANIMATE LOOP
 // ══════════════════════════════════════
 let frame = 0;
+let gameStarted = false;
 function animate() {
   requestAnimationFrame(animate);
   // Защита: туманность всегда выключена.
@@ -7864,6 +8090,11 @@ function animate() {
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 0.95;
   frame++;
+
+  if (!gameStarted) {
+    renderer.render(scene, camera);
+    return;
+  }
 
   // Количество покупателей зависит от рейтинга магазина.
   // До 10% — 1 покупатель, 10% — 2, 20% — 3 и далее +1 за каждые 10%.
@@ -7934,9 +8165,13 @@ function animate() {
 }
 
 // ── START ──
+initializeShopTypeScreen();
 updateHUD();
 animate();
-logEvent('🏬 Магазин открыт! Добавьте товары на витрины');
+if (gameStarted) {
+  const config = getShopTypeConfig();
+  logEvent((config ? config.icon : '🏬') + ' Магазин открыт! Добавьте товары на витрины');
+}
 </script>
 </body>
 </html>
