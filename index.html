@@ -761,7 +761,6 @@ const G = {
   pendingSlot: null,
 };
 
-const SHOP_TYPE_SAVE_KEY = 'miceshop_shop_type_v1';
 const SHOP_TYPES = {
   clothing: {
     name: 'магазин одежды',
@@ -780,19 +779,6 @@ const SHOP_TYPES = {
     starterShelf: 'tech_island'
   }
 };
-
-function loadSavedShopType() {
-  try {
-    const value = localStorage.getItem(SHOP_TYPE_SAVE_KEY);
-    return SHOP_TYPES[value] ? value : null;
-  } catch (e) {
-    return null;
-  }
-}
-
-function saveShopType(type) {
-  try { localStorage.setItem(SHOP_TYPE_SAVE_KEY, type); } catch (e) {}
-}
 
 function getShopTypeConfig() {
   return SHOP_TYPES[G.shopType] || null;
@@ -813,7 +799,7 @@ function isShelfVariantAllowedForShop(variant) {
   return !!(variant && config && config.shelfVariants.includes(variant.id));
 }
 
-G.shopType = loadSavedShopType();
+G.shopType = null; // тип магазина выбирается заново при каждом запуске
 
 
 const STAFF_TYPES_INFO = {
@@ -6495,7 +6481,6 @@ function chooseShopType(type) {
 
   G.shopType = type;
   activeCat = type === 'electronics' ? 'tech' : 'clothes';
-  saveShopType(type);
   rebuildStarterShelfForShopType();
 
   const config = SHOP_TYPES[type];
