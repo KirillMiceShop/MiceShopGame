@@ -550,7 +550,7 @@
   <div id="levelLabel">Ур.1 — Новичок</div>
   <div id="xp-bar-wrap">
     <div id="xp-bar"><div id="xp-fill" style="width:0%"></div></div>
-    <div id="xp-label">0 / 500 XP</div>
+    <div id="xp-label">0 / 300 XP</div>
   </div>
   <div class="money-pill" id="moneyDisplay">💰 5 000</div>
   <div class="money-pill crystal-pill" id="crystalDisplay">💎 20</div>
@@ -765,7 +765,7 @@ const SHOP_TYPES = {
   clothing: {
     name: 'магазин одежды',
     icon: '👕',
-    productCats: ['Одежда', 'Обувь', 'Аксессуары'],
+    productCats: ['Одежда', 'Обувь', 'Аксессуары', 'Красота'],
     categoryIds: ['clothes', 'store', 'design'],
     shelfVariants: ['shelf_brown', 'shoe_cubby', 'rack_simple', 'rack_wardrobe', 'glass_case'],
     starterShelf: 'shelf_brown'
@@ -1078,11 +1078,64 @@ function shopLimit(margin = 0) {
   return SHOP_HALF - margin;
 }
 
-const LEVELS = [
-  {xp:0,name:'Новичок'},{xp:500,name:'Продавец'},
-  {xp:1500,name:'Торговец'},{xp:3500,name:'Купец'},
-  {xp:7000,name:'Предприниматель'},{xp:14000,name:'Бизнесмен'},
-];
+// ── БАЛАНС УРОВНЕЙ ──
+// XP хранится общей суммой, а требования ниже задают,
+// сколько опыта нужно заработать от текущего уровня до следующего.
+const MAX_LEVEL = 100;
+const EARLY_LEVEL_XP = {
+  2: 300,
+  3: 350,
+  4: 450,
+  5: 600,
+};
+
+function roundXP(value) {
+  return Math.max(50, Math.round(value / 50) * 50);
+}
+
+function getXPNeededForLevel(level) {
+  // level — уровень, который игрок хочет получить.
+  if (level <= 1) return 0;
+  if (EARLY_LEVEL_XP[level]) return EARLY_LEVEL_XP[level];
+
+  // Уровни 6–10: плавное повышение сложности.
+  if (level <= 10) return 850 + (level - 6) * 250;
+
+  // Уровни 11–20: рост заметно быстрее.
+  if (level <= 20) return 2400 + (level - 11) * 450;
+
+  // После 20-го каждые следующие 10 уровней образуют новый тир.
+  // В каждом новом тире базовое требование и шаг роста увеличиваются в 2.2 раза.
+  const currentLevel = level - 1;
+  const tier = Math.floor((currentLevel - 20) / 10);
+  const positionInTier = (currentLevel - 20) % 10;
+  const multiplier = Math.pow(2.2, tier);
+  const base = 8000 * multiplier;
+  const step = 900 * multiplier;
+  return roundXP(base + positionInTier * step);
+}
+
+const LEVELS = Array.from({ length: MAX_LEVEL + 1 }, (_, level) => {
+  let xp = 0;
+  for (let targetLevel = 2; targetLevel <= level; targetLevel++) {
+    xp += getXPNeededForLevel(targetLevel);
+  }
+  return { xp, name: getLevelTitle(level) };
+});
+
+function getLevelTitle(level) {
+  if (level <= 1) return 'Новичок';
+  if (level === 2) return 'Продавец';
+  if (level === 3) return 'Торговец';
+  if (level === 4) return 'Купец';
+  if (level === 5) return 'Предприниматель';
+  if (level < 10) return 'Бизнесмен';
+  if (level < 20) return 'Владелец сети';
+  if (level < 30) return 'Торговый магнат';
+  if (level < 40) return 'Владелец империи';
+  if (level < 50) return 'Легенда торговли';
+  return 'Торговая империя';
+}
 
 const PRODUCTS = [
   {id:'tshirt', name:'Футболка',   emoji:'👕', cat:'Одежда',    cost:200,   sell:380,   time:60,  xp:15,  shelfKinds:['hanging_rack']},
@@ -1109,6 +1162,98 @@ const PRODUCTS = [
   {id:'phone',  name:'Смартфон',   emoji:'📱', cat:'Техника',   cost:5000,  sell:8500,  time:480, xp:200, shelfKinds:['tech_island']},
   {id:'laptop', name:'Ноутбук',    emoji:'💻', cat:'Техника',   cost:12000, sell:20000, time:720, xp:400, shelfKinds:['tech_island']},
 ];
+
+// ── РАЗБЛОКИРОВКА ТОВАРОВ И ВИТРИН ПО УРОВНЯМ ──
+// Прогрессия отдельная для каждого типа магазина.
+// Когда текущий список товаров заканчивается, уровни продолжаются до 100 без новых разблокировок.
+const PRODUCT_UNLOCK_LEVELS = {
+  clothing: {
+    shorts: 1,
+    tshirt: 2,
+    jeans: 2,
+    sneakers: 3,
+    jacket: 4,
+    dress: 4,
+    wallet: 5,
+    bag: 6,
+    glasses: 6,
+    women_shoes: 7,
+    men_shoes: 8,
+    perfume: 8,
+    watch: 9,
+    suit: 10,
+    jewelry: 10,
+  },
+  electronics: {
+    headphones: 1,
+    phone: 2,
+    coffee_machine: 2,
+    game_console: 3,
+    laptop: 4,
+    television: 4,
+    desktop_pc: 5,
+    washing_machine: 6,
+  }
+};
+
+const SHELF_UNLOCK_LEVELS = {
+  clothing: {
+    shelf_brown: 1,
+    rack_simple: 2,
+    shoe_cubby: 3,
+    glass_case: 5,
+    rack_wardrobe: 7,
+  },
+  electronics: {
+    tech_island: 1,
+    tech_backstand: 2,
+    tv_low_stand: 4,
+    appliance_pedestal: 6,
+  }
+};
+
+function getProductUnlockLevel(productOrId, shopType = G.shopType) {
+  const id = typeof productOrId === 'string' ? productOrId : productOrId?.id;
+  const schedule = PRODUCT_UNLOCK_LEVELS[shopType] || {};
+  return schedule[id] || MAX_LEVEL + 1;
+}
+
+function getShelfUnlockLevel(variantOrId, shopType = G.shopType) {
+  const id = typeof variantOrId === 'string' ? variantOrId : variantOrId?.id;
+  const schedule = SHELF_UNLOCK_LEVELS[shopType] || {};
+  return schedule[id] || MAX_LEVEL + 1;
+}
+
+function isProductUnlocked(productOrId) {
+  return (G.level || 1) >= getProductUnlockLevel(productOrId);
+}
+
+function isShelfVariantUnlocked(variantOrId) {
+  return (G.level || 1) >= getShelfUnlockLevel(variantOrId);
+}
+
+function getUnlockSummaryForLevels(fromLevel, toLevel, shopType = G.shopType) {
+  const productSchedule = PRODUCT_UNLOCK_LEVELS[shopType] || {};
+  const shelfSchedule = SHELF_UNLOCK_LEVELS[shopType] || {};
+  const products = [];
+  const shelves = [];
+
+  Object.entries(productSchedule).forEach(([id, level]) => {
+    if (level >= fromLevel && level <= toLevel) {
+      const product = PRODUCTS.find(p => p.id === id);
+      if (product) products.push(product);
+    }
+  });
+
+  Object.entries(shelfSchedule).forEach(([id, level]) => {
+    if (level >= fromLevel && level <= toLevel) {
+      shelves.push({ id, level });
+    }
+  });
+
+  return { products, shelves };
+}
+
 
 // ══════════════════════════════════════
 //  THREE.JS SETUP
@@ -5273,12 +5418,41 @@ function showToast(msg, color='#00c896') {
   setTimeout(()=>t.classList.remove('show'), 2200);
 }
 function addXP(amount) {
-  G.xp += amount;
-  while (G.level < LEVELS.length-1 && G.xp >= LEVELS[G.level].xp) {
+  G.xp += Math.max(0, amount || 0);
+  const previousLevel = G.level;
+  let levelsGained = 0;
+
+  while (G.level < MAX_LEVEL && G.xp >= LEVELS[G.level + 1].xp) {
     G.level++;
-    showToast('🎉 Уровень '+G.level+'! '+LEVELS[Math.min(G.level,LEVELS.length-1)].name, '#f5c518');
+    levelsGained++;
     logEvent('⭐ Уровень '+G.level+' достигнут!');
   }
+
+  if (levelsGained > 0) {
+    const title = getLevelTitle(G.level);
+    const unlocks = getUnlockSummaryForLevels(previousLevel + 1, G.level);
+    const unlockCount = unlocks.products.length + unlocks.shelves.length;
+    const message = (levelsGained > 1
+      ? '🎉 Получено уровней: '+levelsGained+'! Теперь ур.'+G.level+' — '+title
+      : '🎉 Уровень '+G.level+'! '+title)
+      + (unlockCount > 0 ? ' · Открыто: '+unlockCount : '');
+    showToast(message, '#f5c518');
+
+    if (unlocks.products.length) {
+      logEvent('🔓 Товары: ' + unlocks.products.map(p => p.emoji + ' ' + p.name).join(', '));
+    }
+    if (unlocks.shelves.length) {
+      const shelfNames = unlocks.shelves.map(item => getShelfVariantById(item.id).name);
+      logEvent('🔓 Витрины: ' + shelfNames.join(', '));
+    }
+
+    const shopModal = document.getElementById('shopModal');
+    if (shopModal && shopModal.classList.contains('show')) {
+      renderCatTabs();
+      renderProductList();
+    }
+  }
+
   updateHUD();
 }
 
@@ -5535,18 +5709,26 @@ function updateHUD() {
   document.getElementById('moneyDisplay').textContent = '💰 '+fmt(G.money);
   const crystalEl = document.getElementById('crystalDisplay');
   if (crystalEl) crystalEl.textContent = '💎 ' + fmt(G.crystals || 0);
-  document.getElementById('levelLabel').textContent = 'Ур.'+G.level+' — '+LEVELS[Math.min(G.level,LEVELS.length-1)].name;
-  const cur = LEVELS[Math.min(G.level,LEVELS.length-1)].xp;
-  const next = G.level < LEVELS.length-1 ? LEVELS[G.level].xp : G.xp+1;
-  const pct = Math.min(100, ((G.xp-cur)/(next-cur))*100);
+
+  const safeLevel = Math.max(1, Math.min(MAX_LEVEL, G.level || 1));
+  G.level = safeLevel;
+  document.getElementById('levelLabel').textContent = 'Ур.'+safeLevel+' — '+getLevelTitle(safeLevel);
+
+  const currentThreshold = LEVELS[safeLevel].xp;
+  const xpInCurrentLevel = Math.max(0, G.xp - currentThreshold);
+  const xpNeeded = safeLevel < MAX_LEVEL ? getXPNeededForLevel(safeLevel + 1) : 0;
+  const pct = safeLevel >= MAX_LEVEL ? 100 : Math.max(0, Math.min(100, (xpInCurrentLevel / xpNeeded) * 100));
+
   document.getElementById('xp-fill').style.width = pct+'%';
-  document.getElementById('xp-label').textContent = fmt(G.xp)+' / '+fmt(next)+' XP';
+  document.getElementById('xp-label').textContent = safeLevel >= MAX_LEVEL
+    ? 'Максимальный уровень'
+    : fmt(xpInCurrentLevel)+' / '+fmt(xpNeeded)+' XP';
   updateRatingUI();
 }
 
 // ── КАТЕГОРИИ ──
 const CATEGORIES = [
-  { id: 'clothes', name: '👕 Одежда',       cats: ['Одежда','Обувь'] },
+  { id: 'clothes', name: '👕 Одежда',       cats: ['Одежда','Обувь','Аксессуары','Красота'] },
   { id: 'tech',    name: '📱 Электроника',   cats: ['Техника'] },
   { id: 'other',   name: '🎁 Другое',        cats: ['Книги','Игрушки','Аксессуары','Красота','Ювелирка'] },
   { id: 'store',   name: '🏪 Для магазина',  cats: ['__store__'] },
@@ -5687,6 +5869,10 @@ function getStaffCount(type) {
 function buyProductDelivery(productId, qty = 1) {
   const p = PRODUCTS.find(x => x.id === productId);
   if (!p || !isProductAllowedForShop(p)) return;
+  if (!isProductUnlocked(p)) {
+    showToast('🔒 ' + p.name + ' откроется на уровне ' + getProductUnlockLevel(p), '#6b6b86');
+    return;
+  }
   qty = Math.max(1, qty || 1);
   const cost = getBuyCost(p, qty);
   if (G.money < cost) { showToast('❌ Недостаточно денег'); return; }
@@ -6083,20 +6269,22 @@ function renderProductList() {
       list.appendChild(addDiv);
     }
     SHELF_VARIANTS.filter(isShelfVariantAllowedForShop).forEach(sv => {
-      const can = G.money >= sv.price;
+      const unlockLevel = getShelfUnlockLevel(sv);
+      const unlocked = isShelfVariantUnlocked(sv);
+      const can = unlocked && G.money >= sv.price;
       const el = document.createElement('div');
       el.className = 'prod-row' + (can ? '' : ' cant');
       el.innerHTML = `
-        <div class="pr-emoji" style="width:36px;height:36px;background:#${sv.color.toString(16).padStart(6,'0')};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${sv.emoji}</div>
+        <div class="pr-emoji" style="width:36px;height:36px;background:#${sv.color.toString(16).padStart(6,'0')};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${unlocked ? sv.emoji : '🔒'}</div>
         <div class="pr-info">
           <div class="pr-name">${sv.name}</div>
-          <div class="pr-sub">${sv.desc || 'Новая витрина'} · лимит ${MAX_SHELVES} шт</div>
+          <div class="pr-sub">${unlocked ? ((sv.desc || 'Новая витрина') + ' · лимит ' + MAX_SHELVES + ' шт') : ('Откроется на уровне ' + unlockLevel)}</div>
         </div>
         <div class="pr-right">
-          <div class="pr-price">💰${fmt(sv.price)}</div>
-          <div class="pr-profit" style="color:#aaa">${currentCount}/${MAX_SHELVES}</div>
+          <div class="pr-price">${unlocked ? ('💰' + fmt(sv.price)) : ('🔒 Ур.' + unlockLevel)}</div>
+          <div class="pr-profit" style="color:#aaa">${unlocked ? (currentCount + '/' + MAX_SHELVES) : ''}</div>
         </div>`;
-      el.onclick = () => buyShelf(sv);
+      if (unlocked) el.onclick = () => buyShelf(sv);
       list.appendChild(el);
     });
 
@@ -6159,26 +6347,36 @@ function renderProductList() {
   }
 
   const cat = CATEGORIES.find(c => c.id === activeCat);
-  const filtered = cat ? PRODUCTS.filter(p => cat.cats.includes(p.cat) && isProductAllowedForShop(p)) : [];
+  const filtered = cat
+    ? PRODUCTS
+        .filter(p => cat.cats.includes(p.cat) && isProductAllowedForShop(p))
+        .sort((a, b) => getProductUnlockLevel(a) - getProductUnlockLevel(b))
+    : [];
   filtered.forEach(p => {
+    const unlockLevel = getProductUnlockLevel(p);
+    const unlocked = isProductUnlocked(p);
     const shelfReady = getProductShelfKinds(p).length > 0;
-    const can = G.money >= p.cost && shelfReady;
+    const can = unlocked && G.money >= p.cost && shelfReady;
     const el = document.createElement('div');
     el.className = 'prod-row' + (can ? '' : ' cant');
     el.innerHTML = `
-      <div class="pr-emoji">${p.emoji}</div>
+      <div class="pr-emoji">${unlocked ? p.emoji : '🔒'}</div>
       <div class="pr-info">
         <div class="pr-name">${p.name}</div>
-        <div class="pr-sub">${shelfReady ? (p.cat + ' · ' + productShelfHint(p)) : 'прилавок пока не добавлен'} · ⏱${fmtTime(p.time)} / продажа</div>
+        <div class="pr-sub">${unlocked
+          ? ((shelfReady ? (p.cat + ' · ' + productShelfHint(p)) : 'прилавок пока не добавлен') + ' · ⏱' + fmtTime(p.time) + ' / продажа')
+          : ('Откроется на уровне ' + unlockLevel)}</div>
       </div>
       <div class="pr-right">
-        <div class="pr-price">💰${fmt(p.cost)} / шт</div>
-        <div class="pr-profit">+${fmt(p.sell-p.cost)}</div>
+        <div class="pr-price">${unlocked ? ('💰' + fmt(p.cost) + ' / шт') : ('🔒 Ур.' + unlockLevel)}</div>
+        <div class="pr-profit">${unlocked ? ('+' + fmt(p.sell-p.cost)) : ''}</div>
       </div>`;
-    el.onclick = () => {
-      if (!shelfReady) { showToast('🚧 Для этого товара прилавок пока не добавлен'); return; }
-      showItemDetail(p);
-    };
+    if (unlocked) {
+      el.onclick = () => {
+        if (!shelfReady) { showToast('🚧 Для этого товара прилавок пока не добавлен'); return; }
+        showItemDetail(p);
+      };
+    }
     list.appendChild(el);
   });
 }
@@ -6288,6 +6486,10 @@ function getAutoShelfPosition(idx) {
 // ── ПОКУПКА ВИТРИНЫ ──
 function buyShelf(sv) {
   if (!isShelfVariantAllowedForShop(sv)) return;
+  if (!isShelfVariantUnlocked(sv)) {
+    showToast('🔒 ' + sv.name + ' откроется на уровне ' + getShelfUnlockLevel(sv), '#6b6b86');
+    return;
+  }
   if (G.money < sv.price) { showToast('❌ Недостаточно денег'); return; }
   if (SHELF_POSITIONS.length >= MAX_SHELVES) { showToast('❌ Достигнут лимит витрин'); return; }
   G.money -= sv.price;
@@ -6379,10 +6581,11 @@ function addShelfMesh(i, x, z, bodyColor, topColor, variantId = 'shelf_brown') {
     base = addPart(group, 2.10, 0.10, 1.05, bodyColor, 0, 0.05, 0);
     stand = addPart(group, 1.95, 0.78, 0.88, topColor, 0, 0.45, 0.06);
     topShelf = addPart(group, 2.02, 0.08, 0.95, 0xe8e8ee, 0, 0.87, 0.06);
-    addPart(group, 2.02, 1.20, 0.10, bodyColor, 0, 1.42, -0.44);
-    addPart(group, 0.10, 1.05, 0.88, bodyColor, -0.96, 1.33, 0.02);
-    addPart(group, 0.10, 1.05, 0.88, bodyColor, 0.96, 1.33, 0.02);
-    addPart(group, 1.56, 0.08, 0.08, bodyColor, 0, 1.74, -0.44);
+    // Низкая задняя стенка: выступ составляет примерно 20% от прежней высоты.
+    addPart(group, 2.02, 0.24, 0.10, bodyColor, 0, 1.03, -0.44);
+    addPart(group, 0.10, 0.21, 0.88, bodyColor, -0.96, 1.015, 0.02);
+    addPart(group, 0.10, 0.21, 0.88, bodyColor, 0.96, 1.015, 0.02);
+    addPart(group, 1.56, 0.08, 0.08, bodyColor, 0, 1.14, -0.44);
   } else if (kind === 'glass_case') {
     group = new THREE.Group();
     group.position.set(x, 0, z);
