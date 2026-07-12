@@ -1138,7 +1138,7 @@ canvas.addEventListener('touchstart', e=>{
         const decor = decorations.find(d => d.id === dragDecorId);
         if (decor) {
           dragDecorStartPos = { x: decor.x, z: decor.z, axis: decor.axis, pos: decor.pos };
-          if (!editorObjectMoveMode) showToast('🛋 Тащи декорацию');
+          if (!editorObjectMoveMode && !moveModeSilent) showToast('🛋 Тащи декорацию');
         } else {
           dragDecorId = null;
         }
@@ -1151,7 +1151,7 @@ canvas.addEventListener('touchstart', e=>{
         const wall = internalWalls.find(w => w.id === dragInternalWallId);
         if (wall) {
           dragInternalWallStartPos = { x: wall.x, z: wall.z };
-          if (!editorObjectMoveMode) showToast('🧱 Тащи внутреннюю стену по магазину');
+          if (!editorObjectMoveMode && !moveModeSilent) showToast('🧱 Тащи внутреннюю стену по магазину');
         } else {
           dragInternalWallId = null;
         }
@@ -1168,7 +1168,7 @@ canvas.addEventListener('touchstart', e=>{
             const cr = cashRegisters[dragCashierIdx];
             if (cr) {
               dragCashierStartPos = [cr.x, cr.z];
-          if (!editorObjectMoveMode) showToast('💵 Тащи кассу по магазину');
+          if (!editorObjectMoveMode && !moveModeSilent) showToast('💵 Тащи кассу по магазину');
             }
           }
         } else {
@@ -1212,7 +1212,7 @@ canvas.addEventListener('touchstart', e=>{
         if (door) {
           dragDoorStartPos = { axis: door.axis, pos: door.pos };
           dragDoorPreviewPos = { axis: door.axis, pos: door.pos };
-          if (!editorObjectMoveMode) showToast('🚪 Тащи дверь вдоль стены или к другой стене');
+          if (!editorObjectMoveMode && !moveModeSilent) showToast('🚪 Тащи дверь вдоль стены или к другой стене');
         } else {
           dragDoorIdx = null;
         }
@@ -1224,7 +1224,7 @@ canvas.addEventListener('touchstart', e=>{
         if (win) {
           dragWinStartPos = { axis: win.axis, pos: win.pos };
           dragWinPreviewPos = { axis: win.axis, pos: win.pos };
-          if (!editorObjectMoveMode) showToast('🪟 Тащи окно вдоль стены или к другой стене');
+          if (!editorObjectMoveMode && !moveModeSilent) showToast('🪟 Тащи окно вдоль стены или к другой стене');
         } else {
           dragWinIdx = null;
         }
@@ -1278,7 +1278,7 @@ canvas.addEventListener('touchmove', e=>{
         if(canPlaceCashRegister(dragCashierIdx, clampX, clampZ)){
           setCashRegisterPosition(dragCashierIdx, clampX, clampZ);
         } else {
-          if (!editorObjectMoveMode) showToast('❌ Место занято', '#e94560ee');
+          if (!editorObjectMoveMode && !moveModeSilent) showToast('❌ Место занято', '#e94560ee');
         }
       }
       isDragging=true;
@@ -1359,9 +1359,9 @@ canvas.addEventListener('touchend', e=>{
       if (!ok && dragDecorStartPos) {
         if (def.place === 'wall') moveWallDecorTo(decor.id, dragDecorStartPos.axis, dragDecorStartPos.pos);
         else moveFloorDecorTo(decor.id, dragDecorStartPos.x, dragDecorStartPos.z);
-        if (!editorObjectMoveMode) showToast('❌ Место занято — декор возвращён', '#e94560ee');
+        if (!editorObjectMoveMode && !moveModeSilent) showToast('❌ Место занято — декор возвращён', '#e94560ee');
       } else {
-        if (!editorObjectMoveMode) showToast('✅ Декорация перемещена');
+        if (!editorObjectMoveMode && !moveModeSilent) showToast('✅ Декорация перемещена');
       }
     }
     dragDecorId=null;
@@ -1370,15 +1370,15 @@ canvas.addEventListener('touchend', e=>{
     const wall=internalWalls.find(w => w.id === dragInternalWallId);
     if(wall && !canPlaceInternalWall(wall.axis, wall.x, wall.z, wall.id) && dragInternalWallStartPos){
       setInternalWallPosition(wall.id, dragInternalWallStartPos.x, dragInternalWallStartPos.z);
-      if (!editorObjectMoveMode) showToast('❌ Место занято — стена возвращена', '#e94560ee');
+      if (!editorObjectMoveMode && !moveModeSilent) showToast('❌ Место занято — стена возвращена', '#e94560ee');
     } else {
-      if (!editorObjectMoveMode) showToast('✅ Стена перемещена');
+      if (!editorObjectMoveMode && !moveModeSilent) showToast('✅ Стена перемещена');
     }
     dragInternalWallId=null;
     dragInternalWallStartPos=null;
   } else if(moveMode && dragCashierIdx!==null){
     sellers.forEach(s => { if (s.role !== 'cleaning') { s.roleKey = ''; s.target = chooseSellerFloorTarget(); } });
-    if (!editorObjectMoveMode) showToast('✅ Касса перемещена');
+    if (!editorObjectMoveMode && !moveModeSilent) showToast('✅ Касса перемещена');
     dragCashierIdx=null;
     dragCashierStartPos=null;
   } else if(moveMode && dragShelfIdx!==null){
@@ -1388,7 +1388,7 @@ canvas.addEventListener('touchend', e=>{
     if(collision && dragStartPos){
       const [sx,sz]=dragStartPos;
       moveShelfTo(dragShelfIdx, sx, sz, false);
-      if (!editorObjectMoveMode) showToast('❌ Место занято — витрина возвращена','#e94560ee');
+      if (!editorObjectMoveMode && !moveModeSilent) showToast('❌ Место занято — витрина возвращена','#e94560ee');
     }
     // Сбрасываем подсветку обратно к жёлтой
     shelfMeshes.forEach(sm=>{
@@ -1403,7 +1403,7 @@ canvas.addEventListener('touchend', e=>{
     if (door && dragDoorPreviewPos !== null) {
       const moved = moveDoorTo(dragDoorIdx, dragDoorPreviewPos);
       if (moved) {
-        if (!editorObjectMoveMode) showToast('✅ Дверь перемещена');
+        if (!editorObjectMoveMode && !moveModeSilent) showToast('✅ Дверь перемещена');
       } else if (dragDoorStartPos) {
         moveDoorTo(dragDoorIdx, dragDoorStartPos);
       }
@@ -1421,7 +1421,7 @@ canvas.addEventListener('touchend', e=>{
       const moved = moveWindowTo(dragWinIdx, dragWinPreviewPos);
 
       if (moved) {
-        if (!editorObjectMoveMode) showToast('✅ Окно перемещено');
+        if (!editorObjectMoveMode && !moveModeSilent) showToast('✅ Окно перемещено');
       } else if (dragWinStartPos) {
         // Если место плохое — возвращаем окно назад, на старую стену и старую позицию.
         moveWindowTo(dragWinIdx, dragWinStartPos);
@@ -2756,10 +2756,10 @@ function startInternalWallBuild(axis = 'x', storageKey = null) {
     mh.textContent = pendingInternalWallAxis === 'x'
       ? '🧱 Стена ↔: нажимай по полу, каждый кусок 300₽'
       : '🧱 Стена ↕: нажимай по полу, каждый кусок 300₽';
-    mh.style.display = 'block';
+    mh.style.display = storageKey ? 'none' : 'block';
   }
   if (mc) mc.style.display = 'block';
-  showToast('🧱 Нажми на пол внутри магазина, чтобы поставить кусок стены');
+  if (!storageKey) showToast('🧱 Нажми на пол внутри магазина, чтобы поставить кусок стены');
 }
 
 function stopInternalWallBuildMode() {
@@ -2810,7 +2810,6 @@ function placeInternalWallFromTap(clientX, clientY) {
     removeEquipmentFromStorage(pendingInternalWallStorageKey, 1);
     pendingInternalWallStorageKey = null;
     updateHUD();
-    showToast('🧱 Стена поставлена со склада');
   } else {
     G.money -= INTERNAL_WALL_PRICE;
     updateHUD();
@@ -3104,8 +3103,11 @@ function startDecorPlacement(type, storageKey = null) {
   const bb = document.getElementById('bottom-btns');
   const ph = document.getElementById('place-hint');
   if (bb) bb.style.display = 'none';
-  if (ph) { ph.textContent = def.place === 'wall' ? '👆 Нажми на стену — повесить декор' : '👆 Нажми на пол — поставить декор'; ph.style.display = 'block'; }
-  showToast(def.emoji + ' Выбери место для декорации');
+  if (ph) {
+    ph.textContent = def.place === 'wall' ? '👆 Нажми на стену — повесить декор' : '👆 Нажми на пол — поставить декор';
+    ph.style.display = fromStorage ? 'none' : 'block';
+  }
+  if (!fromStorage) showToast(def.emoji + ' Выбери место для декорации');
 }
 
 function stopDecorPlaceMode() {
@@ -3139,7 +3141,6 @@ function placeDecorFromTap(clientX, clientY) {
   if (fromStorage) {
     removeEquipmentFromStorage(pendingDecorStorageKey, 1);
     renderWarehouseModal();
-    showToast('✅ Декорация поставлена со склада');
   } else {
     G.money -= DECOR_PRICE;
     updateHUD();
@@ -6678,6 +6679,7 @@ function openShelvesModal() {
 
 // ── РЕДАКТОР ОБЪЕКТОВ ──
 let moveMode = false;
+let moveModeSilent = false; // без подсказок/уведомлений при выкладке оборудования со склада
 let sellMode = false;
 let equipmentStoreMode = false;
 let rotateMode = false;
@@ -7046,7 +7048,8 @@ function editorActionSell() {
   hideEditorActions();
 }
 
-function startMoveMode() {
+function startMoveMode(silent = false) {
+  moveModeSilent = !!silent;
   internalWallBuildMode = false;
   decorPlaceMode = false;
   // Общий режим перемещения: витрины + окна + двери.
@@ -7075,7 +7078,7 @@ function startMoveMode() {
   document.getElementById('edit-popup').style.display = 'none';
   document.getElementById('bottom-btns').style.display = 'none';
   document.getElementById('move-hint').textContent = '⤬ Перемещение: зажми витрину, окно, дверь, кассу или внутреннюю стену';
-  document.getElementById('move-hint').style.display = 'block';
+  document.getElementById('move-hint').style.display = moveModeSilent ? 'none' : 'block';
   document.getElementById('move-cancel').style.display = 'block';
 
   shelfMeshes.forEach(sm => {
@@ -7083,10 +7086,12 @@ function startMoveMode() {
     sm.stand.material.emissiveIntensity = 0.25;
   });
 
-  showToast('⤬ Зажми витрину, окно, дверь, кассу или внутреннюю стену');
+  if (!moveModeSilent) showToast('⤬ Зажми витрину, окно, дверь, кассу или внутреннюю стену');
 }
 
 function stopMoveMode() {
+  const wasSilent = moveModeSilent;
+  moveModeSilent = false;
   moveMode = false;
   winMoveMode = false;
 
@@ -7115,7 +7120,7 @@ function stopMoveMode() {
     sm.stand.material.emissiveIntensity = 0;
   });
 
-  showToast('✅ Редактор закрыт');
+  if (!wasSilent) showToast('✅ Редактор закрыт');
 }
 
 
@@ -7788,7 +7793,6 @@ function placeEquipmentFromStorage(key) {
   if (item.kind === 'decor') {
     closeWarehouseModal();
     startDecorPlacement(item.type, key);
-    showToast('🛋 Выбери место для декорации со склада');
     return;
   }
 
@@ -7796,7 +7800,6 @@ function placeEquipmentFromStorage(key) {
     const axis = item.type === 'z' ? 'z' : 'x';
     closeWarehouseModal();
     startInternalWallBuild(axis, key);
-    showToast('🧱 Выбери место на полу для стены со склада');
     return;
   }
 
@@ -7804,8 +7807,7 @@ function placeEquipmentFromStorage(key) {
 
   removeEquipmentFromStorage(key, 1);
   closeWarehouseModal();
-  startMoveMode();
-  showToast('✅ ' + item.name + ' поставлено. Теперь можно передвинуть');
+  startMoveMode(true);
 }
 
 function openCashModal() {
