@@ -368,6 +368,25 @@
   }
   .cat-tab.active { background:#e94560; border-color:#e94560; color:#fff; }
 
+  /* ПОДКАТЕГОРИИ ВНУТРИ КАЖДОГО РАЗДЕЛА МАГАЗИНА */
+  #subcat-tabs {
+    display:flex; gap:7px; overflow-x:auto; scrollbar-width:none;
+    padding:2px 0 9px; margin-bottom:5px;
+    -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain;
+  }
+  #subcat-tabs::-webkit-scrollbar { display:none; }
+  .subcat-tab {
+    flex-shrink:0; padding:7px 13px; border-radius:18px;
+    font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap;
+    border:1px solid rgba(255,255,255,0.12);
+    color:#aaa; background:rgba(255,255,255,0.045); transition:all .15s;
+  }
+  .subcat-tab.active {
+    color:#f5c518; border-color:rgba(245,197,24,0.65);
+    background:rgba(245,197,24,0.13);
+  }
+  .subcat-tab:active { transform:scale(.96); }
+
   /* PRODUCTS LIST */
   #products-list { display:flex; flex-direction:column; gap:8px; max-height:52vh; overflow-y:auto; }
   .prod-row {
@@ -678,6 +697,7 @@
     <div id="modal-header">
       <h3>🛍 Магазин</h3>
       <div id="cat-tabs"></div>
+      <div id="subcat-tabs"></div>
     </div>
     <div id="products-list"></div>
     <div class="modal-close" onclick="closeShopModal()">✕ Закрыть</div>
@@ -1071,6 +1091,7 @@ function playClickSound() {
 }
 
 function playCashSound() {
+  if (!sfxEnabled) return;
   const audio = getCashSound();
   if (!audio) return;
 
@@ -1113,7 +1134,7 @@ function bindClickSoundEffects() {
     if (!target) return;
 
     const uiHit = target.closest && target.closest(
-      'button, .bot-btn, .cat-tab, .prod-row, .prod-card, .modal-close, .btn-buy, .btn-back, #settings-btn, #hud-name, #move-cancel span, .edit-popup-btn, .toggle-switch'
+      'button, .bot-btn, .cat-tab, .subcat-tab, .prod-row, .prod-card, .modal-close, .btn-buy, .btn-back, #settings-btn, #hud-name, #move-cancel span, .edit-popup-btn, .toggle-switch'
     );
 
     const canvasHit = target.tagName === 'CANVAS';
@@ -1130,7 +1151,7 @@ setTimeout(updateRatingUI, 0);
 
 
 function bindHorizontalMenuWheel() {
-  const selector = '#products-list, #warehouse-list, #shelves-info-list, #workersList, #workerStyleList';
+  const selector = '#cat-tabs, #subcat-tabs, #products-list, #warehouse-list, #shelves-info-list, #workersList, #workerStyleList';
   document.addEventListener('wheel', e => {
     const list = e.target && e.target.closest ? e.target.closest(selector) : null;
     if (!list || list.scrollWidth <= list.clientWidth) return;
@@ -1144,10 +1165,20 @@ bindHorizontalMenuWheel();
 
 // ── РАСШИРЕНИЕ МАГАЗИНА ──
 const SHOP_STAGE_MIN = 1;
-const SHOP_STAGE_MAX = 10;
+const SHOP_EXPANSION_LEVELS = [10, 18, 28, 39, 53, 63];
+const SHOP_STAGE_MAX = SHOP_STAGE_MIN + SHOP_EXPANSION_LEVELS.length;
 const SHOP_UPGRADE_COST = 5000;
 const SHOP_HALF_MIN = 8.0;
 const SHOP_HALF_MAX = 12.5;
+
+function getNextShopExpansionLevel(stage = G.shopStage) {
+  const expansionIndex = Math.max(0, stage - SHOP_STAGE_MIN);
+  return SHOP_EXPANSION_LEVELS[expansionIndex] ?? null;
+}
+
+function getCompletedShopExpansions(stage = G.shopStage) {
+  return Math.max(0, Math.min(SHOP_EXPANSION_LEVELS.length, stage - SHOP_STAGE_MIN));
+}
 
 function getShopHalfForStage(stage = G.shopStage) {
   const t = (stage - SHOP_STAGE_MIN) / (SHOP_STAGE_MAX - SHOP_STAGE_MIN);
@@ -5530,7 +5561,8 @@ function addXP(amount) {
   if (levelsGained > 0) {
     const title = getLevelTitle(G.level);
     const unlocks = getUnlockSummaryForLevels(previousLevel + 1, G.level);
-    const unlockCount = unlocks.products.length + unlocks.shelves.length;
+    const unlockedExpansionLevels = SHOP_EXPANSION_LEVELS.filter(level => previousLevel < level && G.level >= level);
+    const unlockCount = unlocks.products.length + unlocks.shelves.length + unlockedExpansionLevels.length;
     const message = (levelsGained > 1
       ? '🎉 Получено уровней: '+levelsGained+'! Теперь ур.'+G.level+' — '+title
       : '🎉 Уровень '+G.level+'! '+title)
@@ -5544,6 +5576,9 @@ function addXP(amount) {
       const shelfNames = unlocks.shelves.map(item => getShelfVariantById(item.id).name);
       logEvent('🔓 Витрины: ' + shelfNames.join(', '));
     }
+    unlockedExpansionLevels.forEach(level => {
+      logEvent('🔓 Расширение магазина доступно с уровня ' + level);
+    });
 
     const shopModal = document.getElementById('shopModal');
     if (shopModal && shopModal.classList.contains('show')) {
@@ -5833,6 +5868,84 @@ const CATEGORIES = [
   { id: 'store',   name: '🏪 Для магазина',  cats: ['__store__'] },
   { id: 'design',  name: '🎨 Оформление',    cats: ['__design__'] },
 ];
+
+const SHOP_SUBCATEGORIES = {
+  clothes: [
+    { id:'all', name:'Все категории' },
+    { id:'apparel', name:'👕 Одежда', productCats:['Одежда'] },
+    { id:'shoes', name:'👟 Обувь', productCats:['Обувь'] },
+    { id:'accessories', name:'👜 Аксессуары', productCats:['Аксессуары'] },
+    { id:'beauty', name:'🧴 Парфюмерия', productCats:['Красота'] },
+  ],
+  tech: [
+    { id:'all', name:'Все категории' },
+    { id:'mobile', name:'📱 Мобильные', productIds:['phone','headphones'] },
+    { id:'computers', name:'💻 Компьютеры', productIds:['laptop','desktop_pc'] },
+    { id:'entertainment', name:'🎮 Развлечения', productIds:['television','game_console'] },
+    { id:'appliances', name:'☕ Бытовая техника', productIds:['washing_machine','coffee_machine'] },
+  ],
+  store: [
+    { id:'all', name:'Все категории' },
+    { id:'expansion', name:'🏗 Расширение' },
+    { id:'shelves', name:'🪟 Витрины' },
+    { id:'staff', name:'👥 Персонал' },
+    { id:'cash', name:'💵 Кассы' },
+  ],
+  design: [
+    { id:'all', name:'Все категории' },
+    { id:'walls', name:'🎨 Стены' },
+    { id:'floor', name:'🟫 Пол' },
+    { id:'innerWalls', name:'🧱 Внутренние стены' },
+    { id:'decor', name:'🛋 Декор' },
+    { id:'windows', name:'🪟 Окна' },
+    { id:'doors', name:'🚪 Двери' },
+  ],
+};
+
+const activeSubcatByCategory = {
+  clothes:'all', tech:'all', store:'all', design:'all', other:'all'
+};
+
+function getShopSubcategories(categoryId = activeCat) {
+  return SHOP_SUBCATEGORIES[categoryId] || [{ id:'all', name:'Все категории' }];
+}
+
+function getActiveShopSubcategory() {
+  const available = getShopSubcategories(activeCat);
+  const current = activeSubcatByCategory[activeCat] || 'all';
+  return available.some(x => x.id === current) ? current : 'all';
+}
+
+function renderSubcatTabs() {
+  const tabs = document.getElementById('subcat-tabs');
+  if (!tabs) return;
+  tabs.innerHTML = '';
+  const available = getShopSubcategories(activeCat);
+  const current = getActiveShopSubcategory();
+  activeSubcatByCategory[activeCat] = current;
+
+  available.forEach(sub => {
+    const t = document.createElement('div');
+    t.className = 'subcat-tab' + (sub.id === current ? ' active' : '');
+    t.textContent = sub.name;
+    t.onclick = () => {
+      activeSubcatByCategory[activeCat] = sub.id;
+      renderSubcatTabs();
+      renderProductList();
+    };
+    tabs.appendChild(t);
+  });
+}
+
+function productMatchesActiveSubcategory(product) {
+  const subId = getActiveShopSubcategory();
+  if (subId === 'all') return true;
+  const sub = getShopSubcategories(activeCat).find(x => x.id === subId);
+  if (!sub) return true;
+  if (Array.isArray(sub.productCats)) return sub.productCats.includes(product.cat);
+  if (Array.isArray(sub.productIds)) return sub.productIds.includes(product.id);
+  return true;
+}
 
 // Доступные витрины для покупки
 const SHELF_VARIANTS = [
@@ -6187,6 +6300,7 @@ function getEquipmentSellPrice(item) {
 
 function openShopModal() {
   renderCatTabs();
+  renderSubcatTabs();
   renderProductList();
   document.getElementById('shopModal').classList.add('show');
 }
@@ -6212,7 +6326,13 @@ function renderCatTabs() {
     const t = document.createElement('div');
     t.className = 'cat-tab' + (c.id === activeCat ? ' active' : '');
     t.textContent = c.name;
-    t.onclick = () => { activeCat = c.id; renderCatTabs(); renderProductList(); };
+    t.onclick = () => {
+      activeCat = c.id;
+      if (!activeSubcatByCategory[activeCat]) activeSubcatByCategory[activeCat] = 'all';
+      renderCatTabs();
+      renderSubcatTabs();
+      renderProductList();
+    };
     tabs.appendChild(t);
   });
 }
@@ -6251,7 +6371,13 @@ function applyShopStageVisuals() {
 
 function buyShopExpansion() {
   if (G.shopStage >= SHOP_STAGE_MAX) {
-    showToast('✅ Магазин уже максимального размера');
+    showToast('✅ Все 6 расширений уже выполнены');
+    return;
+  }
+
+  const requiredLevel = getNextShopExpansionLevel();
+  if (requiredLevel !== null && (G.level || 1) < requiredLevel) {
+    showToast('🔒 Следующее расширение откроется на уровне ' + requiredLevel, '#e94560ee');
     return;
   }
   if (G.money < SHOP_UPGRADE_COST) {
@@ -6264,305 +6390,266 @@ function buyShopExpansion() {
   applyShopStageVisuals();
   updateHUD();
   renderProductList();
-  showToast('🏗 Магазин расширен: ' + G.shopStage + '/' + SHOP_STAGE_MAX);
+  showToast('🏗 Расширение выполнено: ' + getCompletedShopExpansions() + '/' + SHOP_EXPANSION_LEVELS.length);
 }
 
 function renderProductList() {
   const list = document.getElementById('products-list');
+  if (!list) return;
   list.innerHTML = '';
+  const subcat = getActiveShopSubcategory();
+  const showSubcat = id => subcat === 'all' || subcat === id;
 
   if (activeCat === 'design') {
     const WALL_COLORS = [
-      { name:'Голубой (по умолч.)', hex: 0x87CEFA, label:'#87CEFA' },
-      { name:'Белый', hex: 0xf0f0f0, label:'#F0F0F0' },
-      { name:'Бежевый', hex: 0xe8d5b0, label:'#E8D5B0' },
-      { name:'Мятный', hex: 0x98d4b0, label:'#98D4B0' },
-      { name:'Розовый', hex: 0xf4b8c8, label:'#F4B8C8' },
-      { name:'Серый', hex: 0xa0a8b0, label:'#A0A8B0' },
+      { name:'Голубой (по умолч.)', hex: 0x87CEFA },
+      { name:'Белый', hex: 0xf0f0f0 },
+      { name:'Бежевый', hex: 0xe8d5b0 },
+      { name:'Мятный', hex: 0x98d4b0 },
+      { name:'Розовый', hex: 0xf4b8c8 },
+      { name:'Серый', hex: 0xa0a8b0 },
     ];
     const FLOOR_COLORS = [
-      { name:'Бежевый (по умолч.)', hex: 0xdec5a8, label:'#DEC5A8' },
-      { name:'Белый', hex: 0xf5f5f0, label:'#F5F5F0' },
-      { name:'Тёмный', hex: 0x4a4a4a, label:'#4A4A4A' },
-      { name:'Голубой', hex: 0xb8d4f0, label:'#B8D4F0' },
-      { name:'Зелёный', hex: 0xa8d4a8, label:'#A8D4A8' },
-      { name:'Мраморный', hex: 0xe8e4e0, label:'#E8E4E0' },
+      { name:'Бежевый (по умолч.)', hex: 0xdec5a8 },
+      { name:'Белый', hex: 0xf5f5f0 },
+      { name:'Тёмный', hex: 0x4a4a4a },
+      { name:'Голубой', hex: 0xb8d4f0 },
+      { name:'Зелёный', hex: 0xa8d4a8 },
+      { name:'Мраморный', hex: 0xe8e4e0 },
     ];
     const WIN_TYPES = [
       { id:'grid',  name:'Окно с перекладинами', emoji:'🪟', desc:'Классическое, 4 секции', price:250 },
       { id:'solid', name:'Панорамное окно',       emoji:'🔲', desc:'Сплошное стекло в рамке', price:250 },
     ];
 
-    list.innerHTML = '';
+    if (showSubcat('walls')) {
+      const wallGrid = document.createElement('div');
+      wallGrid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px';
+      WALL_COLORS.forEach(c => {
+        const btn = document.createElement('div');
+        btn.style.cssText = `background:#${c.hex.toString(16).padStart(6,'0')};border-radius:10px;padding:10px 4px;text-align:center;cursor:pointer;border:2px solid rgba(255,255,255,0.1)`;
+        btn.innerHTML = `<div style="font-size:10px;color:#000;font-weight:700;text-shadow:0 0 4px rgba(255,255,255,0.8)">Стены · ${c.name}<br>100₽</div>`;
+        btn.onclick = () => {
+          if (G.money < 100) { showToast('❌ Нужно 100₽'); return; }
+          G.money -= 100; updateHUD();
+          recolorWalls(c.hex);
+          showToast('🎨 Цвет стен изменён!');
+        };
+        wallGrid.appendChild(btn);
+      });
+      list.appendChild(wallGrid);
+    }
 
-    // Стены
-    const wallTitle = document.createElement('div');
-    wallTitle.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;padding:8px 0 6px';
-    wallTitle.textContent = '🎨 Цвет стен — 100₽';
-    list.appendChild(wallTitle);
-    const wallGrid = document.createElement('div');
-    wallGrid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px';
-    WALL_COLORS.forEach(c => {
-      const btn = document.createElement('div');
-      btn.style.cssText = `background:#${c.hex.toString(16).padStart(6,'0')};border-radius:10px;padding:10px 4px;text-align:center;cursor:pointer;border:2px solid rgba(255,255,255,0.1)`;
-      btn.innerHTML = `<div style="font-size:10px;color:#000;font-weight:700;text-shadow:0 0 4px rgba(255,255,255,0.8)">${c.name}</div>`;
-      btn.onclick = () => {
-        if (G.money < 100) { showToast('❌ Нужно 100₽'); return; }
-        G.money -= 100; updateHUD();
-        recolorWalls(c.hex);
-        showToast('🎨 Цвет стен изменён!');
-      };
-      wallGrid.appendChild(btn);
-    });
-    list.appendChild(wallGrid);
+    if (showSubcat('floor')) {
+      const floorGrid = document.createElement('div');
+      floorGrid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px';
+      FLOOR_COLORS.forEach(c => {
+        const btn = document.createElement('div');
+        btn.style.cssText = `background:#${c.hex.toString(16).padStart(6,'0')};border-radius:10px;padding:10px 4px;text-align:center;cursor:pointer;border:2px solid rgba(255,255,255,0.1)`;
+        btn.innerHTML = `<div style="font-size:10px;color:#000;font-weight:700;text-shadow:0 0 4px rgba(255,255,255,0.8)">Пол · ${c.name}<br>50₽</div>`;
+        btn.onclick = () => {
+          if (G.money < 50) { showToast('❌ Нужно 50₽'); return; }
+          G.money -= 50; updateHUD();
+          floorMat.color.setHex(c.hex);
+          tileMeshes.forEach(m => m.material.color.setHex(c.hex));
+          showToast('🟫 Цвет пола изменён!');
+        };
+        floorGrid.appendChild(btn);
+      });
+      list.appendChild(floorGrid);
+    }
 
-    // Пол
-    const floorTitle = document.createElement('div');
-    floorTitle.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;padding:8px 0 6px';
-    floorTitle.textContent = '🟫 Цвет пола — 50₽';
-    list.appendChild(floorTitle);
-    const floorGrid = document.createElement('div');
-    floorGrid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px';
-    FLOOR_COLORS.forEach(c => {
-      const btn = document.createElement('div');
-      btn.style.cssText = `background:#${c.hex.toString(16).padStart(6,'0')};border-radius:10px;padding:10px 4px;text-align:center;cursor:pointer;border:2px solid rgba(255,255,255,0.1)`;
-      btn.innerHTML = `<div style="font-size:10px;color:#000;font-weight:700;text-shadow:0 0 4px rgba(255,255,255,0.8)">${c.name}</div>`;
-      btn.onclick = () => {
-        if (G.money < 50) { showToast('❌ Нужно 50₽'); return; }
-        G.money -= 50; updateHUD();
-        floorMat.color.setHex(c.hex);
-        tileMeshes.forEach(m => m.material.color.setHex(c.hex));
-        showToast('🟫 Цвет пола изменён!');
-      };
-      floorGrid.appendChild(btn);
-    });
-    list.appendChild(floorGrid);
+    if (showSubcat('innerWalls')) {
+      [
+        { axis:'x', name:'Внутренняя стена ↔', desc:'Кусок стены по горизонтали, размер как окно' },
+        { axis:'z', name:'Внутренняя стена ↕', desc:'Кусок стены по вертикали, без диагоналей' },
+      ].forEach(wallOpt => {
+        const can = G.money >= INTERNAL_WALL_PRICE;
+        const el = document.createElement('div');
+        el.className = 'prod-row' + (can ? '' : ' cant');
+        el.innerHTML = `
+          <div class="pr-emoji">🧱</div>
+          <div class="pr-info"><div class="pr-name">${wallOpt.name}</div><div class="pr-sub">${wallOpt.desc}</div></div>
+          <div class="pr-right"><div class="pr-price">💰${INTERNAL_WALL_PRICE}</div></div>`;
+        el.onclick = () => startInternalWallBuild(wallOpt.axis);
+        list.appendChild(el);
+      });
+    }
 
-    // Внутренние стены
-    const innerWallTitle = document.createElement('div');
-    innerWallTitle.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;padding:8px 0 6px';
-    innerWallTitle.textContent = '🧱 Внутренние стены — 300₽ за кусок';
-    list.appendChild(innerWallTitle);
+    if (showSubcat('decor')) {
+      DECOR_VARIANTS.forEach(dv => {
+        const can = G.money >= DECOR_PRICE;
+        const el = document.createElement('div');
+        el.className = 'prod-row' + (can ? '' : ' cant');
+        el.innerHTML = `
+          <div class="pr-emoji">${dv.emoji}</div>
+          <div class="pr-info"><div class="pr-name">${dv.name}</div><div class="pr-sub">${dv.desc}</div></div>
+          <div class="pr-right"><div class="pr-price">💰${DECOR_PRICE}</div></div>`;
+        el.onclick = () => startDecorPlacement(dv.id);
+        list.appendChild(el);
+      });
+    }
 
-    [
-      { axis:'x', name:'Внутренняя стена ↔', desc:'Кусок стены по горизонтали, размер как окно' },
-      { axis:'z', name:'Внутренняя стена ↕', desc:'Кусок стены по вертикали, без диагоналей' },
-    ].forEach(wallOpt => {
-      const can = G.money >= INTERNAL_WALL_PRICE;
-      const el = document.createElement('div');
-      el.className = 'prod-row' + (can ? '' : ' cant');
-      el.innerHTML = `
-        <div class="pr-emoji">🧱</div>
-        <div class="pr-info"><div class="pr-name">${wallOpt.name}</div><div class="pr-sub">${wallOpt.desc}</div></div>
-        <div class="pr-right"><div class="pr-price">💰${INTERNAL_WALL_PRICE}</div></div>`;
-      el.onclick = () => startInternalWallBuild(wallOpt.axis);
-      list.appendChild(el);
-    });
+    if (showSubcat('windows')) {
+      WIN_TYPES.forEach(wt => {
+        const can = G.money >= wt.price;
+        const el = document.createElement('div');
+        el.className = 'prod-row' + (can ? '' : ' cant');
+        el.innerHTML = `
+          <div class="pr-emoji">${wt.emoji}</div>
+          <div class="pr-info"><div class="pr-name">${wt.name}</div><div class="pr-sub">${wt.desc}</div></div>
+          <div class="pr-right"><div class="pr-price">💰${wt.price}</div></div>`;
+        el.onclick = () => {
+          if (G.money < wt.price) { showToast('❌ Недостаточно денег'); return; }
+          const place = findFreeWindowPlace();
+          if (!place) { showToast('❌ На стенах нет места для нового окна'); return; }
+          G.money -= wt.price;
+          updateHUD();
+          addWindow(place.axis, place.pos, wt.id);
+          closeShopModal();
+          startWinMoveMode();
+          showToast('🪟 Окно куплено! Зажми его и перемести по стене');
+        };
+        list.appendChild(el);
+      });
+    }
 
-    // Декорации
-    const decorTitle = document.createElement('div');
-    decorTitle.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;padding:12px 0 6px';
-    decorTitle.textContent = '🛋 Декорации — 150₽';
-    list.appendChild(decorTitle);
-
-    DECOR_VARIANTS.forEach(dv => {
-      const can = G.money >= DECOR_PRICE;
-      const el = document.createElement('div');
-      el.className = 'prod-row' + (can ? '' : ' cant');
-      el.innerHTML = `
-        <div class="pr-emoji">${dv.emoji}</div>
-        <div class="pr-info"><div class="pr-name">${dv.name}</div><div class="pr-sub">${dv.desc}</div></div>
-        <div class="pr-right"><div class="pr-price">💰${DECOR_PRICE}</div></div>`;
-      el.onclick = () => startDecorPlacement(dv.id);
-      list.appendChild(el);
-    });
-
-    // Окна
-    const winTitle = document.createElement('div');
-    winTitle.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;padding:8px 0 6px';
-    winTitle.textContent = '🪟 Купить окно — 250₽';
-    list.appendChild(winTitle);
-    WIN_TYPES.forEach(wt => {
-      const can = G.money >= wt.price;
-      const el = document.createElement('div');
-      el.className = 'prod-row' + (can ? '' : ' cant');
-      el.innerHTML = `
-        <div class="pr-emoji">${wt.emoji}</div>
-        <div class="pr-info"><div class="pr-name">${wt.name}</div><div class="pr-sub">${wt.desc}</div></div>
-        <div class="pr-right"><div class="pr-price">💰${wt.price}</div></div>`;
-      el.onclick = () => {
-        if (G.money < wt.price) {
-          showToast('❌ Недостаточно денег');
-          return;
-        }
-
-        const place = findFreeWindowPlace();
-
-        if (!place) {
-          showToast('❌ На стенах нет места для нового окна');
-          return;
-        }
-
-        G.money -= wt.price;
-        updateHUD();
-
-        addWindow(place.axis, place.pos, wt.id);
-
-        closeShopModal();
-
-        startWinMoveMode();
-
-        showToast('🪟 Окно куплено! Зажми его и перемести по стене');
-      };
-      list.appendChild(el);
-    });
-
-    // Двери теперь во вкладке «Оформление».
-    const doorTitle = document.createElement('div');
-    doorTitle.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;padding:12px 0 6px';
-    doorTitle.textContent = `🚪 Двери · ${doors.length}/${MAX_DOORS}`;
-    list.appendChild(doorTitle);
-
-    DOOR_TYPES.forEach(dv => {
-      const can = G.money >= dv.price && doors.length < MAX_DOORS;
-      const el = document.createElement('div');
-      el.className = 'prod-row' + (can ? '' : ' cant');
-      el.innerHTML = `
-        <div class="pr-emoji" style="width:36px;height:36px;background:#b8dff0;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${dv.emoji}</div>
-        <div class="pr-info">
-          <div class="pr-name">${dv.name}</div>
-          <div class="pr-sub">Стеклянная дверь · верхняя и левая стена</div>
-        </div>
-        <div class="pr-right">
-          <div class="pr-price">💰${fmt(dv.price)}</div>
-          <div class="pr-profit" style="color:#aaa">${doors.length}/${MAX_DOORS}</div>
-        </div>`;
-      el.onclick = () => buyDoor(dv);
-      list.appendChild(el);
-    });
+    if (showSubcat('doors')) {
+      DOOR_TYPES.forEach(dv => {
+        const can = G.money >= dv.price && doors.length < MAX_DOORS;
+        const el = document.createElement('div');
+        el.className = 'prod-row' + (can ? '' : ' cant');
+        el.innerHTML = `
+          <div class="pr-emoji" style="width:36px;height:36px;background:#b8dff0;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${dv.emoji}</div>
+          <div class="pr-info">
+            <div class="pr-name">${dv.name}</div>
+            <div class="pr-sub">Стеклянная дверь · верхняя и левая стена</div>
+          </div>
+          <div class="pr-right">
+            <div class="pr-price">💰${fmt(dv.price)}</div>
+            <div class="pr-profit" style="color:#aaa">${doors.length}/${MAX_DOORS}</div>
+          </div>`;
+        el.onclick = () => buyDoor(dv);
+        list.appendChild(el);
+      });
+    }
     return;
   }
 
   if (activeCat === 'store') {
-    // Расширение магазина
-    const expTitle = document.createElement('div');
-    expTitle.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;padding:8px 0 6px';
-    expTitle.textContent = `🏗 Расширение магазина · ${G.shopStage}/${SHOP_STAGE_MAX}`;
-    list.appendChild(expTitle);
-
-    const canUpgrade = G.shopStage < SHOP_STAGE_MAX && G.money >= SHOP_UPGRADE_COST;
-    const expRow = document.createElement('div');
-    expRow.className = 'prod-row' + (canUpgrade ? '' : ' cant');
-    expRow.innerHTML = `
-      <div class="pr-emoji">🏗</div>
-      <div class="pr-info">
-        <div class="pr-name">Увеличить площадь магазина</div>
-        <div class="pr-sub">Магазин, стены, брусчатка и дорога расширяются пропорционально</div>
-      </div>
-      <div class="pr-right">
-        <div class="pr-price">💰${fmt(SHOP_UPGRADE_COST)}</div>
-        <div class="pr-profit" style="color:#aaa">${G.shopStage}/${SHOP_STAGE_MAX}</div>
-      </div>`;
-    expRow.onclick = buyShopExpansion;
-    list.appendChild(expRow);
-
-    // Раздел "Для магазина" — витрины
-    const currentCount = SHELF_POSITIONS.length;
-    if (currentCount < MAX_SHELVES) {
-      const addDiv = document.createElement('div');
-      addDiv.style.cssText = 'font-size:11px;color:#888;padding:6px 0 10px;text-align:center';
-      addDiv.textContent = `Витрин: ${currentCount} / ${MAX_SHELVES} · Купи новую и размести в редакторе`;
-      list.appendChild(addDiv);
+    if (showSubcat('expansion')) {
+      const completedExpansions = getCompletedShopExpansions();
+      const expansionMaxed = G.shopStage >= SHOP_STAGE_MAX;
+      const nextExpansionLevel = getNextShopExpansionLevel();
+      const expansionUnlocked = expansionMaxed || (nextExpansionLevel !== null && (G.level || 1) >= nextExpansionLevel);
+      const canUpgrade = expansionUnlocked && !expansionMaxed && G.money >= SHOP_UPGRADE_COST;
+      const expRow = document.createElement('div');
+      expRow.className = 'prod-row' + (canUpgrade ? '' : ' cant');
+      expRow.innerHTML = `
+        <div class="pr-emoji">${expansionUnlocked && !expansionMaxed ? '🏗' : (expansionMaxed ? '✅' : '🔒')}</div>
+        <div class="pr-info">
+          <div class="pr-name">Увеличить площадь магазина</div>
+          <div class="pr-sub">${expansionMaxed
+            ? 'Все 6 расширений уже выполнены'
+            : (expansionUnlocked
+              ? 'Магазин, стены, брусчатка и дорога расширяются пропорционально'
+              : ('Следующее расширение откроется на уровне ' + nextExpansionLevel))}</div>
+        </div>
+        <div class="pr-right">
+          <div class="pr-price">${expansionMaxed
+            ? 'Готово'
+            : (expansionUnlocked ? ('💰' + fmt(SHOP_UPGRADE_COST)) : ('🔒 Ур.' + nextExpansionLevel))}</div>
+          <div class="pr-profit" style="color:#aaa">${completedExpansions}/${SHOP_EXPANSION_LEVELS.length}</div>
+        </div>`;
+      if (expansionUnlocked && !expansionMaxed) expRow.onclick = buyShopExpansion;
+      list.appendChild(expRow);
     }
-    SHELF_VARIANTS.filter(isShelfVariantAllowedForShop).forEach(sv => {
-      const unlockLevel = getShelfUnlockLevel(sv);
-      const unlocked = isShelfVariantUnlocked(sv);
-      const can = unlocked && G.money >= sv.price;
-      const el = document.createElement('div');
-      el.className = 'prod-row' + (can ? '' : ' cant');
-      el.innerHTML = `
-        <div class="pr-emoji" style="width:36px;height:36px;background:#${sv.color.toString(16).padStart(6,'0')};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${unlocked ? sv.emoji : '🔒'}</div>
-        <div class="pr-info">
-          <div class="pr-name">${sv.name}</div>
-          <div class="pr-sub">${unlocked ? ((sv.desc || 'Новая витрина') + ' · лимит ' + MAX_SHELVES + ' шт') : ('Откроется на уровне ' + unlockLevel)}</div>
-        </div>
-        <div class="pr-right">
-          <div class="pr-price">${unlocked ? ('💰' + fmt(sv.price)) : ('🔒 Ур.' + unlockLevel)}</div>
-          <div class="pr-profit" style="color:#aaa">${unlocked ? (currentCount + '/' + MAX_SHELVES) : ''}</div>
-        </div>`;
-      if (unlocked) el.onclick = () => buyShelf(sv);
-      list.appendChild(el);
-    });
 
-    const workerTitle = document.createElement('div');
-    workerTitle.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;padding:12px 0 6px';
-    workerTitle.textContent = '👥 Работники · 400₽';
-    list.appendChild(workerTitle);
+    if (showSubcat('shelves')) {
+      const currentCount = SHELF_POSITIONS.length;
+      SHELF_VARIANTS.filter(isShelfVariantAllowedForShop).forEach(sv => {
+        const unlockLevel = getShelfUnlockLevel(sv);
+        const unlocked = isShelfVariantUnlocked(sv);
+        const can = unlocked && G.money >= sv.price;
+        const el = document.createElement('div');
+        el.className = 'prod-row' + (can ? '' : ' cant');
+        el.innerHTML = `
+          <div class="pr-emoji" style="width:36px;height:36px;background:#${sv.color.toString(16).padStart(6,'0')};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${unlocked ? sv.emoji : '🔒'}</div>
+          <div class="pr-info">
+            <div class="pr-name">${sv.name}</div>
+            <div class="pr-sub">${unlocked ? ((sv.desc || 'Новая витрина') + ' · установлено ' + currentCount + '/' + MAX_SHELVES) : ('Откроется на уровне ' + unlockLevel)}</div>
+          </div>
+          <div class="pr-right">
+            <div class="pr-price">${unlocked ? ('💰' + fmt(sv.price)) : ('🔒 Ур.' + unlockLevel)}</div>
+            <div class="pr-profit" style="color:#aaa">${unlocked ? (currentCount + '/' + MAX_SHELVES) : ''}</div>
+          </div>`;
+        if (unlocked) el.onclick = () => buyShelf(sv);
+        list.appendChild(el);
+      });
+    }
 
-    const WORKER_STORE = [
-      { type:'cleaner', emoji:'🧹', name:'Уборщик', sub:'Автоматически убирает распроданные витрины', limit: WORKER_LIMITS.cleaner },
-      { type:'seller', emoji:'👕', name:'Продавец', sub:'Разносит товар со склада на витрины', limit: WORKER_LIMITS.seller },
-      { type:'cashier', emoji:'💵', name:'Кассир', sub:'Подходит к кассе, когда покупатель готов оплатить', limit: WORKER_LIMITS.cashier },
-      { type:'guard', emoji:'🛡️', name:'Охранник', sub:'Пока недоступен', limit: 0, disabled:true },
-    ];
+    if (showSubcat('staff')) {
+      const WORKER_STORE = [
+        { type:'cleaner', emoji:'🧹', name:'Уборщик', sub:'Автоматически убирает распроданные витрины', limit: WORKER_LIMITS.cleaner },
+        { type:'seller', emoji:'👕', name:'Продавец', sub:'Разносит товар со склада на витрины', limit: WORKER_LIMITS.seller },
+        { type:'cashier', emoji:'💵', name:'Кассир', sub:'Подходит к кассе, когда покупатель готов оплатить', limit: WORKER_LIMITS.cashier },
+        { type:'guard', emoji:'🛡️', name:'Охранник', sub:'Пока недоступен', limit: 0, disabled:true },
+      ];
 
-    WORKER_STORE.forEach(w => {
-      const count = getStaffCount(w.type);
-      const unlockLevel = getWorkerUnlockLevel(w.type);
-      const unlocked = !w.disabled && isWorkerPurchaseUnlocked(w.type);
-      const limitReached = count >= w.limit;
-      const can = unlocked && !limitReached && G.money >= WORKER_PRICE;
-      const el = document.createElement('div');
-      el.className = 'prod-row' + (can ? '' : ' cant');
-      el.innerHTML = `
-        <div class="pr-emoji">${unlocked ? w.emoji : '🔒'}</div>
-        <div class="pr-info">
-          <div class="pr-name">${w.name}</div>
-          <div class="pr-sub">${w.disabled ? 'Пока недоступен' : (unlocked ? w.sub : ('Откроется на уровне ' + unlockLevel))}</div>
-        </div>
-        <div class="pr-right">
-          <div class="pr-price">${w.disabled ? '🔒' : (unlocked ? ('💰' + fmt(WORKER_PRICE)) : ('🔒 Ур.' + unlockLevel))}</div>
-          <div class="pr-profit" style="color:#aaa">${w.disabled ? '' : (count + '/' + w.limit)}</div>
-        </div>`;
-      if (unlocked && !limitReached) el.onclick = () => buyWorker(w.type);
-      list.appendChild(el);
-    });
+      WORKER_STORE.forEach(w => {
+        const count = getStaffCount(w.type);
+        const unlockLevel = getWorkerUnlockLevel(w.type);
+        const unlocked = !w.disabled && isWorkerPurchaseUnlocked(w.type);
+        const limitReached = count >= w.limit;
+        const can = unlocked && !limitReached && G.money >= WORKER_PRICE;
+        const el = document.createElement('div');
+        el.className = 'prod-row' + (can ? '' : ' cant');
+        el.innerHTML = `
+          <div class="pr-emoji">${unlocked ? w.emoji : '🔒'}</div>
+          <div class="pr-info">
+            <div class="pr-name">${w.name}</div>
+            <div class="pr-sub">${w.disabled ? 'Пока недоступен' : (unlocked ? w.sub : ('Откроется на уровне ' + unlockLevel))}</div>
+          </div>
+          <div class="pr-right">
+            <div class="pr-price">${w.disabled ? '🔒' : (unlocked ? ('💰' + fmt(WORKER_PRICE)) : ('🔒 Ур.' + unlockLevel))}</div>
+            <div class="pr-profit" style="color:#aaa">${w.disabled ? '' : (count + '/' + w.limit)}</div>
+          </div>`;
+        if (unlocked && !limitReached) el.onclick = () => buyWorker(w.type);
+        list.appendChild(el);
+      });
+    }
 
-    const cashTitle = document.createElement('div');
-    cashTitle.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;padding:12px 0 6px';
-    cashTitle.textContent = `💵 Кассы · ${cashRegisters.length}/${MAX_CASH_REGISTERS}`;
-    list.appendChild(cashTitle);
-
-    CASH_REGISTER_VARIANTS.forEach(cv => {
-      const unlocked = (G.level || 1) >= EXTRA_CASH_REGISTER_UNLOCK_LEVEL;
-      const limitReached = cashRegisters.length >= MAX_CASH_REGISTERS;
-      const can = unlocked && !limitReached && G.money >= cv.price;
-      const el = document.createElement('div');
-      el.className = 'prod-row' + (can ? '' : ' cant');
-      el.innerHTML = `
-        <div class="pr-emoji" style="width:36px;height:36px;background:#${cv.color.toString(16).padStart(6,'0')};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${unlocked ? cv.emoji : '🔒'}</div>
-        <div class="pr-info">
-          <div class="pr-name">${cv.name}</div>
-          <div class="pr-sub">${unlocked ? ('Касса для оплаты · максимум ' + MAX_CASH_REGISTERS) : ('Дополнительная касса откроется на уровне ' + EXTRA_CASH_REGISTER_UNLOCK_LEVEL)}</div>
-        </div>
-        <div class="pr-right">
-          <div class="pr-price">${unlocked ? ('💰' + fmt(cv.price)) : ('🔒 Ур.' + EXTRA_CASH_REGISTER_UNLOCK_LEVEL)}</div>
-          <div class="pr-profit" style="color:#aaa">${cashRegisters.length}/${MAX_CASH_REGISTERS}</div>
-        </div>`;
-      if (unlocked && !limitReached) el.onclick = () => buyCashRegister(cv);
-      list.appendChild(el);
-    });
-
-
+    if (showSubcat('cash')) {
+      CASH_REGISTER_VARIANTS.forEach(cv => {
+        const unlocked = (G.level || 1) >= EXTRA_CASH_REGISTER_UNLOCK_LEVEL;
+        const limitReached = cashRegisters.length >= MAX_CASH_REGISTERS;
+        const can = unlocked && !limitReached && G.money >= cv.price;
+        const el = document.createElement('div');
+        el.className = 'prod-row' + (can ? '' : ' cant');
+        el.innerHTML = `
+          <div class="pr-emoji" style="width:36px;height:36px;background:#${cv.color.toString(16).padStart(6,'0')};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${unlocked ? cv.emoji : '🔒'}</div>
+          <div class="pr-info">
+            <div class="pr-name">${cv.name}</div>
+            <div class="pr-sub">${unlocked ? ('Касса для оплаты · максимум ' + MAX_CASH_REGISTERS) : ('Дополнительная касса откроется на уровне ' + EXTRA_CASH_REGISTER_UNLOCK_LEVEL)}</div>
+          </div>
+          <div class="pr-right">
+            <div class="pr-price">${unlocked ? ('💰' + fmt(cv.price)) : ('🔒 Ур.' + EXTRA_CASH_REGISTER_UNLOCK_LEVEL)}</div>
+            <div class="pr-profit" style="color:#aaa">${cashRegisters.length}/${MAX_CASH_REGISTERS}</div>
+          </div>`;
+        if (unlocked && !limitReached) el.onclick = () => buyCashRegister(cv);
+        list.appendChild(el);
+      });
+    }
     return;
   }
 
   const cat = CATEGORIES.find(c => c.id === activeCat);
   const filtered = cat
     ? PRODUCTS
-        .filter(p => cat.cats.includes(p.cat) && isProductAllowedForShop(p))
+        .filter(p => cat.cats.includes(p.cat) && isProductAllowedForShop(p) && productMatchesActiveSubcategory(p))
         .sort((a, b) => getProductUnlockLevel(a) - getProductUnlockLevel(b))
     : [];
+
   filtered.forEach(p => {
     const unlockLevel = getProductUnlockLevel(p);
     const unlocked = isProductUnlocked(p);
