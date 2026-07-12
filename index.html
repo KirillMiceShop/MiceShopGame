@@ -2819,13 +2819,13 @@ function getShelfRotation(idx) {
 
 function getShelfBaseFootprint(idx) {
   const kind = getShelfKindForIndex(idx);
-  if (kind === 'shoe_cubby') return { w: 1.9, d: 0.65 };
-  if (kind === 'hanging_rack') return { w: 2.05, d: 0.85 };
-  if (kind === 'tech_island') return { w: 2.7, d: 0.72 };
-  if (kind === 'glass_case') return { w: 1.95, d: 0.90 };
-  if (kind === 'tv_low_stand') return { w: 1.75, d: 1.75 };
-  if (kind === 'appliance_pedestal') return { w: 1.45, d: 1.45 };
-  if (kind === 'tech_backstand') return { w: 2.2, d: 1.2 };
+  if (kind === 'shoe_cubby') return { w: 1.9 * SHELF_SIZE_MULT, d: 0.65 * SHELF_SIZE_MULT };
+  if (kind === 'hanging_rack') return { w: 2.05 * SHELF_SIZE_MULT, d: 0.85 * SHELF_SIZE_MULT };
+  if (kind === 'tech_island') return { w: 2.7 * SHELF_SIZE_MULT, d: 0.72 * SHELF_SIZE_MULT };
+  if (kind === 'glass_case') return { w: 1.95 * SHELF_SIZE_MULT, d: 0.90 * SHELF_SIZE_MULT };
+  if (kind === 'tv_low_stand') return { w: 1.75 * SHELF_SIZE_MULT, d: 1.75 * SHELF_SIZE_MULT };
+  if (kind === 'appliance_pedestal') return { w: 1.45 * SHELF_SIZE_MULT, d: 1.45 * SHELF_SIZE_MULT };
+  if (kind === 'tech_backstand') return { w: 2.2 * SHELF_SIZE_MULT, d: 1.2 * SHELF_SIZE_MULT };
   return { w: SHELF_STAND_W, d: SHELF_STAND_D };
 }
 
@@ -4206,9 +4206,10 @@ const SHELF_POSITIONS = [
   [0, 0, -1.0], // стартовая витрина
 ];
 
-// Витрины уменьшены примерно на 20%: они стали компактнее,
-// но логика размещения товаров и клика осталась прежней.
-const SHELF_SCALE = 0.8;
+// Все витрины увеличены в 1,5 раза, чтобы их пропорции лучше соответствовали
+// дверям, окнам и размеру персонажей. Размер самого магазина не меняется.
+const SHELF_SIZE_MULT = 1.5;
+const SHELF_SCALE = 0.8 * SHELF_SIZE_MULT;
 const SHELF_BASE_W = 2.2 * SHELF_SCALE;
 const SHELF_BASE_H = 0.15 * SHELF_SCALE;
 const SHELF_BASE_D = 1.2 * SHELF_SCALE;
@@ -4246,7 +4247,7 @@ SHELF_POSITIONS.forEach((pos, i) => {
   const topShelf = box(SHELF_TOP_W, SHELF_TOP_H, SHELF_TOP_D, 0x4a3828, x, SHELF_TOP_Y, z);
 
   // Номер-метка (маленький куб)
-  const label = box(SHELF_LABEL_SIZE, SHELF_LABEL_SIZE, 0.04, 0x9c27b0, x - SHELF_STAND_W / 2 + 0.16, SHELF_LABEL_Y, z - SHELF_STAND_D / 2 + 0.02);
+  const label = box(SHELF_LABEL_SIZE, SHELF_LABEL_SIZE, 0.04 * SHELF_SIZE_MULT, 0x9c27b0, x - SHELF_STAND_W / 2 + 0.16, SHELF_LABEL_Y, z - SHELF_STAND_D / 2 + 0.02);
   label.visible = false; // служебная метка скрыта, чтобы при развороте не появлялся квадратик
 
   // Невидимая зона клика
@@ -4437,6 +4438,7 @@ addCashRegister(CASH_REGISTER_VARIANTS[0], -1.8, 2.0);
 
 // ── ПРОДАВЦЫ ──
 // Два продавца: один дежурит у кассы, второй ходит возле витрин. Каждые 3 минуты они меняются.
+const CHARACTER_SIZE_MULT = 1.5;
 const SELLER_SHIFT_MS = 180000;
 let sellerShiftStart = Date.now();
 const sellers = [];
@@ -4467,6 +4469,7 @@ function createSeller(color, x, z, name, staffType = 'seller') {
     group.add(leg);
   });
 
+  group.scale.setScalar(CHARACTER_SIZE_MULT);
   group.position.set(x, 0.6, z);
   scene.add(group);
 
@@ -4651,13 +4654,13 @@ function updateSellerMovement(seller) {
   if (dist > 0.12) {
     const beforeX = seller.group.position.x;
     const beforeZ = seller.group.position.z;
-    const moved = moveGroupAvoidingShelves(seller.group, seller.target, seller.speed, 0.18);
+    const moved = moveGroupAvoidingShelves(seller.group, seller.target, seller.speed, 0.18 * CHARACTER_SIZE_MULT);
     const realMove = Math.hypot(seller.group.position.x - beforeX, seller.group.position.z - beforeZ);
 
     if (!moved || realMove < seller.speed * 0.2) {
       seller.stuck = (seller.stuck || 0) + 1;
       if (seller.stuck > 35) {
-        const rescue = findNearestFreeWalkPoint(seller.group.position.x, seller.group.position.z, 0.18, seller.target, 5.0);
+        const rescue = findNearestFreeWalkPoint(seller.group.position.x, seller.group.position.z, 0.18 * CHARACTER_SIZE_MULT, seller.target, 5.0);
         if (rescue) {
           seller.group.position.x = rescue.x;
           seller.group.position.z = rescue.z;
@@ -4877,7 +4880,7 @@ function isPointBlockedByCashRegister(x, z, padding = 0.18) {
   });
 }
 
-function isCustomerPointFree(x, z, padding = 0.22) {
+function isCustomerPointFree(x, z, padding = 0.22 * CHARACTER_SIZE_MULT) {
   return isInsideShopWalkArea(x, z) && !isPointBlockedByShelf(x, z, padding) && !isPointBlockedByCashRegister(x, z, padding) && !isPointBlockedByInternalWall(x, z, padding) && !isPointBlockedByDecor(x, z, padding);
 }
 
@@ -4905,8 +4908,8 @@ function getShelfApproachPoint(idx, fromPos = null) {
 
   const [sx, , sz] = sp;
   const fp = getShelfFootprint(idx, 0);
-  const gapX = fp.w / 2 + 0.75;
-  const gapZ = fp.d / 2 + 0.75;
+  const gapX = fp.w / 2 + 0.75 * CHARACTER_SIZE_MULT;
+  const gapZ = fp.d / 2 + 0.75 * CHARACTER_SIZE_MULT;
 
   const candidates = [
     new THREE.Vector3(sx,        0.6, sz + gapZ),
@@ -4932,7 +4935,7 @@ function getShelfApproachPoint(idx, fromPos = null) {
   return candidates[0];
 }
 
-function findNearestFreeWalkPoint(x, z, padding = 0.16, preferredTarget = null, maxRadius = 4.0) {
+function findNearestFreeWalkPoint(x, z, padding = 0.16 * CHARACTER_SIZE_MULT, preferredTarget = null, maxRadius = 4.0) {
   if (isCustomerPointFree(x, z, padding)) return new THREE.Vector3(x, 0.6, z);
 
   let best = null;
@@ -5089,7 +5092,7 @@ function followWalkPath(group, finalTarget, speed, padding = 0.16) {
   return false;
 }
 
-function moveGroupAvoidingShelves(group, target, speed, padding = 0.16) {
+function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACTER_SIZE_MULT) {
   const curX = group.position.x;
   const curZ = group.position.z;
 
@@ -5337,6 +5340,8 @@ class Customer {
       leg.castShadow = true;
       this.group.add(leg);
     });
+
+    this.group.scale.setScalar(CHARACTER_SIZE_MULT);
 
     this.entryDoor = getRandomDoor();
     const spawnPoint = getDoorOutsidePoint(this.entryDoor);
@@ -6927,11 +6932,13 @@ function addShelfMesh(i, x, z, bodyColor, topColor, variantId = 'shelf_brown') {
     topShelf = box(SHELF_TOP_W, SHELF_TOP_H, SHELF_TOP_D, bodyColor, x, SHELF_TOP_Y, z);
   }
 
-  const label = box(SHELF_LABEL_SIZE, SHELF_LABEL_SIZE, 0.04, 0x9c27b0, x - SHELF_STAND_W / 2 + 0.16, SHELF_LABEL_Y, z - SHELF_STAND_D / 2 + 0.02);
+  if (group) group.scale.setScalar(SHELF_SIZE_MULT);
+
+  const label = box(SHELF_LABEL_SIZE, SHELF_LABEL_SIZE, 0.04 * SHELF_SIZE_MULT, 0x9c27b0, x - SHELF_STAND_W / 2 + 0.16, SHELF_LABEL_Y, z - SHELF_STAND_D / 2 + 0.02);
   label.visible = false;
   const fp = getShelfBaseFootprint(i);
-  const hitZone = new THREE.Mesh(new THREE.BoxGeometry(fp.w + 0.25, 2.1, fp.d + 0.35), new THREE.MeshBasicMaterial({ visible: false }));
-  hitZone.position.set(x, 1.05, z);
+  const hitZone = new THREE.Mesh(new THREE.BoxGeometry(fp.w + 0.25, 2.1 * SHELF_SIZE_MULT, fp.d + 0.35), new THREE.MeshBasicMaterial({ visible: false }));
+  hitZone.position.set(x, 1.05 * SHELF_SIZE_MULT, z);
   hitZone.userData.shelfIndex = i;
   hitZone.userData.shelfHitZone = true;
   scene.add(hitZone);
@@ -8073,6 +8080,19 @@ const CATEGORY_COLORS = {
 // Хранилище 3D-объектов на полках
 const shelfItemMeshes = {}; // slotIndex -> THREE.Group
 
+function getShelfDisplayTopY(slotIdx) {
+  const kind = getShelfKindForIndex(slotIdx);
+  if (kind === 'shoe_cubby') return 1.87 * SHELF_SIZE_MULT;
+  if (kind === 'tech_island') return 0.855 * SHELF_SIZE_MULT;
+  if (kind === 'tv_low_stand') return 0.49 * SHELF_SIZE_MULT;
+  if (kind === 'appliance_pedestal') return 0.33 * SHELF_SIZE_MULT;
+  if (kind === 'tech_backstand') return 0.91 * SHELF_SIZE_MULT;
+  if (kind === 'glass_case') return 1.46 * SHELF_SIZE_MULT;
+  if ((G.shelfVariants && G.shelfVariants[slotIdx]) === 'rack_wardrobe') return 1.63 * SHELF_SIZE_MULT;
+  if (kind === 'hanging_rack') return 1.34 * SHELF_SIZE_MULT;
+  return SHELF_TOP_Y + SHELF_TOP_H / 2;
+}
+
 function createItemMesh(product, slotIdx) {
   // Удаляем старый если был
   removeItemMesh(slotIdx);
@@ -8117,7 +8137,7 @@ function createItemMesh(product, slotIdx) {
   group.add(stripMesh);
 
   // Ставим на верхнюю полку витрины (y=1.35 — полка, + половина высоты объекта)
-  group.position.set(x, SHELF_TOP_Y + mainGeo.parameters.height / 2 + 0.02, z);
+  group.position.set(x, getShelfDisplayTopY(slotIdx) + mainGeo.parameters.height / 2 + 0.02, z);
 
   // Небольшой поворот относительно разворота витрины.
   group.rotation.y = ((G.shelfRotations && G.shelfRotations[slotIdx]) || 0) + (Math.random() - 0.5) * 0.18;
@@ -8698,7 +8718,7 @@ function animate() {
       if (shelfItemMeshes[i]) {
         const geo = shelfItemMeshes[i].children[0]?.geometry?.parameters;
         const h = geo ? geo.height : 0.3;
-        shelfItemMeshes[i].position.y = SHELF_TOP_Y + h / 2 + 0.02 + (waitReady ? Math.sin(frame * 0.12) * 0.035 : 0);
+        shelfItemMeshes[i].position.y = getShelfDisplayTopY(i) + h / 2 + 0.02 + (waitReady ? Math.sin(frame * 0.12) * 0.035 : 0);
       }
     } else if (item && item.soldOut) {
       const pulse = Math.sin(frame * 0.12) * 0.5 + 0.5;
