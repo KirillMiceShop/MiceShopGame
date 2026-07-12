@@ -766,9 +766,9 @@ const SHOP_TYPES = {
   clothing: {
     name: 'магазин одежды',
     icon: '👕',
-    productCats: ['Одежда', 'Обувь'],
+    productCats: ['Одежда', 'Обувь', 'Аксессуары'],
     categoryIds: ['clothes', 'store', 'design'],
-    shelfVariants: ['shelf_brown', 'shoe_cubby', 'rack_simple', 'rack_wardrobe'],
+    shelfVariants: ['shelf_brown', 'shoe_cubby', 'rack_simple', 'rack_wardrobe', 'glass_case'],
     starterShelf: 'shelf_brown'
   },
   electronics: {
@@ -776,7 +776,7 @@ const SHOP_TYPES = {
     icon: '📱',
     productCats: ['Техника'],
     categoryIds: ['tech', 'store', 'design'],
-    shelfVariants: ['tech_island'],
+    shelfVariants: ['tech_island', 'tv_low_stand', 'appliance_pedestal', 'tech_backstand'],
     starterShelf: 'tech_island'
   }
 };
@@ -1109,6 +1109,11 @@ const PRODUCTS = [
   {id:'dress',  name:'Платье',     emoji:'👗', cat:'Одежда',    cost:1050,  sell:1900,  time:220, xp:65,  shelfKinds:['hanging_rack']},
   {id:'suit',   name:'Костюм',     emoji:'🤵', cat:'Одежда',    cost:1600,  sell:2800,  time:280, xp:85,  shelfKinds:['hanging_rack']},
   {id:'headphones',name:'Наушники',emoji:'🎧',cat:'Техника',    cost:1500,  sell:2700,  time:200, xp:80,  shelfKinds:['tech_island']},
+  {id:'television',name:'Телевизор',emoji:'📺',cat:'Техника',     cost:3500,  sell:6000,  time:360, xp:140, shelfKinds:['tv_low_stand']},
+  {id:'washing_machine',name:'Стиральная машина',emoji:'🧺',cat:'Техника', cost:4200, sell:7200, time:420, xp:160, shelfKinds:['appliance_pedestal']},
+  {id:'coffee_machine',name:'Кофемашина',emoji:'☕',cat:'Техника', cost:2200, sell:3900, time:300, xp:110, shelfKinds:['tech_backstand']},
+  {id:'game_console',name:'Игровая приставка',emoji:'🎮',cat:'Техника', cost:3000, sell:5200, time:340, xp:125, shelfKinds:['tech_backstand']},
+  {id:'desktop_pc',name:'Стационарный компьютер',emoji:'🖥️',cat:'Техника', cost:8000, sell:13500, time:600, xp:280, shelfKinds:['tech_backstand']},
   {id:'perfume',name:'Духи',       emoji:'🧴', cat:'Красота',   cost:1800,  sell:3200,  time:260, xp:90,  shelfKinds:['glass_case']},
   {id:'watch',  name:'Часы',       emoji:'⌚', cat:'Аксессуары', cost:2000,  sell:3500,  time:300, xp:100, shelfKinds:['glass_case']},
   {id:'jewelry',name:'Ювелирные украшения',emoji:'💍',cat:'Аксессуары', cost:2200,sell:3900,time:320,xp:110, shelfKinds:['glass_case']},
@@ -2570,6 +2575,9 @@ function getShelfBaseFootprint(idx) {
   if (kind === 'hanging_rack') return { w: 2.05, d: 0.85 };
   if (kind === 'tech_island') return { w: 2.7, d: 0.72 };
   if (kind === 'glass_case') return { w: 1.95, d: 0.90 };
+  if (kind === 'tv_low_stand') return { w: 1.75, d: 1.75 };
+  if (kind === 'appliance_pedestal') return { w: 1.45, d: 1.45 };
+  if (kind === 'tech_backstand') return { w: 2.2, d: 1.2 };
   return { w: SHELF_STAND_W, d: SHELF_STAND_D };
 }
 
@@ -5565,7 +5573,10 @@ const SHELF_VARIANTS = [
   { id: 'shoe_cubby',   name: 'Стеллаж для обуви', color: 0xd8c2a0, topColor: 0xd8c2a0, emoji: '👞', price: 500, shelfKind:'shoe_cubby', desc:'Высокий стеллаж с открытыми ячейками для обуви' },
   { id: 'rack_simple',  name: 'Простая стойка-вешалка', color: 0xb58b5d, topColor: 0xb58b5d, emoji: '👕', price: 500, shelfKind:'hanging_rack', desc:'Для футболок, курток, платьев и костюмов' },
   { id: 'rack_wardrobe',name: 'Шкаф-вешалка', color: 0xc8ad8a, topColor: 0xc8ad8a, emoji: '🧥', price: 500, shelfKind:'hanging_rack', desc:'Закрытая стойка-вешалка для одежды' },
-  { id: 'tech_island',  name: 'Техно-витрина', color: 0xcfc7bc, topColor: 0xcfc7bc, emoji: '📱', price: 500, shelfKind:'tech_island', desc:'Узкая длинная витрина для телефонов, ноутбуков и наушников' },
+  { id: 'tech_island',  name: 'Техно-витрина', color: 0xcfc7bc, topColor: 0xcfc7bc, emoji: '📱', price: 500, shelfKind:'tech_island', desc:'Стойка с вырезом для смартфонов, наушников и ноутбуков' },
+  { id: 'tv_low_stand', name: 'Низкая ТВ-витрина', color: 0xb9c2cc, topColor: 0xd9e0e6, emoji: '📺', price: 500, shelfKind:'tv_low_stand', desc:'Низкая квадратная витрина для телевизоров' },
+  { id: 'appliance_pedestal', name: 'Низкая стойка для техники', color: 0xb7b7bd, topColor: 0xd6d6db, emoji: '🧺', price: 500, shelfKind:'appliance_pedestal', desc:'Очень низкая стойка для стиральной машины' },
+  { id: 'tech_backstand', name: 'Техно-стойка со стенкой', color: 0xc8c8ce, topColor: 0xdcdce2, emoji: '🖥️', price: 500, shelfKind:'tech_backstand', desc:'Витрина с задней стенкой для кофемашины, приставки и компьютера' },
   { id: 'glass_case',   name: 'Стеклянный прилавок', color: 0xa87c52, topColor: 0xa87c52, emoji: '💎', price: 500, shelfKind:'glass_case', desc:'Деревянный прилавок со стеклом для духов, сумок, часов, украшений, кошельков и очков' },
 ];
 
@@ -5588,6 +5599,9 @@ function shelfKindLabel(kind) {
   if (kind === 'shoe_cubby') return 'стеллаж для обуви';
   if (kind === 'hanging_rack') return 'вешалка / шкаф-вешалка';
   if (kind === 'tech_island') return 'техно-витрина';
+  if (kind === 'tv_low_stand') return 'низкая ТВ-витрина';
+  if (kind === 'appliance_pedestal') return 'низкая стойка для техники';
+  if (kind === 'tech_backstand') return 'техно-стойка со стенкой';
   if (kind === 'glass_case') return 'стеклянный прилавок';
   return 'подходящий прилавок';
 }
@@ -6354,6 +6368,35 @@ function addShelfMesh(i, x, z, bodyColor, topColor, variantId = 'shelf_brown') {
     stand = addPart(group, 0.14, 0.82, 0.50, bodyColor, -1.28, 0.46, 0);
     addPart(group, 0.14, 0.82, 0.50, bodyColor, 1.28, 0.46, 0);
     topShelf = addPart(group, 0.72, 0.05, 0.20, bodyColor, 0, 0.83, 0);
+  } else if (kind === 'tv_low_stand') {
+    group = new THREE.Group();
+    group.position.set(x, 0, z);
+    scene.add(group);
+    base = addPart(group, 1.75, 0.10, 1.75, bodyColor, 0, 0.05, 0);
+    stand = addPart(group, 1.55, 0.34, 1.55, topColor, 0, 0.22, 0);
+    topShelf = addPart(group, 1.65, 0.08, 1.65, 0xe8edf2, 0, 0.45, 0);
+    addPart(group, 1.30, 0.06, 0.10, bodyColor, 0, 0.44, -0.70);
+    addPart(group, 1.30, 0.06, 0.10, bodyColor, 0, 0.44, 0.70);
+    addPart(group, 0.10, 0.06, 1.30, bodyColor, -0.70, 0.44, 0);
+    addPart(group, 0.10, 0.06, 1.30, bodyColor, 0.70, 0.44, 0);
+  } else if (kind === 'appliance_pedestal') {
+    group = new THREE.Group();
+    group.position.set(x, 0, z);
+    scene.add(group);
+    base = addPart(group, 1.45, 0.08, 1.45, bodyColor, 0, 0.04, 0);
+    stand = addPart(group, 1.20, 0.18, 1.20, topColor, 0, 0.17, 0);
+    topShelf = addPart(group, 1.28, 0.06, 1.28, 0xe7e7eb, 0, 0.30, 0);
+  } else if (kind === 'tech_backstand') {
+    group = new THREE.Group();
+    group.position.set(x, 0, z);
+    scene.add(group);
+    base = addPart(group, 2.10, 0.10, 1.05, bodyColor, 0, 0.05, 0);
+    stand = addPart(group, 1.95, 0.78, 0.88, topColor, 0, 0.45, 0.06);
+    topShelf = addPart(group, 2.02, 0.08, 0.95, 0xe8e8ee, 0, 0.87, 0.06);
+    addPart(group, 2.02, 1.20, 0.10, bodyColor, 0, 1.42, -0.44);
+    addPart(group, 0.10, 1.05, 0.88, bodyColor, -0.96, 1.33, 0.02);
+    addPart(group, 0.10, 1.05, 0.88, bodyColor, 0.96, 1.33, 0.02);
+    addPart(group, 1.56, 0.08, 0.08, bodyColor, 0, 1.74, -0.44);
   } else if (kind === 'glass_case') {
     group = new THREE.Group();
     group.position.set(x, 0, z);
