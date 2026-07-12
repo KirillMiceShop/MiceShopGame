@@ -857,7 +857,7 @@ const G = {
 // Кассы тоже имеют итоговый масштаб 1,5 от изначального размера.
 // Размер самого помещения, дверей и окон не меняется.
 const INTERIOR_OBJECT_SIZE_MULT = 1.5;
-const CASH_REGISTER_SIZE_MULT = 1.5;
+const CASH_REGISTER_SIZE_MULT = 1.0;
 
 const SHOP_TYPES = {
   clothing: {
@@ -4624,7 +4624,7 @@ function requestVisualCheckout(product = null) {
   requestCashService(cr);
 
   let customer = customers.find(c =>
-    c && !['leaving','checkout','checkout_wait','entering_checkout'].includes(c.state)
+    c && !['leaving_to_door','leaving_outside','checkout','checkout_wait','entering_checkout'].includes(c.state)
   );
 
   if (!customer && customers.length < getCustomerCapacityFromRating()) {
@@ -4683,13 +4683,16 @@ function updateSellerMovement(seller) {
 
     if (!moved || realMove < seller.speed * 0.2) {
       seller.stuck = (seller.stuck || 0) + 1;
-      if (seller.stuck > 35) {
+      if (seller.stuck === 30) {
+        clearGroupNavigation(seller.group);
+      }
+      if (seller.stuck > 120) {
         const rescue = findNearestFreeWalkPoint(seller.group.position.x, seller.group.position.z, 0.18 * CHARACTER_SIZE_MULT, seller.target, 5.0);
         if (rescue) {
           seller.group.position.x = rescue.x;
           seller.group.position.z = rescue.z;
         }
-        seller.group.userData.navPath = [];
+        clearGroupNavigation(seller.group);
         seller.target = chooseSellerFloorTarget();
         seller.stuck = 0;
       }
@@ -5007,26 +5010,98 @@ function snapNavCoord(v, step) {
   return Math.round(v / step) * step;
 }
 
+function navHeapPush(heap, node) {
+  heap.push(node);
+  let i = heap.length - 1;
+  while (i > 0) {
+    const parent = (i - 1) >> 1;
+    if (heap[parent].f <= node.f) break;
+    heap[i] = heap[parent];
+    i = parent;
+  }
+  heap[i] = node;
+}
+
+function navHeapPop(heap) {
+  if (!heap.length) return null;
+  const root = heap[0];
+  const last = heap.pop();
+  if (!heap.length) return root;
+
+  let i = 0;
+  while (true) {
+    const left = i * 2 + 1;
+    const right = left + 1;
+    if (left >= heap.length) break;
+    let child = left;
+    if (right < heap.length && heap[right].f < heap[left].f) child = right;
+    if (heap[child].f >= last.f) break;
+    heap[i] = heap[child];
+    i = child;
+  }
+  heap[i] = last;
+  return root;
+}
+
+function simplifyWalkPath(startX, startZ, path, padding) {
+  if (!path || path.length < 3) return path || [];
+  const result = [];
+  let fromX = startX;
+  let fromZ = startZ;
+  let i = 0;
+
+  while (i < path.length) {
+    let best = i;
+    const maxLookAhead = Math.min(path.length - 1, i + 10);
+    for (let j = maxLookAhead; j > i; j--) {
+      if (hasClearWalkLine(fromX, fromZ, path[j].x, path[j].z, padding)) {
+        best = j;
+        break;
+      }
+    }
+    result.push(path[best]);
+    fromX = path[best].x;
+    fromZ = path[best].z;
+    i = best + 1;
+  }
+
+  return result;
+}
+
 function findWalkPath(startX, startZ, targetX, targetZ, padding = 0.16) {
   const step = 0.55;
-  const min = -SHOP_HALF + 0.85;
-  const max =  SHOP_HALF - 0.85;
+  const edge = 0.58 + padding;
+  const min = -SHOP_HALF + edge;
+  const max =  SHOP_HALF - edge;
 
   const goalFree = findNearestFreeWalkPoint(targetX, targetZ, padding, null, 3.5);
   if (!goalFree) return null;
 
-  const sx = snapNavCoord(Math.max(min, Math.min(max, startX)), step);
-  const sz = snapNavCoord(Math.max(min, Math.min(max, startZ)), step);
-  const gx = snapNavCoord(Math.max(min, Math.min(max, goalFree.x)), step);
-  const gz = snapNavCoord(Math.max(min, Math.min(max, goalFree.z)), step);
+  const startFree = isCustomerPointFree(startX, startZ, padding)
+    ? new THREE.Vector3(startX, 0.6, startZ)
+    : findNearestFreeWalkPoint(startX, startZ, padding, goalFree, 3.0);
+  if (!startFree) return null;
+
+  let sx = snapNavCoord(Math.max(min, Math.min(max, startFree.x)), step);
+  let sz = snapNavCoord(Math.max(min, Math.min(max, startFree.z)), step);
+  if (!isCustomerPointFree(sx, sz, padding)) {
+    sx = startFree.x;
+    sz = startFree.z;
+  }
+
+  let gx = snapNavCoord(Math.max(min, Math.min(max, goalFree.x)), step);
+  let gz = snapNavCoord(Math.max(min, Math.min(max, goalFree.z)), step);
+  if (!isCustomerPointFree(gx, gz, padding)) {
+    gx = goalFree.x;
+    gz = goalFree.z;
+  }
 
   const key = (x, z) => `${Math.round(x * 100)}:${Math.round(z * 100)}`;
-  const startKey = key(sx, sz);
   const goalKey = key(gx, gz);
-
-  const open = [{ x: sx, z: sz, g: 0, f: Math.hypot(gx - sx, gz - sz), parent: null }];
-  const best = new Map();
-  best.set(startKey, open[0]);
+  const startNode = { x: sx, z: sz, g: 0, f: Math.hypot(gx - sx, gz - sz), parent: null };
+  const open = [];
+  navHeapPush(open, startNode);
+  const bestG = new Map([[key(sx, sz), 0]]);
 
   const dirs = [
     [ step, 0], [-step, 0], [0, step], [0, -step],
@@ -5034,12 +5109,14 @@ function findWalkPath(startX, startZ, targetX, targetZ, padding = 0.16) {
   ];
 
   let loops = 0;
-  while (open.length && loops < 900) {
+  while (open.length && loops < 1400) {
     loops++;
-    open.sort((a, b) => a.f - b.f);
-    const cur = open.shift();
+    const cur = navHeapPop(open);
+    if (!cur) break;
+    const curKey = key(cur.x, cur.z);
+    if (cur.g > (bestG.get(curKey) ?? Infinity) + 0.0001) continue;
 
-    if (key(cur.x, cur.z) === goalKey || Math.hypot(cur.x - gx, cur.z - gz) < step * 0.75) {
+    if (curKey === goalKey || Math.hypot(cur.x - gx, cur.z - gz) < step * 0.75) {
       const path = [];
       let n = cur;
       while (n && n.parent) {
@@ -5048,7 +5125,7 @@ function findWalkPath(startX, startZ, targetX, targetZ, padding = 0.16) {
       }
       path.reverse();
       path.push(new THREE.Vector3(goalFree.x, 0.6, goalFree.z));
-      return path;
+      return simplifyWalkPath(startX, startZ, path, padding);
     }
 
     for (const [dx, dz] of dirs) {
@@ -5057,7 +5134,7 @@ function findWalkPath(startX, startZ, targetX, targetZ, padding = 0.16) {
       if (nx < min || nx > max || nz < min || nz > max) continue;
       if (!isCustomerPointFree(nx, nz, padding)) continue;
 
-      // Для диагонального шага проверяем, что персонаж не режет угол витрины/кассы.
+      // Диагональ разрешена только если персонаж не срезает угол препятствия.
       if (dx !== 0 && dz !== 0) {
         if (!isCustomerPointFree(cur.x + dx, cur.z, padding)) continue;
         if (!isCustomerPointFree(cur.x, cur.z + dz, padding)) continue;
@@ -5065,22 +5142,28 @@ function findWalkPath(startX, startZ, targetX, targetZ, padding = 0.16) {
 
       const nk = key(nx, nz);
       const ng = cur.g + Math.hypot(dx, dz);
-      const old = best.get(nk);
-      if (old && old.g <= ng) continue;
-
-      const node = {
+      if (ng >= (bestG.get(nk) ?? Infinity)) continue;
+      bestG.set(nk, ng);
+      navHeapPush(open, {
         x: nx,
         z: nz,
         g: ng,
         f: ng + Math.hypot(gx - nx, gz - nz),
         parent: cur
-      };
-      best.set(nk, node);
-      open.push(node);
+      });
     }
   }
 
   return null;
+}
+
+function clearGroupNavigation(group) {
+  if (!group) return;
+  if (!group.userData) group.userData = {};
+  group.userData.navPath = [];
+  group.userData.navTargetKey = '';
+  group.userData.navRepathAt = 0;
+  group.userData.navFail = 0;
 }
 
 function followWalkPath(group, finalTarget, speed, padding = 0.16) {
@@ -5088,11 +5171,10 @@ function followWalkPath(group, finalTarget, speed, padding = 0.16) {
   const nav = group.userData.navPath || [];
   if (!nav.length) return false;
 
-  const next = nav[0];
-  if (Math.hypot(next.x - group.position.x, next.z - group.position.z) < 0.14) {
+  while (nav.length && Math.hypot(nav[0].x - group.position.x, nav[0].z - group.position.z) < 0.18) {
     nav.shift();
-    if (!nav.length) return true;
   }
+  if (!nav.length) return true;
 
   const wp = nav[0] || finalTarget;
   const dx = wp.x - group.position.x;
@@ -5100,95 +5182,103 @@ function followWalkPath(group, finalTarget, speed, padding = 0.16) {
   const dist = Math.hypot(dx, dz);
   if (dist <= 0.0001) return true;
 
-  const step = Math.min(speed * 1.25, dist);
+  const step = Math.min(speed * 1.18, dist);
   const nx = group.position.x + (dx / dist) * step;
   const nz = group.position.z + (dz / dist) * step;
 
-  if (isCustomerPointFree(nx, nz, padding) || hasClearWalkLine(group.position.x, group.position.z, nx, nz, padding)) {
+  if (isCustomerPointFree(nx, nz, padding)) {
     group.position.x = nx;
     group.position.z = nz;
     group.rotation.y = Math.atan2(dx, dz);
     group.userData.navPath = nav;
+    group.userData.navFail = 0;
     return true;
   }
 
   group.userData.navPath = [];
+  group.userData.navRepathAt = 0;
   return false;
 }
 
 function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACTER_SIZE_MULT) {
   const curX = group.position.x;
   const curZ = group.position.z;
-
   if (!group.userData) group.userData = {};
+
   const targetKey = `${Math.round(target.x * 10)}:${Math.round(target.z * 10)}`;
   if (group.userData.navTargetKey !== targetKey) {
     group.userData.navTargetKey = targetKey;
     group.userData.navPath = [];
+    group.userData.navRepathAt = 0;
     group.userData.navFail = 0;
   }
 
-  // Если прямой проход до цели закрыт витриной/кассой/стеной — идём по сетке.
-  // Это убирает зависание в углах между кассой и витриной.
-  if (!hasClearWalkLine(curX, curZ, target.x, target.z, padding)) {
-    if (!group.userData.navPath || group.userData.navPath.length === 0) {
-      group.userData.navPath = findWalkPath(curX, curZ, target.x, target.z, padding) || [];
-    }
-    if (followWalkPath(group, target, speed, padding)) return true;
-  } else {
-    group.userData.navPath = [];
-  }
-
-  // Если персонаж оказался внутри витрины/кассы после разворота объекта,
-  // сначала выводим его в ближайшую свободную точку. Иначе он может стоять внутри
-  // коллизии и не иметь ни одного разрешённого маленького шага.
+  // Если объект передвинули на персонажа, сначала мягко выводим его наружу.
   if (!isCustomerPointFree(curX, curZ, padding)) {
     const free = findNearestFreeWalkPoint(curX, curZ, padding, target, 4.5);
     if (free) {
       const ex = free.x - curX;
       const ez = free.z - curZ;
-      const ed = Math.sqrt(ex * ex + ez * ez);
-      if (ed <= speed * 1.5) {
-        group.position.x = free.x;
-        group.position.z = free.z;
-      } else {
-        group.position.x += (ex / ed) * speed * 1.5;
-        group.position.z += (ez / ed) * speed * 1.5;
+      const ed = Math.hypot(ex, ez);
+      if (ed > 0.0001) {
+        const step = Math.min(speed * 1.5, ed);
+        group.position.x += (ex / ed) * step;
+        group.position.z += (ez / ed) * step;
+        group.rotation.y = Math.atan2(ex, ez);
+        return true;
       }
-      return true;
     }
+  }
+
+  // Уже рассчитанный путь используем до конца и не пересчитываем каждый кадр.
+  if (group.userData.navPath && group.userData.navPath.length) {
+    if (followWalkPath(group, target, speed, padding)) return true;
   }
 
   const dx = target.x - curX;
   const dz = target.z - curZ;
-  const dist = Math.sqrt(dx * dx + dz * dz);
-
+  const dist = Math.hypot(dx, dz);
   if (dist <= 0.0001) return false;
 
+  // Сначала пробуем обычный маленький шаг прямо к цели.
+  const directStep = Math.min(speed, dist);
+  const directX = curX + (dx / dist) * directStep;
+  const directZ = curZ + (dz / dist) * directStep;
+  if (isCustomerPointFree(directX, directZ, padding)) {
+    group.position.x = directX;
+    group.position.z = directZ;
+    group.rotation.y = Math.atan2(dx, dz);
+    group.userData.navFail = 0;
+    return true;
+  }
+
+  // Путь строится только после реального столкновения и не чаще нескольких раз в секунду.
+  const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  if (now >= (group.userData.navRepathAt || 0)) {
+    const path = findWalkPath(curX, curZ, target.x, target.z, padding);
+    group.userData.navRepathAt = now + (path && path.length ? 450 : 900);
+    group.userData.navPath = path || [];
+    if (group.userData.navPath.length && followWalkPath(group, target, speed, padding)) return true;
+  }
+
+  // Короткое локальное огибание помогает двигаться плавно, пока путь пересчитывается.
   const baseAngle = Math.atan2(dx, dz);
   const angleOptions = [
-    0,
-    Math.PI / 10, -Math.PI / 10,
-    Math.PI / 5,  -Math.PI / 5,
-    Math.PI / 3,  -Math.PI / 3,
-    Math.PI / 2,  -Math.PI / 2,
-    Math.PI * 0.72, -Math.PI * 0.72,
-    Math.PI
+    Math.PI / 8, -Math.PI / 8,
+    Math.PI / 4, -Math.PI / 4,
+    Math.PI / 2, -Math.PI / 2,
+    Math.PI * 0.75, -Math.PI * 0.75
   ];
 
   let best = null;
   let bestScore = Infinity;
-
   for (const offset of angleOptions) {
     const a = baseAngle + offset;
-    const step = speed * (Math.abs(offset) < 0.001 ? 1.0 : 1.35);
+    const step = speed * 0.95;
     const px = curX + Math.sin(a) * step;
     const pz = curZ + Math.cos(a) * step;
     if (!isCustomerPointFree(px, pz, padding)) continue;
-
-    const dToTarget = Math.hypot(target.x - px, target.z - pz);
-    const turnPenalty = Math.abs(offset) * 0.08;
-    const score = dToTarget + turnPenalty;
+    const score = Math.hypot(target.x - px, target.z - pz) + Math.abs(offset) * 0.06;
     if (score < bestScore) {
       bestScore = score;
       best = { x: px, z: pz, angle: a };
@@ -5198,50 +5288,44 @@ function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACT
   if (best) {
     group.position.x = best.x;
     group.position.z = best.z;
+    group.rotation.y = best.angle;
+    group.userData.navFail = 0;
     return true;
   }
 
-  // Последняя попытка: более широкий круговой поиск шага. Это помогает обходить
-  // углы повернутых витрин и касс, а не упираться в них.
-  for (let radius = speed * 1.5; radius <= speed * 5; radius += speed) {
-    for (let i = 0; i < 24; i++) {
-      const a = (i / 24) * Math.PI * 2;
-      const px = curX + Math.sin(a) * radius;
-      const pz = curZ + Math.cos(a) * radius;
-      if (!isCustomerPointFree(px, pz, padding)) continue;
-      group.position.x = px;
-      group.position.z = pz;
-      return true;
+  group.userData.navFail = (group.userData.navFail || 0) + 1;
+
+  // Только после продолжительного реального застревания ищем ближайшую свободную точку.
+  if (group.userData.navFail > 55) {
+    const rescue = findNearestFreeWalkPoint(curX, curZ, padding, target, 3.5);
+    if (rescue) {
+      const rx = rescue.x - curX;
+      const rz = rescue.z - curZ;
+      const rd = Math.hypot(rx, rz);
+      if (rd > 0.0001) {
+        const step = Math.min(speed * 1.35, rd);
+        group.position.x += (rx / rd) * step;
+        group.position.z += (rz / rd) * step;
+        group.rotation.y = Math.atan2(rx, rz);
+        group.userData.navFail = 0;
+        group.userData.navRepathAt = 0;
+        return true;
+      }
     }
-  }
-
-  const path = findWalkPath(group.position.x, group.position.z, target.x, target.z, padding);
-  if (path && path.length) {
-    group.userData.navPath = path;
-    if (followWalkPath(group, target, speed, padding)) return true;
-  }
-
-  // Крайний анти-застреватель: если персонаж упёрся в угол, мягко переносим его
-  // в ближайшую свободную точку. Это лучше, чем вечное зависание на одном месте.
-  const rescue = findNearestFreeWalkPoint(group.position.x, group.position.z, padding, target, 3.5);
-  if (rescue) {
-    group.position.x = rescue.x;
-    group.position.z = rescue.z;
-    group.userData.navPath = [];
-    return true;
   }
 
   return false;
 }
 
-
 function moveGroupDirect(group, target, speed) {
   const dx = target.x - group.position.x;
   const dz = target.z - group.position.z;
-  const dist = Math.sqrt(dx * dx + dz * dz);
+  const dist = Math.hypot(dx, dz);
   if (dist <= 0.0001) return false;
-  group.position.x += (dx / dist) * speed;
-  group.position.z += (dz / dist) * speed;
+  const step = Math.min(speed, dist);
+  group.position.x += (dx / dist) * step;
+  group.position.z += (dz / dist) * step;
+  group.rotation.y = Math.atan2(dx, dz);
   return true;
 }
 
@@ -5414,9 +5498,18 @@ class Customer {
   }
 
   goToExit() {
-    const exitDoor = this.entryDoor || getRandomDoor();
-    this.targetPos = getDoorExitPoint(exitDoor);
-    this.state = 'leaving';
+    this.exitDoor = this.entryDoor || getRandomDoor();
+    if (!this.exitDoor) {
+      scene.remove(this.group);
+      this.state = 'removed';
+      return;
+    }
+
+    // Сначала покупатель идёт к двери внутри магазина с обычным обходом препятствий.
+    // Только после достижения дверного проёма он пересекает порог напрямую.
+    this.targetPos = getDoorInsidePoint(this.exitDoor);
+    this.state = 'leaving_to_door';
+    clearGroupNavigation(this.group);
   }
 
   goToCheckout(cr = null, product = null) {
@@ -5441,14 +5534,23 @@ class Customer {
     if (dist > 0.15) {
       const oldX = this.group.position.x;
       const oldZ = this.group.position.z;
-      const moved = (this.state === 'entering' || this.state === 'entering_checkout' || this.state === 'leaving')
+      const isOutsideWalkArea = !isInsideShopWalkArea(this.group.position.x, this.group.position.z);
+      const crossesDoorDirectly = this.state === 'leaving_outside' ||
+        ((this.state === 'entering' || this.state === 'entering_checkout') && isOutsideWalkArea);
+      const moved = crossesDoorDirectly
         ? moveGroupDirect(this.group, this.targetPos, this.speed)
         : moveGroupAvoidingShelves(this.group, this.targetPos, this.speed);
 
       const realMove = Math.sqrt((this.group.position.x - oldX) ** 2 + (this.group.position.z - oldZ) ** 2);
       this.stuckTimer = (!moved || realMove < this.speed * 0.25) ? this.stuckTimer + 1 : 0;
 
-      if (this.stuckTimer > 90) {
+      // Сначала просто сбрасываем устаревший маршрут. Цель меняем только если
+      // персонаж действительно долго не может сдвинуться, чтобы убрать подёргивания.
+      if (this.stuckTimer === 35) {
+        clearGroupNavigation(this.group);
+      }
+
+      if (this.stuckTimer > 120) {
         if (this.state === 'walking' && this.targetShelf !== null) {
           this.targetPos = getShelfApproachPoint(this.targetShelf, this.group.position);
         } else if (this.state === 'wandering' || this.state === 'wandering_pause' || this.state === 'browsing') {
@@ -5456,7 +5558,10 @@ class Customer {
         } else if (this.state === 'checkout' || this.state === 'checkout_wait') {
           const cash = cashRegisters.find(c => c.id === this.checkoutCashRegisterId) || getDutyCashRegister();
           if (cash) this.targetPos = getCashCustomerPoint(cash); else this.goToExit();
-        } else {
+        } else if (this.state === 'leaving_to_door' && this.exitDoor) {
+          this.targetPos = getDoorInsidePoint(this.exitDoor);
+          clearGroupNavigation(this.group);
+        } else if (this.state !== 'leaving_outside') {
           this.goToExit();
         }
         this.stuckTimer = 0;
@@ -5513,7 +5618,11 @@ class Customer {
         }
         this.goToExit();
       }
-    } else if (this.state === 'leaving') {
+    } else if (this.state === 'leaving_to_door') {
+      this.targetPos = getDoorOutsidePoint(this.exitDoor);
+      this.state = 'leaving_outside';
+      clearGroupNavigation(this.group);
+    } else if (this.state === 'leaving_outside' || this.state === 'removed') {
       scene.remove(this.group);
       return true;
     } else {
