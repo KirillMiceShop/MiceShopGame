@@ -805,6 +805,144 @@
     #event-log { top:164px; }
   }
 
+
+  /* КОМПАКТНЫЕ МЕНЮ МАГАЗИНА И СКЛАДА В ГОРИЗОНТАЛЬНОМ РЕЖИМЕ
+     На телефоне окно становится шире, а кнопки, отступы и карточки — немного меньше.
+     Это позволяет видеть больше содержимого без вертикальной прокрутки всего меню. */
+  @media (orientation: landscape) and (max-height: 600px) {
+    #shopModal,
+    #warehouseModal {
+      padding:6px 10px;
+    }
+
+    #shopModal .modal-box,
+    #warehouseModal .modal-box {
+      width:min(660px, calc(100vw - 20px));
+      max-width:none;
+      max-height:calc(100vh - 12px);
+      padding:11px 12px 13px;
+      border-radius:16px;
+    }
+
+    #shopModal .modal-box h3,
+    #warehouseModal .modal-box h3 {
+      font-size:14px;
+      margin-bottom:7px;
+    }
+
+    #shopModal #cat-tabs {
+      gap:5px;
+      padding-bottom:3px;
+      margin-bottom:2px;
+    }
+
+    #shopModal .cat-tab {
+      padding:5px 10px;
+      border-radius:15px;
+      font-size:10px;
+      border-width:1px;
+    }
+
+    #shopModal #subcat-tabs {
+      gap:5px;
+      padding:1px 0 5px;
+      margin-bottom:2px;
+    }
+
+    #shopModal .subcat-tab {
+      padding:5px 9px;
+      border-radius:14px;
+      font-size:9px;
+    }
+
+    #shopModal #products-list,
+    #warehouseModal #warehouse-list {
+      gap:7px!important;
+      padding:1px 1px 7px;
+    }
+
+    #shopModal #products-list > *,
+    #warehouseModal #warehouse-list > * {
+      flex-basis:230px!important;
+    }
+
+    #shopModal #products-list > .prod-row,
+    #warehouseModal #warehouse-list > .prod-row {
+      min-height:68px;
+      padding:8px 9px!important;
+      gap:9px;
+      border-radius:12px!important;
+    }
+
+    #shopModal .prod-row .pr-emoji,
+    #warehouseModal .prod-row .pr-emoji {
+      font-size:24px;
+    }
+
+    #shopModal .prod-row .pr-name,
+    #warehouseModal .prod-row .pr-name {
+      font-size:11px;
+    }
+
+    #shopModal .prod-row .pr-sub,
+    #warehouseModal .prod-row .pr-sub {
+      font-size:9px;
+    }
+
+    #shopModal .prod-row .pr-price,
+    #warehouseModal .prod-row .pr-price {
+      font-size:11px;
+    }
+
+    #shopModal .prod-row .pr-profit,
+    #warehouseModal .prod-row .pr-profit {
+      font-size:9px;
+    }
+
+    #warehouseModal .warehouse-heading-row {
+      gap:8px;
+      margin-bottom:7px;
+    }
+
+    #warehouseModal .warehouse-auto-stock-btn {
+      max-width:165px;
+      padding:5px 8px;
+      border-radius:10px;
+      font-size:9px;
+    }
+
+    #warehouseModal #warehouse-tabs {
+      gap:6px!important;
+      margin-bottom:7px!important;
+    }
+
+    #warehouseModal #warehouse-tabs .btn-back,
+    #warehouseModal #warehouse-product-tabs .btn-back {
+      padding:6px 8px!important;
+      border-radius:10px;
+      font-size:10px!important;
+    }
+
+    #warehouseModal #warehouse-product-tabs {
+      gap:6px;
+      margin:0 0 7px;
+    }
+
+    #warehouseModal .btn-buy {
+      padding:6px 8px!important;
+      border-radius:9px;
+      font-size:10px!important;
+      margin-bottom:0;
+    }
+
+    #shopModal .modal-close,
+    #warehouseModal .modal-close {
+      margin-top:6px;
+      padding:5px;
+      font-size:11px;
+    }
+  }
+
 </style>
 </head>
 <body>
@@ -1297,7 +1435,7 @@ const TUTORIAL_STEPS = [
   { id:'shop', title:'Откройте магазин', text:'Нажмите кнопку «Магазин». Там находятся товары и оборудование.', event:'shop_opened', target:() => document.getElementById('shop-main-btn') },
   { id:'product', title:'Выберите первый товар', text:'На 1 уровне доступен один стартовый товар. Нажмите на его карточку.', event:'product_viewed', target:() => document.querySelector('#products-list .prod-row:not(.cant)') },
   { id:'order', title:'Закажите товар', text:'Оставьте количество 1 и нажмите кнопку покупки. Товар отправится на склад.', event:'product_ordered', target:() => document.querySelector('#itemModalBox .btn-buy') },
-  { id:'delivery', title:'Ускорьте доставку', text:'Откройте склад, перейдите во вкладку «В пути» и нажмите кнопку ⚡ 1💎 на карточке товара.', event:'delivery_arrived', target:() => {
+  { id:'delivery', title:'Дождитесь доставки', text:'Откройте склад и следите за таймером во вкладке «В пути». При желании доставку можно ускорить за 1💎 — это необязательно.', event:'delivery_arrived', target:() => {
       const warehouseOpen = document.getElementById('warehouseModal')?.classList.contains('show');
       if (!warehouseOpen) return document.getElementById('warehouse-main-btn');
 
@@ -1310,8 +1448,8 @@ const TUTORIAL_STEPS = [
         return document.querySelector('#warehouse-product-tabs [data-product-tab="transit"]');
       }
 
-      // Подсвечиваем всю карточку товара в пути. Кнопка ускорения находится внутри неё,
-      // поэтому во время блокирующего обучения игрок может нажать именно на кристалл.
+      // Подсвечиваем карточку доставки с таймером. Игрок может просто дождаться
+      // окончания таймера либо по желанию нажать ускорение за кристалл.
       return document.querySelector('#warehouse-list .prod-row[data-delivery-id]')
         || document.querySelector('#warehouse-product-tabs [data-product-tab="transit"]');
     } },
@@ -1344,7 +1482,11 @@ const TUTORIAL_STEPS = [
       const cash = cashRegisters[0];
       return makeTutorialObjectTarget(cash && (cash.hitZone || cash.group), 14);
     } },
-  { id:'editor', title:'Откройте редактор', text:'Нажмите «Редактор». В этом режиме можно перемещать, вращать и убирать объекты.', event:'editor_opened', target:() => document.getElementById('editor-toggle-btn') },
+  { id:'cleanup', title:'Уберите мусор с витрины', text:'После продажи витрина осталась пустой. Нажмите на неё, чтобы продавец убрал мусор.', event:'shelf_cleaned', target:() => {
+      if (cleanupTask && cleanupTask.slotIdx === 0) return null;
+      const shelf = shelfMeshes[0];
+      return makeTutorialObjectTarget(shelf && (shelf.group || shelf.stand || shelf.base), 16);
+    } },
   { id:'complete', title:'Обучение завершено!', text:'Теперь выполняйте квесты, повышайте уровень и развивайте магазин.', manual:true, button:'Готово' },
 ];
 
@@ -1545,12 +1687,18 @@ function renderTutorialStep() {
   const visibleStep = Math.max(0, Math.min(actionCount, tutorialStepIndex));
   label.textContent = step.id === 'welcome' ? 'Короткое обучение' : step.id === 'complete' ? 'Готово' : 'Шаг ' + visibleStep + ' из ' + actionCount;
   title.textContent = step.title;
-  if (step.id === 'stock' && placingMode) {
+  if (step.id === 'delivery' && document.getElementById('warehouseModal')?.classList.contains('show') && warehouseTab === 'products' && warehouseProductTab === 'transit') {
+    body.textContent = 'Дождитесь окончания таймера. При желании можно нажать ⚡ 1💎 и ускорить доставку — это необязательно.';
+  } else if (step.id === 'delivery' && document.getElementById('warehouseModal')?.classList.contains('show')) {
+    body.textContent = 'Перейдите во вкладку «В пути», чтобы увидеть таймер доставки.';
+  } else if (step.id === 'stock' && placingMode) {
     body.textContent = 'Теперь нажмите прямо на стартовую витрину внутри магазина.';
   } else if (step.id === 'stock' && document.getElementById('warehouseModal')?.classList.contains('show') && warehouseProductTab === 'stock') {
     body.textContent = 'Нажмите «Поставить» на карточке доставленного товара.';
   } else if (step.id === 'stock' && document.getElementById('warehouseModal')?.classList.contains('show')) {
     body.textContent = 'Товар уже доставлен. Перейдите во вкладку «На складе».';
+  } else if (step.id === 'cleanup' && cleanupTask && cleanupTask.slotIdx === 0) {
+    body.textContent = 'Продавец уже убирает мусор. Подождите немного.';
   } else {
     body.textContent = step.text;
   }
@@ -5299,7 +5447,7 @@ function getCashServicePoint(cr) {
 }
 
 
-function getCashCustomerPoint(cr) {
+function getCashCustomerPoint(cr, ignoreGroup = null, queueIndex = 0) {
   if (!cr) return randomCustomerPoint();
   const rot = normalizeRotation(cr.rotation || 0);
   const service = getCashServicePoint(cr);
@@ -5315,16 +5463,33 @@ function getCashCustomerPoint(cr) {
     new THREE.Vector3(cr.x - dist, 0.6, cr.z),
   ].filter(p => isCustomerPointFree(p.x, p.z, 0.12));
 
+  let base = null;
   if (candidates.length) {
+    // Покупатель должен стоять на противоположной стороне от кассира.
     candidates.sort((a, b) => {
       const da = (a.x - service.x) ** 2 + (a.z - service.z) ** 2;
       const db = (b.x - service.x) ** 2 + (b.z - service.z) ** 2;
       return db - da;
     });
-    return candidates[0];
+    base = candidates.find(p => isCharacterPointFree(ignoreGroup, p.x, p.z, 0.42 * CHARACTER_SIZE_MULT)) || candidates[0];
   }
 
-  return findNearestFreeWalkPoint(cr.x, cr.z, 0.14, service, 4.0) || randomCustomerPoint();
+  if (!base) base = findNearestFreeWalkPoint(cr.x, cr.z, 0.14, service, 4.0) || randomCustomerPoint();
+
+  // Очередь у кассы: следующий покупатель стоит дальше по той же линии,
+  // а не пытается занять одну точку вместе с первым покупателем.
+  if (queueIndex > 0) {
+    const dx = base.x - cr.x;
+    const dz = base.z - cr.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const spacing = 0.72 * CHARACTER_SIZE_MULT;
+    const qx = base.x + (dx / len) * spacing * queueIndex;
+    const qz = base.z + (dz / len) * spacing * queueIndex;
+    const queued = findNearestFreeWalkPoint(qx, qz, 0.14 * CHARACTER_SIZE_MULT, base, 2.5);
+    if (queued) return queued;
+  }
+
+  return base;
 }
 
 function requestVisualCheckout(product = null) {
@@ -5361,22 +5526,23 @@ function isSellerNearCashRegister(cr) {
   if (!cr || sellers.length === 0) return false;
   const service = getCashServicePoint(cr);
   return sellers.some(seller => {
+    if ((seller.staffType || 'seller') !== 'cashier') return false;
     const dx = seller.group.position.x - service.x;
     const dz = seller.group.position.z - service.z;
-    return Math.sqrt(dx * dx + dz * dz) < 0.9;
+    return Math.sqrt(dx * dx + dz * dz) < 0.9 * CHARACTER_SIZE_MULT;
   });
 }
 
-function chooseSellerFloorTarget() {
+function chooseSellerFloorTarget(ignoreGroup = null) {
   for (let tries = 0; tries < 40; tries++) {
     let p;
     if (Math.random() < 0.55 && SHELF_POSITIONS.length) {
       const idx = Math.floor(Math.random() * SHELF_POSITIONS.length);
-      p = getShelfApproachPoint(idx);
+      p = getShelfApproachPoint(idx, null, ignoreGroup);
     } else {
       p = randomCustomerPoint();
     }
-    if (p && isCustomerPointFree(p.x, p.z, 0.12)) return p;
+    if (p && isCustomerPointFree(p.x, p.z, 0.12) && isCharacterPointFree(ignoreGroup, p.x, p.z)) return p;
   }
   return new THREE.Vector3(0, 0.6, 0);
 }
@@ -5396,34 +5562,42 @@ function updateSellerMovement(seller) {
 
     if (!moved || realMove < seller.speed * 0.2) {
       seller.stuck = (seller.stuck || 0) + 1;
-      if (seller.stuck === 30) {
+
+      // Сначала сбрасываем только старый путь. Саму рабочую цель кассира,
+      // уборщика или продавца не заменяем случайной точкой магазина.
+      if (seller.stuck === 28) clearGroupNavigation(seller.group);
+
+      if (seller.stuck > 105) {
         clearGroupNavigation(seller.group);
-      }
-      if (seller.stuck > 120) {
-        const rescue = findNearestFreeWalkPoint(seller.group.position.x, seller.group.position.z, 0.18 * CHARACTER_SIZE_MULT, seller.target, 5.0);
-        if (rescue) {
-          seller.group.position.x = rescue.x;
-          seller.group.position.z = rescue.z;
+        if (seller.role === 'floor') {
+          seller.target = chooseSellerFloorTarget(seller.group);
         }
-        clearGroupNavigation(seller.group);
-        seller.target = chooseSellerFloorTarget();
         seller.stuck = 0;
       }
     } else {
       seller.stuck = 0;
-      seller.group.rotation.y = Math.atan2(dx, dz);
     }
 
-    seller.legAngle += 0.14 * seller.legDir;
-    if (Math.abs(seller.legAngle) > 0.4) seller.legDir *= -1;
+    // Ноги двигаются только когда персонаж реально сдвинулся. Раньше кассир
+    // мог идти на месте перед препятствием, из-за чего движение выглядело дёрганым.
+    if (realMove > seller.speed * 0.18) {
+      seller.legAngle += 0.14 * seller.legDir;
+      if (Math.abs(seller.legAngle) > 0.4) seller.legDir *= -1;
+    } else {
+      seller.legAngle *= 0.72;
+    }
     if (seller.group.children[2]) seller.group.children[2].rotation.x = seller.legAngle;
     if (seller.group.children[3]) seller.group.children[3].rotation.x = -seller.legAngle;
   } else if (seller.role === 'floor') {
     seller.wait--;
     if (seller.wait <= 0) {
-      seller.target = chooseSellerFloorTarget();
+      seller.target = chooseSellerFloorTarget(seller.group);
       seller.wait = 100 + Math.floor(Math.random() * 120);
     }
+  } else {
+    seller.legAngle *= 0.72;
+    if (seller.group.children[2]) seller.group.children[2].rotation.x = seller.legAngle;
+    if (seller.group.children[3]) seller.group.children[3].rotation.x = -seller.legAngle;
   }
 }
 
@@ -5511,14 +5685,19 @@ function updateSellers() {
   if (cleanupTask) {
     const sp = SHELF_POSITIONS[cleanupTask.slotIdx];
     if (sp) {
-      const target = getShelfApproachPoint(cleanupTask.slotIdx);
-      const cleanerIndex = getNearestSellerIndexTo(target, busy, getStaffCount('cleaner') > 0 ? ['cleaner'] : ['seller']);
+      const preliminaryTarget = getShelfApproachPoint(cleanupTask.slotIdx);
+      const cleanerIndex = getNearestSellerIndexTo(preliminaryTarget, busy, getStaffCount('cleaner') > 0 ? ['cleaner'] : ['seller']);
       if (cleanerIndex >= 0) {
         busy.push(cleanerIndex);
         const worker = sellers[cleanerIndex];
-        worker.role = 'cleaning';
-        worker.roleKey = 'cleaning:' + cleanupTask.slotIdx;
-        worker.target = target;
+        const roleKey = 'cleaning:' + cleanupTask.slotIdx;
+        if (worker.roleKey !== roleKey || !worker.target) {
+          worker.role = 'cleaning';
+          worker.roleKey = roleKey;
+          worker.target = getShelfApproachPoint(cleanupTask.slotIdx, worker.group.position, worker.group);
+          clearGroupNavigation(worker.group);
+        }
+        const target = worker.target;
         updateSellerMovement(worker);
 
         const dx = worker.group.position.x - target.x;
@@ -5540,12 +5719,14 @@ function updateSellers() {
       busy.push(cashierIndex);
       const cashier = sellers[cashierIndex];
       const roleKey = 'cash-service:' + requestedCash.id;
-      if (cashier.roleKey !== roleKey) {
+      const targetChanged = !cashier.target || Math.hypot(cashier.target.x - servicePoint.x, cashier.target.z - servicePoint.z) > 0.18;
+      if (cashier.roleKey !== roleKey || targetChanged) {
         cashier.role = 'cash-service';
         cashier.roleKey = roleKey;
         cashier.wait = 80;
+        cashier.target = servicePoint;
+        clearGroupNavigation(cashier.group);
       }
-      cashier.target = servicePoint;
       updateSellerMovement(cashier);
     }
   }
@@ -5557,12 +5738,16 @@ function updateSellers() {
 
     const task = findShelfForStocking();
     if (!task) return;
-    const target = getShelfApproachPoint(task.slotIdx);
+    const roleKey = 'stocking:' + task.slotIdx + ':' + task.productId;
+    if (worker.roleKey !== roleKey || !worker.target) {
+      worker.role = 'stocking';
+      worker.roleKey = roleKey;
+      worker.target = getShelfApproachPoint(task.slotIdx, worker.group.position, worker.group);
+      worker.stockingTask = task;
+      clearGroupNavigation(worker.group);
+    }
+    const target = worker.target;
     busy.push(i);
-    worker.role = 'stocking';
-    worker.roleKey = 'stocking:' + task.slotIdx + ':' + task.productId;
-    worker.target = target;
-    worker.stockingTask = task;
     updateSellerMovement(worker);
 
     const dx = worker.group.position.x - target.x;
@@ -5570,7 +5755,7 @@ function updateSellers() {
     if (Math.sqrt(dx * dx + dz * dz) < 0.35) {
       finishAutoStock(task.slotIdx, task.productId);
       worker.stockingTask = null;
-      worker.target = chooseSellerFloorTarget();
+      worker.target = chooseSellerFloorTarget(worker.group);
       worker.role = 'floor';
       worker.roleKey = 'floor';
     }
@@ -5582,7 +5767,7 @@ function updateSellers() {
     if (worker.role !== 'floor' || !worker.target) {
       worker.role = 'floor';
       worker.roleKey = 'floor';
-      worker.target = chooseSellerFloorTarget();
+      worker.target = chooseSellerFloorTarget(worker.group);
       worker.wait = 80 + Math.floor(Math.random() * 80);
     }
     updateSellerMovement(worker);
@@ -5597,6 +5782,149 @@ G.pendingItems = [];
 //  ПОКУПАТЕЛИ (3D персонажи)
 // ══════════════════════════════════════
 const CUSTOMER_COLORS = [0xff6b6b, 0x4ecdc4, 0xffe66d, 0xa8e6cf, 0xff8b94, 0xc7ceea];
+
+
+// ── ЛОКАЛЬНОЕ ИЗБЕГАНИЕ ДРУГИХ ПЕРСОНАЖЕЙ ──
+// A* ниже отвечает за статические препятствия: витрины, кассы, стены и декор.
+// Людей нельзя добавлять в A* как постоянные стены — они всё время двигаются,
+// поэтому для них используется лёгкое локальное огибание на каждом шаге.
+let nextNavigationAgentId = 1;
+const CHARACTER_MIN_DISTANCE = 0.36 * CHARACTER_SIZE_MULT;
+
+function ensureNavigationAgentId(group) {
+  if (!group.userData) group.userData = {};
+  if (!group.userData.navigationAgentId) group.userData.navigationAgentId = nextNavigationAgentId++;
+  return group.userData.navigationAgentId;
+}
+
+function getCharacterAgents() {
+  const agents = [];
+  try {
+    sellers.forEach(s => { if (s && s.group) agents.push({ group:s.group, kind:'staff', ref:s }); });
+  } catch (e) {}
+  try {
+    customers.forEach(c => { if (c && c.group && c.state !== 'removed') agents.push({ group:c.group, kind:'customer', ref:c }); });
+  } catch (e) {}
+  return agents;
+}
+
+function isCharacterPointFree(ignoreGroup, x, z, minDistance = CHARACTER_MIN_DISTANCE) {
+  const minSq = minDistance * minDistance;
+  return getCharacterAgents().every(agent => {
+    if (!agent.group || agent.group === ignoreGroup) return true;
+    const dx = agent.group.position.x - x;
+    const dz = agent.group.position.z - z;
+    return dx * dx + dz * dz >= minSq;
+  });
+}
+
+function commitCharacterStep(group, desiredX, desiredZ, faceDx, faceDz, padding, finalTarget = null) {
+  const curX = group.position.x;
+  const curZ = group.position.z;
+  const dx = desiredX - curX;
+  const dz = desiredZ - curZ;
+  const step = Math.hypot(dx, dz);
+  if (step <= 0.00001) return false;
+
+  ensureNavigationAgentId(group);
+
+  // Сначала пробуем задуманный шаг. Он должен быть свободен и от мебели,
+  // и от другого персонажа.
+  if (isCustomerPointFree(desiredX, desiredZ, padding) && isCharacterPointFree(group, desiredX, desiredZ)) {
+    group.position.x = desiredX;
+    group.position.z = desiredZ;
+    group.rotation.y = Math.atan2(faceDx, faceDz);
+    return true;
+  }
+
+  // Если впереди человек, пробуем короткий боковой обход. Направление первого
+  // шага зависит от id персонажа, поэтому двое встречных не выбирают одну сторону.
+  const baseAngle = Math.atan2(dx, dz);
+  const side = (group.userData.navigationAgentId % 2 === 0) ? 1 : -1;
+  const offsets = [
+    side * Math.PI / 5,
+    -side * Math.PI / 5,
+    side * Math.PI / 2,
+    -side * Math.PI / 2,
+    Math.PI
+  ];
+
+  let best = null;
+  let bestScore = Infinity;
+  for (const offset of offsets) {
+    const angle = baseAngle + offset;
+    const px = curX + Math.sin(angle) * step;
+    const pz = curZ + Math.cos(angle) * step;
+    if (!isCustomerPointFree(px, pz, padding)) continue;
+    if (!isCharacterPointFree(group, px, pz)) continue;
+    const score = finalTarget
+      ? Math.hypot(finalTarget.x - px, finalTarget.z - pz) + Math.abs(offset) * 0.08
+      : Math.abs(offset);
+    if (score < bestScore) {
+      bestScore = score;
+      best = { x:px, z:pz, angle };
+    }
+  }
+
+  if (!best) return false;
+  group.position.x = best.x;
+  group.position.z = best.z;
+  group.rotation.y = best.angle;
+  return true;
+}
+
+function isCharacterAnchored(agent) {
+  if (!agent || !agent.ref) return false;
+  if (agent.kind === 'staff') {
+    return ['cash-service','cleaning','stocking'].includes(agent.ref.role);
+  }
+  return ['checkout_wait','browsing','wandering_pause'].includes(agent.ref.state);
+}
+
+function resolveCharacterOverlaps() {
+  const agents = getCharacterAgents();
+  const minimum = CHARACTER_MIN_DISTANCE * 0.92;
+
+  for (let i = 0; i < agents.length; i++) {
+    for (let j = i + 1; j < agents.length; j++) {
+      const a = agents[i];
+      const b = agents[j];
+      let dx = b.group.position.x - a.group.position.x;
+      let dz = b.group.position.z - a.group.position.z;
+      let dist = Math.hypot(dx, dz);
+      if (dist >= minimum) continue;
+
+      if (dist < 0.0001) {
+        const sign = ensureNavigationAgentId(a.group) % 2 === 0 ? 1 : -1;
+        dx = sign;
+        dz = 0;
+        dist = 1;
+      }
+
+      const overlap = Math.min(0.05, (minimum - dist) * 0.32);
+      const ux = dx / dist;
+      const uz = dz / dist;
+      const aAnchored = isCharacterAnchored(a);
+      const bAnchored = isCharacterAnchored(b);
+      const aShare = aAnchored && !bAnchored ? 0 : (bAnchored && !aAnchored ? 1 : 0.5);
+      const bShare = 1 - aShare;
+
+      const ax = a.group.position.x - ux * overlap * aShare;
+      const az = a.group.position.z - uz * overlap * aShare;
+      const bx = b.group.position.x + ux * overlap * bShare;
+      const bz = b.group.position.z + uz * overlap * bShare;
+
+      if (aShare > 0 && isCustomerPointFree(ax, az, 0.12 * CHARACTER_SIZE_MULT)) {
+        a.group.position.x = ax;
+        a.group.position.z = az;
+      }
+      if (bShare > 0 && isCustomerPointFree(bx, bz, 0.12 * CHARACTER_SIZE_MULT)) {
+        b.group.position.x = bx;
+        b.group.position.z = bz;
+      }
+    }
+  }
+}
 
 // Простая навигация покупателей:
 // витрины считаются препятствиями, но покупатель идёт не в центр витрины,
@@ -5642,7 +5970,7 @@ function rectHasCharacter(rect, padding = 0.08) {
   );
 }
 
-function getShelfApproachPoint(idx, fromPos = null) {
+function getShelfApproachPoint(idx, fromPos = null, ignoreGroup = null) {
   const sp = SHELF_POSITIONS[idx];
   if (!sp) return randomCustomerPoint();
 
@@ -5660,9 +5988,13 @@ function getShelfApproachPoint(idx, fromPos = null) {
     new THREE.Vector3(sx - gapX, 0.6, sz + gapZ),
     new THREE.Vector3(sx + gapX, 0.6, sz - gapZ),
     new THREE.Vector3(sx - gapX, 0.6, sz - gapZ),
-  ].filter(p => isCustomerPointFree(p.x, p.z, 0.12));
+  ].filter(p => isCustomerPointFree(p.x, p.z, 0.12) && isCharacterPointFree(ignoreGroup, p.x, p.z));
 
-  if (candidates.length === 0) return randomCustomerPoint();
+  if (candidates.length === 0) {
+    // Если все удобные места временно заняты людьми, берём ближайшую свободную
+    // точку рядом с витриной, а не отправляем работника случайно через весь магазин.
+    return findNearestFreeWalkPoint(sx, sz, 0.16 * CHARACTER_SIZE_MULT, fromPos, 3.0) || randomCustomerPoint();
+  }
 
   if (fromPos) {
     candidates.sort((a, b) => {
@@ -5675,8 +6007,9 @@ function getShelfApproachPoint(idx, fromPos = null) {
   return candidates[0];
 }
 
-function findNearestFreeWalkPoint(x, z, padding = 0.16 * CHARACTER_SIZE_MULT, preferredTarget = null, maxRadius = 4.0) {
-  if (isCustomerPointFree(x, z, padding)) return new THREE.Vector3(x, 0.6, z);
+function findNearestFreeWalkPoint(x, z, padding = 0.16 * CHARACTER_SIZE_MULT, preferredTarget = null, maxRadius = 4.0, snapshot = null) {
+  const pointFree = snapshot ? ((px, pz) => isStaticNavigationPointFree(px, pz, snapshot)) : ((px, pz) => isCustomerPointFree(px, pz, padding));
+  if (pointFree(x, z)) return new THREE.Vector3(x, 0.6, z);
 
   let best = null;
   let bestScore = Infinity;
@@ -5687,7 +6020,7 @@ function findNearestFreeWalkPoint(x, z, padding = 0.16 * CHARACTER_SIZE_MULT, pr
       const a = (i / steps) * Math.PI * 2;
       const px = x + Math.sin(a) * r;
       const pz = z + Math.cos(a) * r;
-      if (!isCustomerPointFree(px, pz, padding)) continue;
+      if (!pointFree(px, pz)) continue;
 
       let score = r;
       if (preferredTarget) {
@@ -5707,14 +6040,33 @@ function findNearestFreeWalkPoint(x, z, padding = 0.16 * CHARACTER_SIZE_MULT, pr
 }
 
 
-function hasClearWalkLine(x1, z1, x2, z2, padding = 0.16) {
+function buildStaticNavigationSnapshot(padding = 0.16) {
+  const rects = [];
+  for (let i = 0; i < SHELF_POSITIONS.length; i++) rects.push(getShelfRect(i, padding));
+  cashRegisters.forEach(cr => rects.push(getCashRect(cr, padding)));
+  internalWalls.forEach(w => rects.push(internalWallRect(w, padding * 2)));
+  decorations.forEach(d => {
+    const def = getDecorDef(d.type);
+    if (!def || def.rug || def.place !== 'floor') return;
+    rects.push(decorRect(def, d.x, d.z, padding, d.rotation || 0));
+  });
+  return { rects };
+}
+
+function isStaticNavigationPointFree(x, z, snapshot) {
+  if (!isInsideShopWalkArea(x, z)) return false;
+  return !snapshot.rects.some(r => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ);
+}
+
+function hasClearWalkLine(x1, z1, x2, z2, padding = 0.16, snapshot = null) {
   const dist = Math.hypot(x2 - x1, z2 - z1);
   const steps = Math.max(2, Math.ceil(dist / 0.22));
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
     const x = x1 + (x2 - x1) * t;
     const z = z1 + (z2 - z1) * t;
-    if (!isCustomerPointFree(x, z, padding)) return false;
+    const free = snapshot ? isStaticNavigationPointFree(x, z, snapshot) : isCustomerPointFree(x, z, padding);
+    if (!free) return false;
   }
   return true;
 }
@@ -5756,7 +6108,7 @@ function navHeapPop(heap) {
   return root;
 }
 
-function simplifyWalkPath(startX, startZ, path, padding) {
+function simplifyWalkPath(startX, startZ, path, padding, snapshot = null) {
   if (!path || path.length < 3) return path || [];
   const result = [];
   let fromX = startX;
@@ -5767,7 +6119,7 @@ function simplifyWalkPath(startX, startZ, path, padding) {
     let best = i;
     const maxLookAhead = Math.min(path.length - 1, i + 10);
     for (let j = maxLookAhead; j > i; j--) {
-      if (hasClearWalkLine(fromX, fromZ, path[j].x, path[j].z, padding)) {
+      if (hasClearWalkLine(fromX, fromZ, path[j].x, path[j].z, padding, snapshot)) {
         best = j;
         break;
       }
@@ -5782,29 +6134,31 @@ function simplifyWalkPath(startX, startZ, path, padding) {
 }
 
 function findWalkPath(startX, startZ, targetX, targetZ, padding = 0.16) {
+  const snapshot = buildStaticNavigationSnapshot(padding);
+  const pointFree = (x, z) => isStaticNavigationPointFree(x, z, snapshot);
   const step = 0.55;
   const edge = 0.58 + padding;
   const min = -SHOP_HALF + edge;
   const max =  SHOP_HALF - edge;
 
-  const goalFree = findNearestFreeWalkPoint(targetX, targetZ, padding, null, 3.5);
+  const goalFree = findNearestFreeWalkPoint(targetX, targetZ, padding, null, 3.5, snapshot);
   if (!goalFree) return null;
 
-  const startFree = isCustomerPointFree(startX, startZ, padding)
+  const startFree = pointFree(startX, startZ)
     ? new THREE.Vector3(startX, 0.6, startZ)
-    : findNearestFreeWalkPoint(startX, startZ, padding, goalFree, 3.0);
+    : findNearestFreeWalkPoint(startX, startZ, padding, goalFree, 3.0, snapshot);
   if (!startFree) return null;
 
   let sx = snapNavCoord(Math.max(min, Math.min(max, startFree.x)), step);
   let sz = snapNavCoord(Math.max(min, Math.min(max, startFree.z)), step);
-  if (!isCustomerPointFree(sx, sz, padding)) {
+  if (!pointFree(sx, sz)) {
     sx = startFree.x;
     sz = startFree.z;
   }
 
   let gx = snapNavCoord(Math.max(min, Math.min(max, goalFree.x)), step);
   let gz = snapNavCoord(Math.max(min, Math.min(max, goalFree.z)), step);
-  if (!isCustomerPointFree(gx, gz, padding)) {
+  if (!pointFree(gx, gz)) {
     gx = goalFree.x;
     gz = goalFree.z;
   }
@@ -5838,19 +6192,19 @@ function findWalkPath(startX, startZ, targetX, targetZ, padding = 0.16) {
       }
       path.reverse();
       path.push(new THREE.Vector3(goalFree.x, 0.6, goalFree.z));
-      return simplifyWalkPath(startX, startZ, path, padding);
+      return simplifyWalkPath(startX, startZ, path, padding, snapshot);
     }
 
     for (const [dx, dz] of dirs) {
       const nx = cur.x + dx;
       const nz = cur.z + dz;
       if (nx < min || nx > max || nz < min || nz > max) continue;
-      if (!isCustomerPointFree(nx, nz, padding)) continue;
+      if (!pointFree(nx, nz)) continue;
 
       // Диагональ разрешена только если персонаж не срезает угол препятствия.
       if (dx !== 0 && dz !== 0) {
-        if (!isCustomerPointFree(cur.x + dx, cur.z, padding)) continue;
-        if (!isCustomerPointFree(cur.x, cur.z + dz, padding)) continue;
+        if (!pointFree(cur.x + dx, cur.z)) continue;
+        if (!pointFree(cur.x, cur.z + dz)) continue;
       }
 
       const nk = key(nx, nz);
@@ -5899,10 +6253,7 @@ function followWalkPath(group, finalTarget, speed, padding = 0.16) {
   const nx = group.position.x + (dx / dist) * step;
   const nz = group.position.z + (dz / dist) * step;
 
-  if (isCustomerPointFree(nx, nz, padding)) {
-    group.position.x = nx;
-    group.position.z = nz;
-    group.rotation.y = Math.atan2(dx, dz);
+  if (commitCharacterStep(group, nx, nz, dx, dz, padding, finalTarget)) {
     group.userData.navPath = nav;
     group.userData.navFail = 0;
     return true;
@@ -5957,10 +6308,7 @@ function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACT
   const directStep = Math.min(speed, dist);
   const directX = curX + (dx / dist) * directStep;
   const directZ = curZ + (dz / dist) * directStep;
-  if (isCustomerPointFree(directX, directZ, padding)) {
-    group.position.x = directX;
-    group.position.z = directZ;
-    group.rotation.y = Math.atan2(dx, dz);
+  if (commitCharacterStep(group, directX, directZ, dx, dz, padding, target)) {
     group.userData.navFail = 0;
     return true;
   }
@@ -5998,10 +6346,7 @@ function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACT
     }
   }
 
-  if (best) {
-    group.position.x = best.x;
-    group.position.z = best.z;
-    group.rotation.y = best.angle;
+  if (best && commitCharacterStep(group, best.x, best.z, Math.sin(best.angle), Math.cos(best.angle), padding, target)) {
     group.userData.navFail = 0;
     return true;
   }
@@ -6017,12 +6362,13 @@ function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACT
       const rd = Math.hypot(rx, rz);
       if (rd > 0.0001) {
         const step = Math.min(speed * 1.35, rd);
-        group.position.x += (rx / rd) * step;
-        group.position.z += (rz / rd) * step;
-        group.rotation.y = Math.atan2(rx, rz);
-        group.userData.navFail = 0;
-        group.userData.navRepathAt = 0;
-        return true;
+        const nx = group.position.x + (rx / rd) * step;
+        const nz = group.position.z + (rz / rd) * step;
+        if (commitCharacterStep(group, nx, nz, rx, rz, padding, target)) {
+          group.userData.navFail = 0;
+          group.userData.navRepathAt = 0;
+          return true;
+        }
       }
     }
   }
@@ -6036,8 +6382,12 @@ function moveGroupDirect(group, target, speed) {
   const dist = Math.hypot(dx, dz);
   if (dist <= 0.0001) return false;
   const step = Math.min(speed, dist);
-  group.position.x += (dx / dist) * step;
-  group.position.z += (dz / dist) * step;
+  const nx = group.position.x + (dx / dist) * step;
+  const nz = group.position.z + (dz / dist) * step;
+  // Даже в дверном проёме персонажи идут по одному, а не проходят друг сквозь друга.
+  if (!isCharacterPointFree(group, nx, nz, CHARACTER_MIN_DISTANCE * 0.9)) return false;
+  group.position.x = nx;
+  group.position.z = nz;
   group.rotation.y = Math.atan2(dx, dz);
   return true;
 }
@@ -6054,7 +6404,7 @@ function randomCustomerPoint() {
   return new THREE.Vector3(0, 0.6, 3);
 }
 
-function getCustomerBrowsePoint() {
+function getCustomerBrowsePoint(ignoreGroup = null) {
   const points = [
     new THREE.Vector3(-5.0, 0.6, -3.0),
     new THREE.Vector3(-1.5, 0.6, -3.0),
@@ -6067,7 +6417,7 @@ function getCustomerBrowsePoint() {
     new THREE.Vector3( 6.0, 0.6, -5.8),
     new THREE.Vector3( 6.0, 0.6, -1.0),
     new THREE.Vector3( 6.0, 0.6,  3.0),
-  ].filter(p => isCustomerPointFree(p.x, p.z, 0.12));
+  ].filter(p => isCustomerPointFree(p.x, p.z, 0.12) && isCharacterPointFree(ignoreGroup, p.x, p.z));
 
   if (points.length === 0) return randomCustomerPoint();
   return points[Math.floor(Math.random() * points.length)].clone();
@@ -6130,6 +6480,15 @@ function customerTakeProductFromShelf(slotIdx) {
 
 function customerPayForProduct(product) {
   requestVisualCheckout(product);
+}
+
+function getCheckoutQueueIndex(cash, customer) {
+  if (!cash || !customer) return 0;
+  const queue = customers
+    .filter(c => c && c.checkoutCashRegisterId === cash.id && ['checkout','checkout_wait'].includes(c.state))
+    .sort((a, b) => (a.checkoutJoinedAt || 0) - (b.checkoutJoinedAt || 0));
+  const index = queue.indexOf(customer);
+  return index < 0 ? queue.length : index;
 }
 
 class Customer {
@@ -6202,11 +6561,11 @@ class Customer {
     if (occupied.length > 0 && Math.random() < 0.7) {
       const idx = occupied[Math.floor(Math.random() * occupied.length)];
       this.targetShelf = idx;
-      this.targetPos = getShelfApproachPoint(idx, this.group.position);
+      this.targetPos = getShelfApproachPoint(idx, this.group.position, this.group);
       this.state = 'walking';
     } else {
       this.targetShelf = null;
-      this.targetPos = getCustomerBrowsePoint();
+      this.targetPos = getCustomerBrowsePoint(this.group);
       this.state = 'wandering';
     }
   }
@@ -6233,7 +6592,9 @@ class Customer {
     this.checkoutProductName = product ? product.name : 'товар';
     this.checkoutSoundPlayed = false;
     this.checkoutTimer = 70;
-    this.targetPos = getCashCustomerPoint(cash);
+    this.checkoutJoinedAt = Date.now();
+    this.checkoutQueueRefresh = 0;
+    this.targetPos = getCashCustomerPoint(cash, this.group, getCheckoutQueueIndex(cash, this));
     this.state = 'checkout';
     requestCashService(cash);
   }
@@ -6266,12 +6627,12 @@ class Customer {
 
       if (this.stuckTimer > 120) {
         if (this.state === 'walking' && this.targetShelf !== null) {
-          this.targetPos = getShelfApproachPoint(this.targetShelf, this.group.position);
+          this.targetPos = getShelfApproachPoint(this.targetShelf, this.group.position, this.group);
         } else if (this.state === 'wandering' || this.state === 'wandering_pause' || this.state === 'browsing') {
           this.chooseTarget();
         } else if (this.state === 'checkout' || this.state === 'checkout_wait') {
           const cash = cashRegisters.find(c => c.id === this.checkoutCashRegisterId) || getDutyCashRegister();
-          if (cash) this.targetPos = getCashCustomerPoint(cash); else this.goToExit();
+          if (cash) this.targetPos = getCashCustomerPoint(cash, this.group, getCheckoutQueueIndex(cash, this)); else this.goToExit();
         } else if (this.state === 'leaving_to_door' && this.exitDoor) {
           this.targetPos = getDoorInsidePoint(this.exitDoor);
           clearGroupNavigation(this.group);
@@ -6281,10 +6642,12 @@ class Customer {
         this.stuckTimer = 0;
       }
 
-      this.group.rotation.y = Math.atan2(dx, dz);
-
-      this.legAngle += 0.15 * this.legDir;
-      if (Math.abs(this.legAngle) > 0.4) this.legDir *= -1;
+      if (realMove > this.speed * 0.18) {
+        this.legAngle += 0.15 * this.legDir;
+        if (Math.abs(this.legAngle) > 0.4) this.legDir *= -1;
+      } else {
+        this.legAngle *= 0.72;
+      }
       if (this.group.children[2]) this.group.children[2].rotation.x = this.legAngle;
       if (this.group.children[3]) this.group.children[3].rotation.x = -this.legAngle;
       return false;
@@ -6320,7 +6683,23 @@ class Customer {
     } else if (this.state === 'checkout_wait') {
       const cash = cashRegisters.find(c => c.id === this.checkoutCashRegisterId) || getDutyCashRegister();
       requestCashService(cash);
-      if (!cash || isSellerNearCashRegister(cash)) this.waitTimer--;
+
+      // Только первый покупатель в очереди обслуживается. Остальные занимают
+      // отдельные точки и по мере освобождения кассы плавно продвигаются вперёд.
+      const queueIndex = cash ? getCheckoutQueueIndex(cash, this) : 0;
+      this.checkoutQueueRefresh--;
+      if (cash && this.checkoutQueueRefresh <= 0) {
+        this.checkoutQueueRefresh = 18;
+        const queuePoint = getCashCustomerPoint(cash, this.group, queueIndex);
+        if (Math.hypot(queuePoint.x - this.group.position.x, queuePoint.z - this.group.position.z) > 0.22) {
+          this.targetPos = queuePoint;
+          this.state = 'checkout';
+          clearGroupNavigation(this.group);
+          return false;
+        }
+      }
+
+      if (queueIndex === 0 && (!cash || isSellerNearCashRegister(cash))) this.waitTimer--;
       if (this.waitTimer <= 0) {
         if (!this.checkoutSoundPlayed) {
           playCashSound();
@@ -9207,6 +9586,7 @@ function finishShelfCleanup(slotIdx) {
   }
   cleanupTask = null;
   showToast('✅ Витрина убрана и снова свободна');
+  notifyGameEvent('shelf_cleaned', 1, { slotIdx });
 }
 
 function openWarehouseModal() {
@@ -9589,6 +9969,9 @@ function animate() {
 
   // Сотрудники: кассиры, продавцы, уборщики
   updateSellers();
+
+  // После движения мягко раздвигаем персонажей, если они оказались слишком близко.
+  resolveCharacterOverlaps();
 
   // Таймер продажи на витринах + подсветка остатков
   G.slots.forEach((item, i) => {
