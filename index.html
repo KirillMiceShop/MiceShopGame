@@ -441,6 +441,49 @@
   }
   .modal-bg.show .modal-box { transform:scale(1); }
   .modal-box h3 { font-size:16px; font-weight:700; margin-bottom:12px; }
+
+  /* Компактный переключатель автоматической раскладки в заголовке склада */
+  .warehouse-heading-row {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    margin-bottom:12px;
+  }
+  .warehouse-heading-row h3 { margin:0; flex-shrink:0; }
+  .warehouse-auto-stock-btn {
+    min-width:0;
+    max-width:190px;
+    padding:7px 10px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,0.12);
+    background:rgba(255,255,255,0.06);
+    color:#8b8ba4;
+    font-size:10px;
+    line-height:1.15;
+    font-weight:800;
+    text-align:center;
+    cursor:pointer;
+    white-space:normal;
+    transition:background .15s,border-color .15s,color .15s,transform .15s;
+  }
+  .warehouse-auto-stock-btn::before {
+    content:'';
+    display:inline-block;
+    width:7px;
+    height:7px;
+    margin-right:6px;
+    border-radius:50%;
+    background:#66677d;
+    vertical-align:1px;
+  }
+  .warehouse-auto-stock-btn.on {
+    background:rgba(35,196,131,0.16);
+    border-color:rgba(35,196,131,0.55);
+    color:#7ff0bd;
+  }
+  .warehouse-auto-stock-btn.on::before { background:#23c483; box-shadow:0 0 8px rgba(35,196,131,.65); }
+  .warehouse-auto-stock-btn:active { transform:scale(.97); }
   .products-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; max-height:50vh; overflow-y:auto; }
   .prod-card {
     background:rgba(255,255,255,0.04);
@@ -876,7 +919,10 @@
 <!-- МОДАЛКА СКЛАДА -->
 <div class="modal-bg" id="warehouseModal">
   <div class="modal-box">
-    <h3>📦 Склад</h3>
+    <div class="warehouse-heading-row">
+      <h3>📦 Склад</h3>
+      <button id="warehouseAutoStockBtn" class="warehouse-auto-stock-btn" type="button" onclick="toggleAutoStocking()" aria-pressed="false">Автоматическая раскладка</button>
+    </div>
     <div id="warehouse-tabs" style="display:flex;gap:8px;margin-bottom:12px"></div>
     <div id="warehouse-list"></div>
     <div class="modal-close" onclick="closeWarehouseModal()">✕ Закрыть</div>
@@ -1025,7 +1071,7 @@ const G = {
   slots: Array(1).fill(null), // each: {product, qty, maxQty, nextSaleAt, soldOut}
   storage: {}, // productId -> qty
   storageBatches: {}, // productId -> партии {qty, storedAt, displayed, multiplier}
-  autoStocking: true, // автоматическая раскладка товаров продавцами
+  autoStocking: false, // автоматическая раскладка товаров продавцами выключена при старте
   equipmentStorage: {}, // key -> {kind, type, name, emoji, price, count}
   deliveries: [], // ожидаемые доставки товаров
   staff: { cashier: 1, seller: 1, cleaner: 0, guard: 0 },
@@ -1239,14 +1285,23 @@ const TUTORIAL_STEPS = [
   { id:'order', title:'Закажите товар', text:'Оставьте количество 1 и нажмите кнопку покупки. Товар отправится на склад.', event:'product_ordered', target:() => document.querySelector('#itemModalBox .btn-buy') },
   { id:'delivery', title:'Дождитесь доставки', text:'Откройте склад. На карточке будет показан таймер доставки.', event:'delivery_arrived', target:() => document.getElementById('warehouse-main-btn') },
   { id:'stock', title:'Выставьте товар', text:'Откройте склад, нажмите «Поставить», затем нажмите на стартовую витрину.', event:'product_stocked', target:() => {
-      if (placingMode) return null;
+      if (placingMode) {
+        const shelf = shelfMeshes[0];
+        return makeTutorialObjectTarget(shelf && (shelf.group || shelf.stand || shelf.base), 14);
+      }
       if (document.getElementById('warehouseModal')?.classList.contains('show')) {
         return [...document.querySelectorAll('#warehouse-list button')].find(btn => btn.textContent.includes('Поставить')) || null;
       }
       return document.getElementById('warehouse-main-btn');
     } },
   { id:'sale', title:'Первая продажа', text:'Товар уже на витрине. Для обучения первая продажа произойдёт быстрее обычного.', event:'product_sold', target:null },
-  { id:'collect', title:'Заберите выручку', text:'Нажмите на кассу внутри магазина, затем выберите «Забрать всё».', event:'revenue_collected', target:null },
+  { id:'collect', title:'Заберите выручку', text:'Нажмите на кассу внутри магазина, затем выберите «Забрать всё».', event:'revenue_collected', target:() => {
+      if (document.getElementById('cashModal')?.classList.contains('show')) {
+        return document.querySelector('#cashModalBox .btn-buy');
+      }
+      const cash = cashRegisters[0];
+      return makeTutorialObjectTarget(cash && (cash.hitZone || cash.group), 14);
+    } },
   { id:'editor', title:'Откройте редактор', text:'Нажмите «Редактор». В этом режиме можно перемещать, вращать и убирать объекты.', event:'editor_opened', target:() => document.getElementById('editor-toggle-btn') },
   { id:'complete', title:'Обучение завершено!', text:'Теперь выполняйте квесты, повышайте уровень и развивайте магазин.', manual:true, button:'Готово' },
 ];
@@ -1256,6 +1311,117 @@ let tutorialStepIndex = 0;
 let tutorialPositionTimer = null;
 let tutorialPreviousAutoStocking = true;
 let tutorialRewardGranted = false;
+
+// В обучении виртуальной целью могут быть не только HTML-кнопки,
+// но и 3D-объекты на canvas: стартовая витрина и касса.
+function getTutorialObjectScreenRect(object, extraPad = 10) {
+  if (!object || typeof THREE === 'undefined' || !camera) return null;
+  try {
+    object.updateWorldMatrix(true, true);
+    const bounds = new THREE.Box3().setFromObject(object);
+    if (bounds.isEmpty()) return null;
+
+    const min = bounds.min;
+    const max = bounds.max;
+    const corners = [
+      [min.x,min.y,min.z], [min.x,min.y,max.z], [min.x,max.y,min.z], [min.x,max.y,max.z],
+      [max.x,min.y,min.z], [max.x,min.y,max.z], [max.x,max.y,min.z], [max.x,max.y,max.z],
+    ];
+
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+    corners.forEach(([x,y,z]) => {
+      const point = new THREE.Vector3(x,y,z).project(camera);
+      const sx = (point.x * 0.5 + 0.5) * window.innerWidth;
+      const sy = (-point.y * 0.5 + 0.5) * window.innerHeight;
+      left = Math.min(left, sx);
+      right = Math.max(right, sx);
+      top = Math.min(top, sy);
+      bottom = Math.max(bottom, sy);
+    });
+
+    if (![left,top,right,bottom].every(Number.isFinite)) return null;
+    left = Math.max(4, left - extraPad);
+    top = Math.max(4, top - extraPad);
+    right = Math.min(window.innerWidth - 4, right + extraPad);
+    bottom = Math.min(window.innerHeight - 4, bottom + extraPad);
+    return { left, top, right, bottom, width:Math.max(1,right-left), height:Math.max(1,bottom-top) };
+  } catch (e) {
+    return null;
+  }
+}
+
+function makeTutorialObjectTarget(object, extraPad = 10) {
+  if (!object) return null;
+  return {
+    tutorialVirtualTarget: true,
+    getRect: () => getTutorialObjectScreenRect(object, extraPad)
+  };
+}
+
+function getTutorialTargetRect(target) {
+  if (!target) return null;
+  if (target.tutorialVirtualTarget && typeof target.getRect === 'function') {
+    return target.getRect();
+  }
+  if (target.nodeType === 1 && target.isConnected && target.offsetParent !== null) {
+    const r = target.getBoundingClientRect();
+    return { left:r.left, top:r.top, right:r.right, bottom:r.bottom, width:r.width, height:r.height };
+  }
+  return null;
+}
+
+function getTutorialEventPoint(event) {
+  const touch = event.touches?.[0] || event.changedTouches?.[0];
+  if (touch) return { x:touch.clientX, y:touch.clientY };
+  if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+    return { x:event.clientX, y:event.clientY };
+  }
+  return null;
+}
+
+function isTutorialInteractionAllowed(event) {
+  if (!tutorialActive) return true;
+
+  const element = event.target && event.target.nodeType === 1 ? event.target : null;
+  if (element?.closest('#tutorial-skip-btn')) return true;
+
+  const step = TUTORIAL_STEPS[tutorialStepIndex];
+  // На приветственном и финальном экране нужна основная кнопка «Начать/Готово».
+  if (step?.manual && element?.closest('#tutorial-next-btn')) return true;
+
+  const target = getTutorialTarget();
+  if (!target) return false;
+
+  if (target.nodeType === 1) {
+    return target === element || target.contains(element);
+  }
+
+  if (target.tutorialVirtualTarget) {
+    // 3D-цель разрешает нажатие только внутри подсвеченной области canvas.
+    if (element && element !== canvas && !element.closest('#canvas-wrap')) return false;
+    const rect = getTutorialTargetRect(target);
+    const point = getTutorialEventPoint(event);
+    return !!(rect && point && point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom);
+  }
+
+  return false;
+}
+
+function blockOutsideTutorialTarget(event) {
+  if (isTutorialInteractionAllowed(event)) return;
+  if (event.cancelable) event.preventDefault();
+  event.stopPropagation();
+  if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+}
+
+// Capture-фаза срабатывает раньше обработчиков кнопок и canvas.
+['pointerdown','mousedown','touchstart','click','dblclick','contextmenu','wheel'].forEach(type => {
+  document.addEventListener(type, blockOutsideTutorialTarget, { capture:true, passive:false });
+});
+document.addEventListener('keydown', event => {
+  if (!tutorialActive) return;
+  blockOutsideTutorialTarget(event);
+}, true);
 
 function startTutorial() {
   closeQuestsModal();
@@ -1360,14 +1526,14 @@ function updateTutorialSpotlight() {
   if (!card || !spot || !dim || !step) return;
 
   const target = getTutorialTarget();
-  if (!target || !target.isConnected || target.offsetParent === null || step.manual) {
+  const rect = getTutorialTargetRect(target);
+  if (!rect || step.manual) {
     spot.style.display = 'none';
     dim.style.display = 'block';
     if (!step.manual) card.classList.remove('centered');
     return;
   }
 
-  const rect = target.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) {
     spot.style.display = 'none';
     dim.style.display = 'block';
@@ -1376,11 +1542,13 @@ function updateTutorialSpotlight() {
 
   dim.style.display = 'none';
   spot.style.display = 'block';
-  const pad = 8;
-  spot.style.left = Math.max(4, rect.left - pad) + 'px';
-  spot.style.top = Math.max(4, rect.top - pad) + 'px';
-  spot.style.width = Math.min(window.innerWidth - Math.max(4, rect.left - pad) - 4, rect.width + pad * 2) + 'px';
-  spot.style.height = Math.min(window.innerHeight - Math.max(4, rect.top - pad) - 4, rect.height + pad * 2) + 'px';
+  const pad = target?.tutorialVirtualTarget ? 0 : 8;
+  const left = Math.max(4, rect.left - pad);
+  const top = Math.max(4, rect.top - pad);
+  spot.style.left = left + 'px';
+  spot.style.top = top + 'px';
+  spot.style.width = Math.min(window.innerWidth - left - 4, rect.width + pad * 2) + 'px';
+  spot.style.height = Math.min(window.innerHeight - top - 4, rect.height + pad * 2) + 'px';
 
   card.classList.remove('centered');
   if (rect.top + rect.height / 2 > window.innerHeight / 2) {
@@ -9005,16 +9173,25 @@ function setWarehouseTab(tab) {
   renderWarehouseModal();
 }
 
+function updateWarehouseAutoStockButton() {
+  const btn = document.getElementById('warehouseAutoStockBtn');
+  if (!btn) return;
+  btn.classList.toggle('on', !!G.autoStocking);
+  btn.setAttribute('aria-pressed', G.autoStocking ? 'true' : 'false');
+  btn.title = G.autoStocking ? 'Автоматическая раскладка включена' : 'Автоматическая раскладка выключена';
+}
+
 function toggleAutoStocking() {
   G.autoStocking = !G.autoStocking;
+  updateWarehouseAutoStockButton();
   showToast(G.autoStocking ? '✅ Автоматическая раскладка включена' : '⏸️ Автоматическая раскладка выключена');
-  renderWarehouseModal();
 }
 
 function renderWarehouseModal() {
   const tabs = document.getElementById('warehouse-tabs');
   const list = document.getElementById('warehouse-list');
   if (!tabs || !list) return;
+  updateWarehouseAutoStockButton();
   list.innerHTML = '';
 
   tabs.innerHTML = `
@@ -9025,14 +9202,6 @@ function renderWarehouseModal() {
     renderEquipmentWarehouse(list);
     return;
   }
-
-  const autoWrap = document.createElement('div');
-  autoWrap.style.cssText = 'display:flex;justify-content:flex-end;margin:-2px 0 10px';
-  autoWrap.innerHTML = `
-    <button class="btn-back" onclick="toggleAutoStocking()" style="margin:0;padding:8px 10px;font-size:12px;border-radius:12px;${G.autoStocking ? 'background:#23c483;color:#071b13' : 'background:#2a2a44;color:#aaa'}">
-      ${G.autoStocking ? '✅' : '⏸️'} Автоматическая раскладка товаров
-    </button>`;
-  list.appendChild(autoWrap);
 
   const entries = Object.entries(G.storage);
   const deliveries = (G.deliveries || []).filter(d => d.readyAt > Date.now());
