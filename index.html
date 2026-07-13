@@ -1297,21 +1297,44 @@ const TUTORIAL_STEPS = [
   { id:'shop', title:'Откройте магазин', text:'Нажмите кнопку «Магазин». Там находятся товары и оборудование.', event:'shop_opened', target:() => document.getElementById('shop-main-btn') },
   { id:'product', title:'Выберите первый товар', text:'На 1 уровне доступен один стартовый товар. Нажмите на его карточку.', event:'product_viewed', target:() => document.querySelector('#products-list .prod-row:not(.cant)') },
   { id:'order', title:'Закажите товар', text:'Оставьте количество 1 и нажмите кнопку покупки. Товар отправится на склад.', event:'product_ordered', target:() => document.querySelector('#itemModalBox .btn-buy') },
-  { id:'delivery', title:'Дождитесь доставки', text:'Откройте склад. Во вкладке «В пути» будет показан таймер доставки.', event:'delivery_arrived', target:() => {
-      if (document.getElementById('warehouseModal')?.classList.contains('show')) {
+  { id:'delivery', title:'Ускорьте доставку', text:'Откройте склад, перейдите во вкладку «В пути» и нажмите кнопку ⚡ 1💎 на карточке товара.', event:'delivery_arrived', target:() => {
+      const warehouseOpen = document.getElementById('warehouseModal')?.classList.contains('show');
+      if (!warehouseOpen) return document.getElementById('warehouse-main-btn');
+
+      if (warehouseTab !== 'products') {
+        return [...document.querySelectorAll('#warehouse-tabs button')]
+          .find(btn => btn.textContent.includes('Товары')) || null;
+      }
+
+      if (warehouseProductTab !== 'transit') {
         return document.querySelector('#warehouse-product-tabs [data-product-tab="transit"]');
       }
-      return document.getElementById('warehouse-main-btn');
+
+      // Подсвечиваем всю карточку товара в пути. Кнопка ускорения находится внутри неё,
+      // поэтому во время блокирующего обучения игрок может нажать именно на кристалл.
+      return document.querySelector('#warehouse-list .prod-row[data-delivery-id]')
+        || document.querySelector('#warehouse-product-tabs [data-product-tab="transit"]');
     } },
-  { id:'stock', title:'Выставьте товар', text:'Откройте склад, нажмите «Поставить», затем нажмите на стартовую витрину.', event:'product_stocked', target:() => {
+  { id:'stock', title:'Перейдите на склад', text:'Товар доставлен. Откройте склад, перейдите во вкладку «На складе», нажмите «Поставить», затем выберите стартовую витрину.', event:'product_stocked', target:() => {
       if (placingMode) {
         const shelf = shelfMeshes[0];
         return makeTutorialObjectTarget(shelf && (shelf.group || shelf.stand || shelf.base), 14);
       }
-      if (document.getElementById('warehouseModal')?.classList.contains('show')) {
-        return [...document.querySelectorAll('#warehouse-list button')].find(btn => btn.textContent.includes('Поставить')) || null;
+
+      const warehouseOpen = document.getElementById('warehouseModal')?.classList.contains('show');
+      if (!warehouseOpen) return document.getElementById('warehouse-main-btn');
+
+      if (warehouseTab !== 'products') {
+        return [...document.querySelectorAll('#warehouse-tabs button')]
+          .find(btn => btn.textContent.includes('Товары')) || null;
       }
-      return document.getElementById('warehouse-main-btn');
+
+      if (warehouseProductTab !== 'stock') {
+        return document.querySelector('#warehouse-product-tabs [data-product-tab="stock"]');
+      }
+
+      return [...document.querySelectorAll('#warehouse-list button')]
+        .find(btn => btn.textContent.includes('Поставить')) || null;
     } },
   { id:'sale', title:'Первая продажа', text:'Товар уже на витрине. Для обучения первая продажа произойдёт быстрее обычного.', event:'product_sold', target:null },
   { id:'collect', title:'Заберите выручку', text:'Нажмите на кассу внутри магазина, затем выберите «Забрать всё».', event:'revenue_collected', target:() => {
@@ -1522,7 +1545,15 @@ function renderTutorialStep() {
   const visibleStep = Math.max(0, Math.min(actionCount, tutorialStepIndex));
   label.textContent = step.id === 'welcome' ? 'Короткое обучение' : step.id === 'complete' ? 'Готово' : 'Шаг ' + visibleStep + ' из ' + actionCount;
   title.textContent = step.title;
-  body.textContent = (step.id === 'stock' && placingMode) ? 'Теперь нажмите прямо на стартовую витрину внутри магазина.' : step.text;
+  if (step.id === 'stock' && placingMode) {
+    body.textContent = 'Теперь нажмите прямо на стартовую витрину внутри магазина.';
+  } else if (step.id === 'stock' && document.getElementById('warehouseModal')?.classList.contains('show') && warehouseProductTab === 'stock') {
+    body.textContent = 'Нажмите «Поставить» на карточке доставленного товара.';
+  } else if (step.id === 'stock' && document.getElementById('warehouseModal')?.classList.contains('show')) {
+    body.textContent = 'Товар уже доставлен. Перейдите во вкладку «На складе».';
+  } else {
+    body.textContent = step.text;
+  }
   next.style.display = step.manual ? '' : 'none';
   next.textContent = step.button || 'Далее';
   card.classList.toggle('centered', step.id === 'welcome' || step.id === 'complete');
@@ -6956,9 +6987,8 @@ function updateDeliveries() {
     logEvent('🚚 Доставка: ' + p.emoji + ' ' + p.name + ' ×' + d.qty + ' → склад');
     notifyGameEvent('delivery_arrived', 1, { productId:d.productId, qty:d.qty });
   });
-  if (arrived.length && tutorialActive && TUTORIAL_STEPS[tutorialStepIndex]?.id === 'delivery') {
-    warehouseProductTab = 'stock';
-  }
+  // Во время обучения не переключаем вкладку автоматически.
+  // После доставки подсветка сама проведёт игрока: «Склад» → «На складе» → «Поставить».
   if (arrived.length && document.getElementById('warehouseModal')?.classList.contains('show')) renderWarehouseModal();
 }
 
@@ -9184,8 +9214,10 @@ function openWarehouseModal() {
     const tutorialStep = tutorialActive ? TUTORIAL_STEPS[tutorialStepIndex] : null;
     const hasDeliveries = (G.deliveries || []).some(d => d.readyAt > Date.now());
     if (tutorialStep?.id === 'delivery') warehouseProductTab = 'transit';
-    else if (tutorialStep?.id === 'stock') warehouseProductTab = 'stock';
-    else warehouseProductTab = hasDeliveries ? 'transit' : 'stock';
+    else if (tutorialStep?.id === 'stock') {
+      // Сохраняем текущую вкладку, чтобы обучение подсветило «На складе» отдельным действием.
+      warehouseProductTab = warehouseProductTab === 'stock' ? 'stock' : 'transit';
+    } else warehouseProductTab = hasDeliveries ? 'transit' : 'stock';
   }
   renderWarehouseModal();
   document.getElementById('warehouseModal').classList.add('show');
@@ -9202,12 +9234,14 @@ document.getElementById('warehouseModal').addEventListener('click', e => {
 function setWarehouseTab(tab) {
   warehouseTab = tab;
   renderWarehouseModal();
+  if (tutorialActive) renderTutorialStep();
 }
 
 function setWarehouseProductTab(tab) {
   warehouseProductTab = tab === 'stock' ? 'stock' : 'transit';
   renderWarehouseModal();
-  updateTutorialSpotlight();
+  if (tutorialActive) renderTutorialStep();
+  else updateTutorialSpotlight();
 }
 
 function updateWarehouseAutoStockButton() {
@@ -9266,6 +9300,7 @@ function renderWarehouseModal() {
       const left = Math.max(0, Math.ceil((d.readyAt - Date.now()) / 1000));
       const row = document.createElement('div');
       row.className = 'prod-row';
+      row.dataset.deliveryId = String(d.id);
       row.innerHTML = `
         <div class="pr-emoji">🚚</div>
         <div class="pr-info">
