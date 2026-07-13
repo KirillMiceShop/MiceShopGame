@@ -644,6 +644,19 @@
     flex:0 0 92px;
   }
 
+  #warehouse-product-tabs {
+    display:flex;
+    gap:8px;
+    margin:-2px 0 12px;
+  }
+  #warehouse-product-tabs .btn-back {
+    flex:1;
+    margin:0;
+    padding:9px 10px;
+    font-size:12px;
+    font-weight:800;
+  }
+
 
   /* ОБУЧЕНИЕ И КВЕСТЫ */
   #event-log { top:164px; }
@@ -924,6 +937,7 @@
       <button id="warehouseAutoStockBtn" class="warehouse-auto-stock-btn" type="button" onclick="toggleAutoStocking()" aria-pressed="false">Автоматическая раскладка</button>
     </div>
     <div id="warehouse-tabs" style="display:flex;gap:8px;margin-bottom:12px"></div>
+    <div id="warehouse-product-tabs"></div>
     <div id="warehouse-list"></div>
     <div class="modal-close" onclick="closeWarehouseModal()">✕ Закрыть</div>
   </div>
@@ -1283,7 +1297,12 @@ const TUTORIAL_STEPS = [
   { id:'shop', title:'Откройте магазин', text:'Нажмите кнопку «Магазин». Там находятся товары и оборудование.', event:'shop_opened', target:() => document.getElementById('shop-main-btn') },
   { id:'product', title:'Выберите первый товар', text:'На 1 уровне доступен один стартовый товар. Нажмите на его карточку.', event:'product_viewed', target:() => document.querySelector('#products-list .prod-row:not(.cant)') },
   { id:'order', title:'Закажите товар', text:'Оставьте количество 1 и нажмите кнопку покупки. Товар отправится на склад.', event:'product_ordered', target:() => document.querySelector('#itemModalBox .btn-buy') },
-  { id:'delivery', title:'Дождитесь доставки', text:'Откройте склад. На карточке будет показан таймер доставки.', event:'delivery_arrived', target:() => document.getElementById('warehouse-main-btn') },
+  { id:'delivery', title:'Дождитесь доставки', text:'Откройте склад. Во вкладке «В пути» будет показан таймер доставки.', event:'delivery_arrived', target:() => {
+      if (document.getElementById('warehouseModal')?.classList.contains('show')) {
+        return document.querySelector('#warehouse-product-tabs [data-product-tab="transit"]');
+      }
+      return document.getElementById('warehouse-main-btn');
+    } },
   { id:'stock', title:'Выставьте товар', text:'Откройте склад, нажмите «Поставить», затем нажмите на стартовую витрину.', event:'product_stocked', target:() => {
       if (placingMode) {
         const shelf = shelfMeshes[0];
@@ -6816,6 +6835,7 @@ let placingMode = false;
 let activeProductId = null;
 let buyQty = 1;
 let warehouseTab = 'products';
+let warehouseProductTab = 'transit';
 const warehousePlaceQty = {};
 let shelfMoveQty = 1;
 let shelfMoveSlotIdx = null;
@@ -6905,6 +6925,7 @@ function buyProductDelivery(productId, qty = 1) {
   if (G.money < cost) { showToast('❌ Недостаточно денег'); return; }
   G.money -= cost;
   const sec = getDeliverySeconds(p);
+  warehouseProductTab = 'transit';
   G.deliveries.push({
     id: nextDeliveryId++,
     productId,
@@ -6935,6 +6956,9 @@ function updateDeliveries() {
     logEvent('🚚 Доставка: ' + p.emoji + ' ' + p.name + ' ×' + d.qty + ' → склад');
     notifyGameEvent('delivery_arrived', 1, { productId:d.productId, qty:d.qty });
   });
+  if (arrived.length && tutorialActive && TUTORIAL_STEPS[tutorialStepIndex]?.id === 'delivery') {
+    warehouseProductTab = 'stock';
+  }
   if (arrived.length && document.getElementById('warehouseModal')?.classList.contains('show')) renderWarehouseModal();
 }
 
@@ -9156,6 +9180,13 @@ function finishShelfCleanup(slotIdx) {
 }
 
 function openWarehouseModal() {
+  if (warehouseTab === 'products') {
+    const tutorialStep = tutorialActive ? TUTORIAL_STEPS[tutorialStepIndex] : null;
+    const hasDeliveries = (G.deliveries || []).some(d => d.readyAt > Date.now());
+    if (tutorialStep?.id === 'delivery') warehouseProductTab = 'transit';
+    else if (tutorialStep?.id === 'stock') warehouseProductTab = 'stock';
+    else warehouseProductTab = hasDeliveries ? 'transit' : 'stock';
+  }
   renderWarehouseModal();
   document.getElementById('warehouseModal').classList.add('show');
   updateTutorialSpotlight();
@@ -9171,6 +9202,12 @@ document.getElementById('warehouseModal').addEventListener('click', e => {
 function setWarehouseTab(tab) {
   warehouseTab = tab;
   renderWarehouseModal();
+}
+
+function setWarehouseProductTab(tab) {
+  warehouseProductTab = tab === 'stock' ? 'stock' : 'transit';
+  renderWarehouseModal();
+  updateTutorialSpotlight();
 }
 
 function updateWarehouseAutoStockButton() {
@@ -9189,8 +9226,9 @@ function toggleAutoStocking() {
 
 function renderWarehouseModal() {
   const tabs = document.getElementById('warehouse-tabs');
+  const productTabs = document.getElementById('warehouse-product-tabs');
   const list = document.getElementById('warehouse-list');
-  if (!tabs || !list) return;
+  if (!tabs || !productTabs || !list) return;
   updateWarehouseAutoStockButton();
   list.innerHTML = '';
 
@@ -9199,25 +9237,29 @@ function renderWarehouseModal() {
     <button class="btn-back" style="margin:0;flex:1;${warehouseTab==='objects'?'background:#f5c518;color:#111':''}" onclick="setWarehouseTab('objects')">⚙️ Оборудование</button>`;
 
   if (warehouseTab === 'objects') {
+    productTabs.style.display = 'none';
+    productTabs.innerHTML = '';
     renderEquipmentWarehouse(list);
     return;
   }
 
+  productTabs.style.display = 'flex';
+  productTabs.innerHTML = `
+    <button class="btn-back" data-product-tab="transit" style="${warehouseProductTab==='transit'?'background:#f5c518;color:#111':''}" onclick="setWarehouseProductTab('transit')">🚚 В пути</button>
+    <button class="btn-back" data-product-tab="stock" style="${warehouseProductTab==='stock'?'background:#f5c518;color:#111':''}" onclick="setWarehouseProductTab('stock')">📦 На складе</button>`;
+
   const entries = Object.entries(G.storage);
   const deliveries = (G.deliveries || []).filter(d => d.readyAt > Date.now());
-  if (entries.length === 0 && deliveries.length === 0) {
-    const empty = document.createElement('div');
-    empty.style.cssText = 'text-align:center;color:#888;padding:24px 8px';
-    empty.textContent = 'Склад товаров пуст';
-    list.appendChild(empty);
-    return;
-  }
 
-  if (deliveries.length) {
-    const title = document.createElement('div');
-    title.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;padding:4px 0 8px';
-    title.textContent = '🚚 В пути';
-    list.appendChild(title);
+  if (warehouseProductTab === 'transit') {
+    if (deliveries.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'text-align:center;color:#888;padding:24px 8px';
+      empty.textContent = 'Сейчас нет товаров в пути';
+      list.appendChild(empty);
+      return;
+    }
+
     deliveries.forEach(d => {
       const p = PRODUCTS.find(x => x.id === d.productId);
       if (!p) return;
@@ -9236,13 +9278,17 @@ function renderWarehouseModal() {
         </div>`;
       list.appendChild(row);
     });
+    return;
   }
-  if (entries.length) {
-    const title2 = document.createElement('div');
-    title2.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;padding:12px 0 8px';
-    title2.textContent = '📦 На складе · через 1 час без витрины выручка снижается на 50%';
-    list.appendChild(title2);
+
+  if (entries.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'text-align:center;color:#888;padding:24px 8px';
+    empty.textContent = 'На складе пока нет товаров';
+    list.appendChild(empty);
+    return;
   }
+
   entries.forEach(([productId, qty]) => {
     const p = PRODUCTS.find(x => x.id === productId);
     if (!p) return;
