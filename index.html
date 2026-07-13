@@ -600,6 +600,155 @@
   #products-list > div[style*="display:grid"] > * {
     flex:0 0 92px;
   }
+
+
+  /* ОБУЧЕНИЕ И КВЕСТЫ */
+  #event-log { top:164px; }
+  #quest-btn {
+    position:fixed;
+    top:calc(env(safe-area-inset-top, 0px) + 116px);
+    left:18px;
+    z-index:12;
+    width:48px;
+    height:38px;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,0.14);
+    background:rgba(20,20,40,0.88);
+    color:#fff;
+    font-size:20px;
+    cursor:pointer;
+    backdrop-filter:blur(8px);
+    box-shadow:0 6px 18px rgba(0,0,0,0.24);
+  }
+  #quest-btn:active { transform:scale(.94); }
+
+  #quest-tracker {
+    position:fixed;
+    top:calc(env(safe-area-inset-top, 0px) + 116px);
+    left:76px;
+    z-index:11;
+    width:min(235px, calc(100vw - 250px));
+    min-width:128px;
+    height:38px;
+    display:none;
+    align-items:center;
+    gap:8px;
+    padding:6px 10px;
+    border-radius:15px;
+    background:rgba(15,15,34,0.88);
+    border:1px solid rgba(255,255,255,0.12);
+    box-shadow:0 6px 18px rgba(0,0,0,.22);
+    backdrop-filter:blur(8px);
+    cursor:pointer;
+    overflow:hidden;
+  }
+  #quest-tracker-icon { font-size:18px; flex:0 0 auto; }
+  #quest-tracker-copy { min-width:0; flex:1; }
+  #quest-tracker-title {
+    font-size:11px;
+    font-weight:900;
+    color:#fff;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  #quest-tracker-progress {
+    font-size:9px;
+    color:#f5c518;
+    margin-top:2px;
+    white-space:nowrap;
+  }
+
+  #quests-list {
+    display:flex;
+    gap:10px;
+    overflow-x:auto;
+    overflow-y:hidden;
+    padding:2px 2px 12px;
+    scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  #quests-list::-webkit-scrollbar { display:none; }
+  .quest-card {
+    flex:0 0 min(78vw, 286px);
+    scroll-snap-align:start;
+    border-radius:16px;
+    padding:14px;
+    background:rgba(255,255,255,0.055);
+    border:1px solid rgba(255,255,255,0.10);
+    min-height:155px;
+  }
+  .quest-card.active { border-color:#f5c518; background:rgba(245,197,24,.10); }
+  .quest-card.done { border-color:rgba(35,196,131,.45); background:rgba(35,196,131,.08); }
+  .quest-card.locked { opacity:.46; }
+  .quest-card-head { display:flex; align-items:flex-start; gap:10px; }
+  .quest-card-icon { font-size:27px; }
+  .quest-card-title { font-size:14px; font-weight:900; color:#fff; }
+  .quest-card-sub { font-size:11px; color:#999; margin-top:3px; line-height:1.35; }
+  .quest-progress-bar { height:8px; margin-top:14px; border-radius:8px; overflow:hidden; background:rgba(255,255,255,.10); }
+  .quest-progress-fill { height:100%; border-radius:8px; background:linear-gradient(90deg,#e94560,#f5c518); }
+  .quest-card-foot { display:flex; justify-content:space-between; gap:10px; margin-top:9px; font-size:10px; color:#aaa; }
+  .quest-reward { color:#f5c518; font-weight:800; }
+
+  #tutorial-dimmer {
+    position:fixed;
+    inset:0;
+    z-index:80;
+    display:none;
+    background:rgba(4,5,18,.70);
+    pointer-events:none;
+  }
+  #tutorial-spotlight {
+    position:fixed;
+    z-index:81;
+    display:none;
+    border:3px solid #f5c518;
+    border-radius:18px;
+    box-shadow:0 0 0 9999px rgba(4,5,18,.72), 0 0 24px rgba(245,197,24,.75);
+    pointer-events:none;
+    transition:left .18s ease, top .18s ease, width .18s ease, height .18s ease;
+  }
+  #tutorial-card {
+    position:fixed;
+    z-index:82;
+    left:50%;
+    bottom:calc(env(safe-area-inset-bottom, 0px) + 92px);
+    transform:translateX(-50%);
+    width:min(360px, calc(100vw - 28px));
+    display:none;
+    padding:16px;
+    border-radius:20px;
+    background:#15152e;
+    border:1px solid rgba(245,197,24,.46);
+    box-shadow:0 16px 44px rgba(0,0,0,.5);
+  }
+  #tutorial-card.centered { top:50%; bottom:auto; transform:translate(-50%,-50%); }
+  .tutorial-step-label { font-size:10px; color:#f5c518; font-weight:900; text-transform:uppercase; letter-spacing:.8px; }
+  .tutorial-title { font-size:18px; color:#fff; font-weight:900; margin-top:5px; }
+  .tutorial-text { font-size:13px; color:#c5c5d4; line-height:1.45; margin-top:7px; }
+  .tutorial-actions { display:flex; flex-direction:column; gap:8px; margin-top:14px; }
+  .tutorial-primary, .tutorial-secondary {
+    flex:1;
+    border:none;
+    border-radius:13px;
+    padding:11px 10px;
+    font-size:13px;
+    font-weight:900;
+    cursor:pointer;
+  }
+  .tutorial-primary { background:#e94560; color:#fff; }
+  .tutorial-secondary { background:rgba(255,255,255,.07); color:#aaa; }
+  .tutorial-primary:active, .tutorial-secondary:active { transform:scale(.97); }
+
+  @media (max-width:520px) {
+    #quest-tracker { width:calc(100vw - 250px); }
+    #event-log { top:164px; }
+  }
+
 </style>
 </head>
 <body>
@@ -649,6 +798,16 @@
 <!-- КНОПКА НАСТРОЕК -->
 <button id="settings-btn" onclick="openSettingsModal()">⚙️</button>
 
+<!-- КВЕСТЫ -->
+<button id="quest-btn" onclick="openQuestsModal()" aria-label="Квесты">📋</button>
+<div id="quest-tracker" onclick="openQuestsModal()">
+  <div id="quest-tracker-icon">🎯</div>
+  <div id="quest-tracker-copy">
+    <div id="quest-tracker-title">Первый квест</div>
+    <div id="quest-tracker-progress">0 / 1</div>
+  </div>
+</div>
+
 <!-- 3D CANVAS -->
 <div id="canvas-wrap"><canvas id="c"></canvas></div>
 
@@ -667,9 +826,9 @@
 <!-- НИЖНИЕ КНОПКИ -->
 <div id="bottom-btns">
   <button id="editor-toggle-btn" class="bot-btn" onclick="toggleEditorMode()">✏️ Редактор</button>
-  <button class="bot-btn main-btn" onclick="openShopModal()">🛍 Магазин</button>
-  <button class="bot-btn" onclick="openWarehouseModal()">📦 Склад</button>
-  <button class="bot-btn" onclick="openShelvesModal()">🪟 Витрины</button>
+  <button id="shop-main-btn" class="bot-btn main-btn" onclick="openShopModal()">🛍 Магазин</button>
+  <button id="warehouse-main-btn" class="bot-btn" onclick="openWarehouseModal()">📦 Склад</button>
+  <button id="shelves-main-btn" class="bot-btn" onclick="openShelvesModal()">🪟 Витрины</button>
 </div>
 
 <!-- ПОДСКАЗКА РАЗМЕЩЕНИЯ ТОВАРА -->
@@ -818,6 +977,30 @@
   </div>
 </div>
 
+<!-- МОДАЛКА КВЕСТОВ -->
+<div class="modal-bg" id="questsModal">
+  <div class="modal-box">
+    <h3>📋 Квесты</h3>
+    <div style="font-size:11px;color:#888;margin:-4px 0 12px">Выполняйте задания по порядку. Награда начисляется автоматически.</div>
+    <div id="quests-list"></div>
+    <button class="btn-back" style="margin-top:4px" onclick="restartTutorial()">🎓 Повторить обучение</button>
+    <div class="modal-close" onclick="closeQuestsModal()">✕ Закрыть</div>
+  </div>
+</div>
+
+<!-- НАГЛЯДНОЕ ОБУЧЕНИЕ -->
+<div id="tutorial-dimmer"></div>
+<div id="tutorial-spotlight"></div>
+<div id="tutorial-card">
+  <div class="tutorial-step-label" id="tutorial-step-label">Обучение</div>
+  <div class="tutorial-title" id="tutorial-title">Добро пожаловать!</div>
+  <div class="tutorial-text" id="tutorial-text"></div>
+  <div class="tutorial-actions">
+    <button class="tutorial-primary" id="tutorial-next-btn" onclick="tutorialNext()">Начать</button>
+    <button class="tutorial-secondary" id="tutorial-skip-btn" onclick="skipTutorial()">Пропустить обучение</button>
+  </div>
+</div>
+
 <audio id="bgMusic" src="music.mp3" loop preload="auto"></audio>
 <audio id="cashSound" src="cash-sound.mp3" preload="auto"></audio>
 <audio id="clickSound" src="click-sound.mp3" preload="auto"></audio>
@@ -898,6 +1081,319 @@ function isShelfVariantAllowedForShop(variant) {
 }
 
 G.shopType = null; // тип магазина выбирается заново при каждом запуске
+
+
+// ══════════════════════════════════════
+//  ОБУЧЕНИЕ И СТАРТОВЫЕ КВЕСТЫ
+// ══════════════════════════════════════
+const QUEST_DEFINITIONS = [
+  { id:'first_order', icon:'🚚', title:'Первая поставка', text:'Закажите любой доступный товар', event:'product_ordered', target:1, reward:{ money:100, xp:10 } },
+  { id:'first_delivery', icon:'📦', title:'Товар приехал', text:'Дождитесь первой доставки на склад', event:'delivery_arrived', target:1, reward:{ money:100, xp:10 } },
+  { id:'first_stock', icon:'🪟', title:'Заполните витрину', text:'Выставьте товар со склада на витрину', event:'product_stocked', target:1, reward:{ money:150, xp:20 } },
+  { id:'first_sale', icon:'🛍️', title:'Первая продажа', text:'Продайте первый товар покупателю', event:'product_sold', target:1, reward:{ money:200, xp:30 } },
+  { id:'first_collection', icon:'💰', title:'Заберите выручку', text:'Нажмите на кассу и заберите деньги', event:'revenue_collected', target:1, reward:{ money:200, xp:20 } },
+  { id:'open_editor', icon:'✏️', title:'Познакомьтесь с редактором', text:'Откройте режим редактора магазина', event:'editor_opened', target:1, reward:{ money:100, xp:10 } },
+  { id:'reach_level_2', icon:'⭐', title:'Новый уровень', text:'Достигните 2 уровня магазина', event:'level_reached', target:2, absolute:true, reward:{ money:300, crystals:1 } },
+];
+
+const questState = {};
+let questSystemReady = false;
+
+function initQuestSystem() {
+  if (questSystemReady) return;
+  QUEST_DEFINITIONS.forEach(q => {
+    questState[q.id] = { progress: q.absolute && q.event === 'level_reached' ? (G.level || 1) : 0, completed:false };
+  });
+  questSystemReady = true;
+  const btn = document.getElementById('quest-btn');
+  const tracker = document.getElementById('quest-tracker');
+  if (btn) btn.style.display = 'flex';
+  if (tracker) tracker.style.display = 'flex';
+  updateQuestUI();
+}
+
+function getActiveQuestIndex() {
+  return QUEST_DEFINITIONS.findIndex(q => !questState[q.id]?.completed);
+}
+
+function getActiveQuest() {
+  const index = getActiveQuestIndex();
+  return index >= 0 ? QUEST_DEFINITIONS[index] : null;
+}
+
+function rewardText(reward = {}) {
+  const parts = [];
+  if (reward.money) parts.push('💰' + fmt(reward.money));
+  if (reward.xp) parts.push('⭐' + reward.xp + ' XP');
+  if (reward.crystals) parts.push('💎' + reward.crystals);
+  return parts.join(' · ');
+}
+
+function completeQuest(quest) {
+  const state = questState[quest.id];
+  if (!state || state.completed) return;
+  state.completed = true;
+  state.progress = quest.target;
+
+  const reward = quest.reward || {};
+  if (reward.money) G.money += reward.money;
+  if (reward.crystals) G.crystals += reward.crystals;
+  updateHUD();
+  showToast('✅ Квест выполнен: ' + quest.title + (rewardText(reward) ? ' · ' + rewardText(reward) : ''), '#f5c518');
+  logEvent('📋 ' + quest.title + ' выполнен');
+
+  updateQuestUI();
+  if (reward.xp) {
+    setTimeout(() => addXP(reward.xp), 0);
+  }
+}
+
+function notifyGameEvent(eventName, amount = 1, data = {}) {
+  if (!questSystemReady && gameStarted) initQuestSystem();
+
+  const quest = getActiveQuest();
+  if (quest && quest.event === eventName) {
+    const state = questState[quest.id];
+    if (quest.absolute) state.progress = Math.max(state.progress || 0, Number(amount) || 0);
+    else state.progress = Math.min(quest.target, (state.progress || 0) + Math.max(1, Number(amount) || 1));
+    if (state.progress >= quest.target) completeQuest(quest);
+    else updateQuestUI();
+  }
+
+  tutorialNotify(eventName, data);
+}
+
+function updateQuestUI() {
+  if (!questSystemReady) return;
+  const active = getActiveQuest();
+  const tracker = document.getElementById('quest-tracker');
+  const btn = document.getElementById('quest-btn');
+  if (btn) btn.style.display = 'flex';
+  if (tracker) tracker.style.display = 'flex';
+
+  const icon = document.getElementById('quest-tracker-icon');
+  const title = document.getElementById('quest-tracker-title');
+  const progress = document.getElementById('quest-tracker-progress');
+  if (active) {
+    const state = questState[active.id];
+    if (icon) icon.textContent = active.icon;
+    if (title) title.textContent = active.title;
+    if (progress) progress.textContent = Math.min(state.progress || 0, active.target) + ' / ' + active.target + ' · ' + rewardText(active.reward);
+  } else {
+    if (icon) icon.textContent = '🏆';
+    if (title) title.textContent = 'Стартовые квесты завершены';
+    if (progress) progress.textContent = 'Новые задания добавим позже';
+  }
+
+  if (document.getElementById('questsModal')?.classList.contains('show')) renderQuestsModal();
+}
+
+function renderQuestsModal() {
+  const list = document.getElementById('quests-list');
+  if (!list || !questSystemReady) return;
+  list.innerHTML = '';
+  const activeIndex = getActiveQuestIndex();
+
+  QUEST_DEFINITIONS.forEach((quest, index) => {
+    const state = questState[quest.id] || { progress:0, completed:false };
+    const active = index === activeIndex;
+    const locked = activeIndex >= 0 && index > activeIndex;
+    const ratio = state.completed ? 100 : Math.min(100, ((state.progress || 0) / quest.target) * 100);
+    const card = document.createElement('div');
+    card.className = 'quest-card' + (state.completed ? ' done' : active ? ' active' : locked ? ' locked' : '');
+    card.innerHTML = `
+      <div class="quest-card-head">
+        <div class="quest-card-icon">${state.completed ? '✅' : quest.icon}</div>
+        <div>
+          <div class="quest-card-title">${quest.title}</div>
+          <div class="quest-card-sub">${quest.text}</div>
+        </div>
+      </div>
+      <div class="quest-progress-bar"><div class="quest-progress-fill" style="width:${ratio}%"></div></div>
+      <div class="quest-card-foot">
+        <span>${state.completed ? 'Выполнено' : locked ? 'Следующий квест' : Math.min(state.progress || 0, quest.target) + ' / ' + quest.target}</span>
+        <span class="quest-reward">${rewardText(quest.reward)}</span>
+      </div>`;
+    list.appendChild(card);
+  });
+}
+
+function openQuestsModal() {
+  initQuestSystem();
+  renderQuestsModal();
+  document.getElementById('questsModal')?.classList.add('show');
+}
+
+function closeQuestsModal() {
+  document.getElementById('questsModal')?.classList.remove('show');
+}
+
+document.getElementById('questsModal')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('questsModal')) closeQuestsModal();
+});
+
+const TUTORIAL_STEPS = [
+  { id:'welcome', title:'Добро пожаловать в MiceShop!', text:'За несколько шагов вы закажете товар, выставите его на витрину и совершите первую продажу.', manual:true, button:'Начать' },
+  { id:'shop', title:'Откройте магазин', text:'Нажмите кнопку «Магазин». Там находятся товары и оборудование.', event:'shop_opened', target:() => document.getElementById('shop-main-btn') },
+  { id:'product', title:'Выберите первый товар', text:'На 1 уровне доступен один стартовый товар. Нажмите на его карточку.', event:'product_viewed', target:() => document.querySelector('#products-list .prod-row:not(.cant)') },
+  { id:'order', title:'Закажите товар', text:'Оставьте количество 1 и нажмите кнопку покупки. Товар отправится на склад.', event:'product_ordered', target:() => document.querySelector('#itemModalBox .btn-buy') },
+  { id:'delivery', title:'Дождитесь доставки', text:'Откройте склад. На карточке будет показан таймер доставки.', event:'delivery_arrived', target:() => document.getElementById('warehouse-main-btn') },
+  { id:'stock', title:'Выставьте товар', text:'Откройте склад, нажмите «Поставить», затем нажмите на стартовую витрину.', event:'product_stocked', target:() => {
+      if (placingMode) return null;
+      if (document.getElementById('warehouseModal')?.classList.contains('show')) {
+        return [...document.querySelectorAll('#warehouse-list button')].find(btn => btn.textContent.includes('Поставить')) || null;
+      }
+      return document.getElementById('warehouse-main-btn');
+    } },
+  { id:'sale', title:'Первая продажа', text:'Товар уже на витрине. Для обучения первая продажа произойдёт быстрее обычного.', event:'product_sold', target:null },
+  { id:'collect', title:'Заберите выручку', text:'Нажмите на кассу внутри магазина, затем выберите «Забрать всё».', event:'revenue_collected', target:null },
+  { id:'editor', title:'Откройте редактор', text:'Нажмите «Редактор». В этом режиме можно перемещать, вращать и убирать объекты.', event:'editor_opened', target:() => document.getElementById('editor-toggle-btn') },
+  { id:'complete', title:'Обучение завершено!', text:'Теперь выполняйте квесты, повышайте уровень и развивайте магазин.', manual:true, button:'Готово' },
+];
+
+let tutorialActive = false;
+let tutorialStepIndex = 0;
+let tutorialPositionTimer = null;
+let tutorialPreviousAutoStocking = true;
+let tutorialRewardGranted = false;
+
+function startTutorial() {
+  closeQuestsModal();
+  tutorialActive = true;
+  tutorialStepIndex = 0;
+  tutorialPreviousAutoStocking = G.autoStocking;
+  G.autoStocking = false;
+  document.getElementById('tutorial-card').style.display = 'block';
+  if (tutorialPositionTimer) clearInterval(tutorialPositionTimer);
+  tutorialPositionTimer = setInterval(updateTutorialSpotlight, 180);
+  renderTutorialStep();
+}
+
+function restartTutorial() {
+  closeQuestsModal();
+  skipTutorial(true);
+  setTimeout(startTutorial, 120);
+}
+
+function skipTutorial(silent = false) {
+  tutorialActive = false;
+  G.autoStocking = tutorialPreviousAutoStocking;
+  if (tutorialPositionTimer) clearInterval(tutorialPositionTimer);
+  tutorialPositionTimer = null;
+  const card = document.getElementById('tutorial-card');
+  const spot = document.getElementById('tutorial-spotlight');
+  const dim = document.getElementById('tutorial-dimmer');
+  if (card) card.style.display = 'none';
+  if (spot) spot.style.display = 'none';
+  if (dim) dim.style.display = 'none';
+  if (!silent) showToast('🎓 Обучение можно повторить в меню квестов');
+}
+
+function finishTutorial() {
+  if (!tutorialRewardGranted) {
+    tutorialRewardGranted = true;
+    G.money += 250;
+    G.crystals += 1;
+    updateHUD();
+    showToast('🎓 Обучение завершено · 💰250 · 💎1', '#f5c518');
+  }
+  skipTutorial(true);
+}
+
+function tutorialNext() {
+  if (!tutorialActive) return;
+  const step = TUTORIAL_STEPS[tutorialStepIndex];
+  if (!step?.manual) return;
+  if (step.id === 'complete') { finishTutorial(); return; }
+  tutorialStepIndex = Math.min(TUTORIAL_STEPS.length - 1, tutorialStepIndex + 1);
+  renderTutorialStep();
+}
+
+function tutorialNotify(eventName, data = {}) {
+  if (!tutorialActive) return;
+  const step = TUTORIAL_STEPS[tutorialStepIndex];
+  if (!step || step.event !== eventName) return;
+
+  if (eventName === 'product_stocked' && data.slotIdx !== undefined && G.slots[data.slotIdx]) {
+    G.slots[data.slotIdx].nextSaleAt = Date.now() + 7000;
+  }
+
+  tutorialStepIndex = Math.min(TUTORIAL_STEPS.length - 1, tutorialStepIndex + 1);
+  renderTutorialStep();
+}
+
+function renderTutorialStep() {
+  if (!tutorialActive) return;
+  const step = TUTORIAL_STEPS[tutorialStepIndex];
+  if (!step) return;
+  const card = document.getElementById('tutorial-card');
+  const label = document.getElementById('tutorial-step-label');
+  const title = document.getElementById('tutorial-title');
+  const body = document.getElementById('tutorial-text');
+  const next = document.getElementById('tutorial-next-btn');
+  if (!card || !label || !title || !body || !next) return;
+
+  const actionCount = TUTORIAL_STEPS.length - 2;
+  const visibleStep = Math.max(0, Math.min(actionCount, tutorialStepIndex));
+  label.textContent = step.id === 'welcome' ? 'Короткое обучение' : step.id === 'complete' ? 'Готово' : 'Шаг ' + visibleStep + ' из ' + actionCount;
+  title.textContent = step.title;
+  body.textContent = (step.id === 'stock' && placingMode) ? 'Теперь нажмите прямо на стартовую витрину внутри магазина.' : step.text;
+  next.style.display = step.manual ? '' : 'none';
+  next.textContent = step.button || 'Далее';
+  card.classList.toggle('centered', step.id === 'welcome' || step.id === 'complete');
+  updateTutorialSpotlight();
+}
+
+function getTutorialTarget() {
+  if (!tutorialActive) return null;
+  const step = TUTORIAL_STEPS[tutorialStepIndex];
+  if (!step || typeof step.target !== 'function') return null;
+  try { return step.target(); } catch (e) { return null; }
+}
+
+function updateTutorialSpotlight() {
+  if (!tutorialActive) return;
+  const step = TUTORIAL_STEPS[tutorialStepIndex];
+  const card = document.getElementById('tutorial-card');
+  const spot = document.getElementById('tutorial-spotlight');
+  const dim = document.getElementById('tutorial-dimmer');
+  if (!card || !spot || !dim || !step) return;
+
+  const target = getTutorialTarget();
+  if (!target || !target.isConnected || target.offsetParent === null || step.manual) {
+    spot.style.display = 'none';
+    dim.style.display = 'block';
+    if (!step.manual) card.classList.remove('centered');
+    return;
+  }
+
+  const rect = target.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    spot.style.display = 'none';
+    dim.style.display = 'block';
+    return;
+  }
+
+  dim.style.display = 'none';
+  spot.style.display = 'block';
+  const pad = 8;
+  spot.style.left = Math.max(4, rect.left - pad) + 'px';
+  spot.style.top = Math.max(4, rect.top - pad) + 'px';
+  spot.style.width = Math.min(window.innerWidth - Math.max(4, rect.left - pad) - 4, rect.width + pad * 2) + 'px';
+  spot.style.height = Math.min(window.innerHeight - Math.max(4, rect.top - pad) - 4, rect.height + pad * 2) + 'px';
+
+  card.classList.remove('centered');
+  if (rect.top + rect.height / 2 > window.innerHeight / 2) {
+    card.style.top = 'calc(env(safe-area-inset-top, 0px) + 88px)';
+    card.style.bottom = 'auto';
+  } else {
+    card.style.top = 'auto';
+    card.style.bottom = 'calc(env(safe-area-inset-bottom, 0px) + 92px)';
+  }
+}
+
+window.addEventListener('resize', updateTutorialSpotlight);
+window.addEventListener('scroll', updateTutorialSpotlight, true);
 
 
 const STAFF_TYPES_INFO = {
@@ -5400,6 +5896,7 @@ function sellOneUnitFromShelf(slotIdx, reason = 'timer') {
   }
 
   updateHUD();
+  notifyGameEvent('product_sold', 1, { productId:item.product.id, slotIdx, amount:saleAmount });
   return true;
 }
 
@@ -5725,6 +6222,7 @@ function addXP(amount) {
   }
 
   updateHUD();
+  notifyGameEvent('level_reached', G.level || 1, { level:G.level || 1 });
 }
 
 function clampRating(n) {
@@ -6250,6 +6748,7 @@ function buyProductDelivery(productId, qty = 1) {
   closeItemModal();
   closeShopModal();
   showToast('🚚 ' + p.name + ' ×' + qty + ' будет доставлен через ' + fmtTime(sec));
+  notifyGameEvent('product_ordered', 1, { productId:p.id, qty });
 }
 
 function updateDeliveries() {
@@ -6266,6 +6765,7 @@ function updateDeliveries() {
     addProductToStorage(d.productId, d.qty);
     showToast('📦 Доставка приехала: ' + p.name + ' ×' + d.qty);
     logEvent('🚚 Доставка: ' + p.emoji + ' ' + p.name + ' ×' + d.qty + ' → склад');
+    notifyGameEvent('delivery_arrived', 1, { productId:d.productId, qty:d.qty });
   });
   if (arrived.length && document.getElementById('warehouseModal')?.classList.contains('show')) renderWarehouseModal();
 }
@@ -6440,6 +6940,8 @@ function openShopModal() {
   renderSubcatTabs();
   renderProductList();
   document.getElementById('shopModal').classList.add('show');
+  notifyGameEvent('shop_opened', 1);
+  updateTutorialSpotlight();
 }
 function closeShopModal() {
   document.getElementById('shopModal').classList.remove('show');
@@ -6821,6 +7323,8 @@ function showItemDetail(p) {
   buyQty = 1;
   renderItemDetail();
   document.getElementById('itemModal').classList.add('show');
+  notifyGameEvent('product_viewed', 1, { productId:p.id });
+  updateTutorialSpotlight();
 }
 
 function renderItemDetail() {
@@ -7140,6 +7644,8 @@ function chooseShopType(type) {
     gameStarted = true;
     updateHUD();
     logEvent(config.icon + ' Открыт ' + config.name);
+    initQuestSystem();
+    setTimeout(startTutorial, 450);
   }, 900);
 }
 
@@ -7614,6 +8120,7 @@ function enterEditorMode() {
     toggle.textContent = '✕ Выйти из редактора';
     toggle.classList.add('editor-active');
   }
+  notifyGameEvent('editor_opened', 1);
 }
 
 function exitEditorMode() {
@@ -8349,6 +8856,7 @@ function placeItem(productId, slotIdx, qty = 1, fromStorage = false) {
   }
 
   updateHUD();
+  notifyGameEvent('product_stocked', 1, { productId:p.id, slotIdx, qty });
 }
 
 function collectItem(e, i) {
@@ -8482,6 +8990,7 @@ function finishShelfCleanup(slotIdx) {
 function openWarehouseModal() {
   renderWarehouseModal();
   document.getElementById('warehouseModal').classList.add('show');
+  updateTutorialSpotlight();
 }
 function closeWarehouseModal() {
   const el = document.getElementById('warehouseModal');
@@ -8631,6 +9140,7 @@ function startPlacingFromStorage(productId) {
   const qty = Math.max(1, Math.min(G.storage[productId] || 0, warehousePlaceQty[productId] || 1));
   if (qty <= 0) return;
   startPlacing(productId, qty, true);
+  renderTutorialStep();
 }
 
 
@@ -8768,13 +9278,15 @@ function openCashModal() {
 }
 
 function collectAllRevenue() {
-  G.money += G.pendingRevenue;
-  G.totalEarned += G.pendingRevenue;
-  showToast('💰 +' + fmt(G.pendingRevenue) + '₽ получено!', '#f5c518');
+  const collectedAmount = G.pendingRevenue;
+  G.money += collectedAmount;
+  G.totalEarned += collectedAmount;
+  showToast('💰 +' + fmt(collectedAmount) + '₽ получено!', '#f5c518');
   G.pendingRevenue = 0;
   G.pendingItems = [];
   closeCashModal();
   updateHUD();
+  notifyGameEvent('revenue_collected', 1, { amount:collectedAmount });
 }
 
 function closeCashModal() {
