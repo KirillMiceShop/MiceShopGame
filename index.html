@@ -257,40 +257,58 @@
     top:calc(env(safe-area-inset-top, 0px) + 10px);
     right:12px;
     z-index:10;
-    min-width:136px;
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    gap:8px;
+  }
+  #hud-level-box,
+  .money-pill {
     background:rgba(10,10,30,0.78);
     backdrop-filter:blur(8px);
     border:1px solid rgba(255,255,255,0.10);
-    border-radius:16px;
-    padding:9px 10px 10px;
     box-shadow:0 6px 22px rgba(0,0,0,0.22);
   }
-  #levelLabel { font-size:11px; font-weight:700; color:#d8d8e8; text-align:right; }
+  #hud-level-box {
+    min-width:126px;
+    max-width:150px;
+    border-radius:16px;
+    padding:7px 10px 8px;
+  }
+  #levelLabel {
+    font-size:10px;
+    font-weight:800;
+    color:#d8d8e8;
+    text-align:center;
+    white-space:nowrap;
+  }
   .money-pill {
-    display:block;
-    background:rgba(245,197,24,0.16);
-    border:1px solid rgba(245,197,24,0.42);
-    padding:6px 12px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-width:110px;
+    padding:7px 12px;
     border-radius:18px;
-    font-size:14px;
+    font-size:12px;
     font-weight:800;
     color:#f5c518;
     text-align:center;
-    margin-top:7px;
+    background:rgba(245,197,24,0.13);
+    border-color:rgba(245,197,24,0.35);
   }
   .crystal-pill {
-    background:rgba(111,196,255,0.16);
-    border-color:rgba(111,196,255,0.45);
+    background:rgba(111,196,255,0.14);
+    border-color:rgba(111,196,255,0.40);
     color:#8fd7ff;
   }
 
-  /* XP BAR — внутри правой карточки */
+  /* XP BAR — внутри отдельной карточки уровня */
   #xp-bar-wrap {
-    margin-top:6px;
+    margin-top:5px;
   }
-  #xp-bar { height:4px; background:rgba(255,255,255,0.13); border-radius:6px; overflow:hidden; }
+  #xp-bar { height:3px; background:rgba(255,255,255,0.13); border-radius:6px; overflow:hidden; }
   #xp-fill { height:100%; background:linear-gradient(90deg,#e94560,#9c27b0); border-radius:6px; transition:width .5s; }
-  #xp-label { font-size:9px; color:#8e8ea7; margin-top:3px; text-align:right; }
+  #xp-label { font-size:8px; color:#8e8ea7; margin-top:3px; text-align:right; }
 
   /* НИЖНИЕ КНОПКИ */
   #bottom-btns {
@@ -806,6 +824,219 @@
   }
 
 
+
+  /* СТИЛИ МЕНЮ МАГАЗИНА И СКЛАДА */
+  body {
+    --menu-bg:#13132a;
+    --menu-card:rgba(255,255,255,0.05);
+    --menu-card-strong:rgba(255,255,255,0.08);
+    --menu-border:rgba(255,255,255,0.11);
+    --menu-text:#eeeeF6;
+    --menu-muted:#8f8fa6;
+    --menu-accent:#e94560;
+    --menu-accent-text:#ffffff;
+    --menu-secondary:#f5c518;
+    --menu-secondary-text:#111111;
+    --menu-profit:#00c896;
+    --menu-close:#68687d;
+  }
+  body[data-menu-style="sky"] {
+    --menu-bg:linear-gradient(145deg,#154963 0%,#277ea2 55%,#54b6d6 100%);
+    --menu-card:rgba(232,249,255,0.12);
+    --menu-card-strong:rgba(232,249,255,0.18);
+    --menu-border:rgba(220,247,255,0.32);
+    --menu-text:#f5fcff;
+    --menu-muted:#c5e9f5;
+    --menu-accent:#7dd9f5;
+    --menu-accent-text:#103747;
+    --menu-secondary:#dff7ff;
+    --menu-secondary-text:#123a4c;
+    --menu-profit:#8ff0cd;
+    --menu-close:#c0e7f2;
+  }
+  body[data-menu-style="emerald"] {
+    --menu-bg:linear-gradient(145deg,#0d302b 0%,#0f5c4b 58%,#17866a 100%);
+    --menu-card:rgba(207,255,238,0.10);
+    --menu-card-strong:rgba(207,255,238,0.16);
+    --menu-border:rgba(174,255,222,0.27);
+    --menu-text:#effff8;
+    --menu-muted:#b8e8d5;
+    --menu-accent:#37d5a1;
+    --menu-accent-text:#082c22;
+    --menu-secondary:#b8f5da;
+    --menu-secondary-text:#103b2f;
+    --menu-profit:#e0ff8f;
+    --menu-close:#a7d9c6;
+  }
+  body[data-menu-style="silver"] {
+    --menu-bg:linear-gradient(145deg,#f3f4f6 0%,#d7dbe1 60%,#bec4cd 100%);
+    --menu-card:rgba(255,255,255,0.48);
+    --menu-card-strong:rgba(255,255,255,0.66);
+    --menu-border:rgba(45,52,63,0.18);
+    --menu-text:#252a33;
+    --menu-muted:#626a75;
+    --menu-accent:#687487;
+    --menu-accent-text:#ffffff;
+    --menu-secondary:#4f5968;
+    --menu-secondary-text:#ffffff;
+    --menu-profit:#16785e;
+    --menu-close:#5f6670;
+  }
+  body[data-menu-style="marble"] {
+    --menu-bg:
+      radial-gradient(circle at 16% 12%,rgba(255,255,255,0.62),transparent 20%),
+      radial-gradient(circle at 82% 78%,rgba(111,82,49,0.16),transparent 26%),
+      repeating-linear-gradient(128deg,rgba(255,255,255,0.11) 0 2px,transparent 2px 26px),
+      linear-gradient(145deg,#eadfcf 0%,#cbb99d 58%,#aa9270 100%);
+    --menu-card:rgba(255,250,242,0.38);
+    --menu-card-strong:rgba(255,250,242,0.56);
+    --menu-border:rgba(83,61,37,0.23);
+    --menu-text:#3d3023;
+    --menu-muted:#705f4e;
+    --menu-accent:#a56e3d;
+    --menu-accent-text:#ffffff;
+    --menu-secondary:#6f4d2f;
+    --menu-secondary-text:#fff8ed;
+    --menu-profit:#426f4e;
+    --menu-close:#695847;
+  }
+  body[data-menu-style="burgundy"] {
+    --menu-bg:linear-gradient(145deg,#32101e 0%,#671830 58%,#8d2947 100%);
+    --menu-card:rgba(255,220,231,0.09);
+    --menu-card-strong:rgba(255,220,231,0.15);
+    --menu-border:rgba(255,198,216,0.24);
+    --menu-text:#fff4f7;
+    --menu-muted:#e6bbc8;
+    --menu-accent:#df5d82;
+    --menu-accent-text:#ffffff;
+    --menu-secondary:#ffd1dc;
+    --menu-secondary-text:#4e1528;
+    --menu-profit:#90e7bc;
+    --menu-close:#d7aab7;
+  }
+
+  #shopModal .modal-box,
+  #warehouseModal .modal-box,
+  #itemModal .modal-box {
+    background:var(--menu-bg);
+    border-color:var(--menu-border);
+    color:var(--menu-text);
+    transition:background .25s ease,border-color .25s ease,color .25s ease;
+  }
+  #shopModal h3,
+  #warehouseModal h3,
+  #itemModal .item-modal-title,
+  #shopModal .pr-name,
+  #warehouseModal .pr-name {
+    color:var(--menu-text);
+  }
+  #shopModal .pr-sub,
+  #warehouseModal .pr-sub,
+  #itemModal .item-modal-cat,
+  #itemModal .item-stat-lbl {
+    color:var(--menu-muted);
+  }
+  #shopModal .prod-row,
+  #warehouseModal .prod-row,
+  #itemModal .item-stat {
+    background:var(--menu-card)!important;
+    border-color:var(--menu-border)!important;
+  }
+  #shopModal .cat-tab,
+  #shopModal .subcat-tab,
+  #warehouseModal .btn-back,
+  #itemModal .btn-back,
+  #warehouseModal .warehouse-auto-stock-btn {
+    background:var(--menu-card);
+    border-color:var(--menu-border);
+    color:var(--menu-muted);
+  }
+  #shopModal .cat-tab.active,
+  #warehouseModal .warehouse-tab-btn.active,
+  #warehouseModal .warehouse-product-tab-btn.active {
+    background:var(--menu-accent)!important;
+    border-color:var(--menu-accent)!important;
+    color:var(--menu-accent-text)!important;
+  }
+  #shopModal .subcat-tab.active {
+    background:var(--menu-card-strong);
+    border-color:var(--menu-secondary);
+    color:var(--menu-secondary);
+  }
+  #shopModal .prod-row:active,
+  #warehouseModal .prod-row:active {
+    border-color:var(--menu-accent)!important;
+  }
+  #shopModal .pr-price,
+  #warehouseModal .pr-price,
+  #itemModal .item-stat-val {
+    color:var(--menu-secondary)!important;
+  }
+  #shopModal .pr-profit,
+  #warehouseModal .pr-profit {
+    color:var(--menu-profit)!important;
+  }
+  #shopModal .modal-close,
+  #warehouseModal .modal-close,
+  #itemModal .btn-back {
+    color:var(--menu-close);
+  }
+  #shopModal .btn-buy,
+  #warehouseModal .btn-buy,
+  #itemModal .btn-buy {
+    background:var(--menu-accent)!important;
+    color:var(--menu-accent-text)!important;
+  }
+
+  /* Выбор оформления в окне уровня магазина */
+  #ratingModal .menu-style-entry { grid-column:1 / -1; }
+  .menu-style-grid {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:9px;
+    margin-top:12px;
+  }
+  .menu-style-option {
+    min-width:0;
+    padding:9px;
+    border-radius:15px;
+    border:1px solid rgba(255,255,255,0.10);
+    background:rgba(255,255,255,0.045);
+    cursor:pointer;
+    transition:transform .15s,border-color .15s,background .15s;
+  }
+  .menu-style-option:active { transform:scale(.97); }
+  .menu-style-option.active {
+    border-color:#f5c518;
+    background:rgba(245,197,24,0.11);
+    box-shadow:0 0 0 1px rgba(245,197,24,0.18) inset;
+  }
+  .menu-style-preview {
+    height:52px;
+    border-radius:11px;
+    border:1px solid rgba(255,255,255,0.18);
+    overflow:hidden;
+    position:relative;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.16);
+  }
+  .menu-style-preview::before,
+  .menu-style-preview::after {
+    content:'';
+    position:absolute;
+    left:8px;
+    right:8px;
+    height:8px;
+    border-radius:8px;
+    background:rgba(255,255,255,0.24);
+  }
+  .menu-style-preview::before { top:10px; }
+  .menu-style-preview::after { top:27px; right:28px; }
+  .menu-style-name { margin-top:7px; font-size:12px; font-weight:900; color:#fff; }
+  .menu-style-sub { margin-top:2px; font-size:9px; color:#8f8fa6; line-height:1.3; }
+  @media (max-width:390px) {
+    .menu-style-grid { grid-template-columns:1fr; }
+  }
+
   /* КОМПАКТНЫЕ МЕНЮ МАГАЗИНА И СКЛАДА В ГОРИЗОНТАЛЬНОМ РЕЖИМЕ
      На телефоне окно становится шире, а кнопки, отступы и карточки — немного меньше.
      Это позволяет видеть больше содержимого без вертикальной прокрутки всего меню. */
@@ -980,10 +1211,12 @@
 </div>
 
 <div id="hud-stats">
-  <div id="levelLabel">Ур.1 — Новичок</div>
-  <div id="xp-bar-wrap">
-    <div id="xp-bar"><div id="xp-fill" style="width:0%"></div></div>
-    <div id="xp-label">0 / 300 XP</div>
+  <div id="hud-level-box">
+    <div id="levelLabel">Ур.1 — Новичок</div>
+    <div id="xp-bar-wrap">
+      <div id="xp-bar"><div id="xp-fill" style="width:0%"></div></div>
+      <div id="xp-label">0 / 300 XP</div>
+    </div>
   </div>
   <div class="money-pill" id="moneyDisplay">💰 5 000</div>
   <div class="money-pill crystal-pill" id="crystalDisplay">💎 20</div>
@@ -1121,6 +1354,7 @@
       <div class="rating-action-grid">
         <button class="rating-action-btn" onclick="openRatingStatsModal()">📊 Статистика</button>
         <button class="rating-action-btn" onclick="openWorkersModal()">👥 Работники</button>
+        <button class="rating-action-btn menu-style-entry" onclick="openMenuStyleModal()">🎨 Стиль меню</button>
       </div>
     </div>
     <div class="modal-close" onclick="closeRatingModal()">✕ Закрыть</div>
@@ -1171,6 +1405,21 @@
     <div class="rating-action-grid">
       <button class="rating-action-btn" onclick="openWorkersModal(); closeWorkerStyleModal();">↩ Работники</button>
       <button class="rating-action-btn" onclick="closeWorkerStyleModal()">Готово</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА СТИЛЯ МЕНЮ -->
+<div class="modal-bg" id="menuStyleModal">
+  <div class="modal-box">
+    <h3>🎨 Стиль меню</h3>
+    <div class="worker-card">
+      <div class="worker-sub">Оформление применяется к окнам магазина, выбора товара и склада.</div>
+      <div class="menu-style-grid" id="menuStyleList"></div>
+    </div>
+    <div class="rating-action-grid">
+      <button class="rating-action-btn" onclick="openRatingModal(); closeMenuStyleModal();">↩ Рейтинг</button>
+      <button class="rating-action-btn" onclick="closeMenuStyleModal()">Готово</button>
     </div>
   </div>
 </div>
@@ -1228,6 +1477,7 @@ const G = {
   deliveries: [], // ожидаемые доставки товаров
   staff: { cashier: 1, seller: 1, cleaner: 0, guard: 0 },
   staffStyles: { cashier: 'classic', seller: 'classic', cleaner: 'classic', guard: 'classic' },
+  menuStyle: 'standard',
   ratingHistory: [],
   ratingServiceDelta: 0, // бонус/штраф за визуальное обслуживание покупателей
   shelfRotations: Array(1).fill(0), // поворот витрин
@@ -2002,7 +2252,7 @@ function bindClickSoundEffects() {
     if (!target) return;
 
     const uiHit = target.closest && target.closest(
-      'button, .bot-btn, .cat-tab, .subcat-tab, .prod-row, .prod-card, .modal-close, .btn-buy, .btn-back, #settings-btn, #hud-name, #move-cancel span, .edit-popup-btn, .toggle-switch'
+      'button, .bot-btn, .cat-tab, .subcat-tab, .prod-row, .prod-card, .menu-style-option, .modal-close, .btn-buy, .btn-back, #settings-btn, #hud-name, #move-cancel span, .edit-popup-btn, .toggle-switch'
     );
 
     const canvasHit = target.tagName === 'CANVAS';
@@ -6822,6 +7072,93 @@ function addXP(amount) {
   notifyGameEvent('level_reached', G.level || 1, { level:G.level || 1 });
 }
 
+const MENU_STYLE_SAVE_KEY = 'miceshop_menu_style_v1';
+const MENU_STYLE_OPTIONS = [
+  {
+    id:'standard', name:'Стандартный', sub:'Тёмный классический стиль',
+    preview:'linear-gradient(145deg,#13132a,#25254b)'
+  },
+  {
+    id:'sky', name:'Небесно-голубой', sub:'Свежий голубой градиент',
+    preview:'linear-gradient(145deg,#154963,#54b6d6)'
+  },
+  {
+    id:'emerald', name:'Изумрудный', sub:'Глубокий зелёный стиль',
+    preview:'linear-gradient(145deg,#0d302b,#17866a)'
+  },
+  {
+    id:'silver', name:'Светло-серый', sub:'Белый стиль с серым оттенком',
+    preview:'linear-gradient(145deg,#f3f4f6,#bec4cd)'
+  },
+  {
+    id:'marble', name:'Песочный мрамор', sub:'Тёплый каменный оттенок',
+    preview:'radial-gradient(circle at 18% 16%,rgba(255,255,255,.7),transparent 24%),linear-gradient(145deg,#eadfcf,#aa9270)'
+  },
+  {
+    id:'burgundy', name:'Бордовый', sub:'Глубокий красно-винный стиль',
+    preview:'linear-gradient(145deg,#32101e,#8d2947)'
+  }
+];
+
+function getMenuStyleOption(styleId = G.menuStyle) {
+  return MENU_STYLE_OPTIONS.find(style => style.id === styleId) || MENU_STYLE_OPTIONS[0];
+}
+
+function applyMenuStyle(styleId = G.menuStyle, save = false) {
+  const selected = getMenuStyleOption(styleId);
+  G.menuStyle = selected.id;
+  document.body.dataset.menuStyle = selected.id;
+  if (save) {
+    try { localStorage.setItem(MENU_STYLE_SAVE_KEY, selected.id); } catch (e) {}
+  }
+}
+
+function loadMenuStyle() {
+  let saved = 'standard';
+  try { saved = localStorage.getItem(MENU_STYLE_SAVE_KEY) || 'standard'; } catch (e) {}
+  applyMenuStyle(saved, false);
+}
+
+function renderMenuStyleList() {
+  const list = document.getElementById('menuStyleList');
+  if (!list) return;
+  const selected = getMenuStyleOption().id;
+  list.innerHTML = MENU_STYLE_OPTIONS.map(style => `
+    <div class="menu-style-option ${style.id === selected ? 'active' : ''}" onclick="setMenuStyle('${style.id}')">
+      <div class="menu-style-preview" style="background:${style.preview}"></div>
+      <div class="menu-style-name">${style.name}</div>
+      <div class="menu-style-sub">${style.sub}</div>
+    </div>`).join('');
+}
+
+function setMenuStyle(styleId) {
+  const selected = getMenuStyleOption(styleId);
+  applyMenuStyle(selected.id, true);
+  renderMenuStyleList();
+  showToast('🎨 Стиль меню: ' + selected.name);
+}
+
+function openMenuStyleModal() {
+  renderMenuStyleList();
+  closeRatingModal();
+  closeRatingStatsModal();
+  closeWorkersModal();
+  const modal = document.getElementById('menuStyleModal');
+  if (modal) modal.classList.add('show');
+}
+
+function closeMenuStyleModal() {
+  const modal = document.getElementById('menuStyleModal');
+  if (modal) modal.classList.remove('show');
+}
+
+const menuStyleModalEl = document.getElementById('menuStyleModal');
+if (menuStyleModalEl) {
+  menuStyleModalEl.addEventListener('click', event => {
+    if (event.target === menuStyleModalEl) closeMenuStyleModal();
+  });
+}
+
 function clampRating(n) {
   return Math.max(0, Math.min(100, Math.round(n || 0)));
 }
@@ -6875,6 +7212,7 @@ function updateRatingUI() {
 }
 
 function openRatingModal() {
+  closeMenuStyleModal();
   updateRatingUI();
   const m = document.getElementById('ratingModal');
   if (m) m.classList.add('show');
@@ -6948,6 +7286,7 @@ function renderRatingStatsModal() {
 }
 
 function openRatingStatsModal() {
+  closeMenuStyleModal();
   updateRatingUI();
   renderRatingStatsModal();
   closeRatingModal();
@@ -6991,6 +7330,7 @@ function renderWorkersModal() {
 }
 
 function openWorkersModal() {
+  closeMenuStyleModal();
   renderWorkersModal();
   closeRatingModal();
   closeRatingStatsModal();
@@ -9647,8 +9987,8 @@ function renderWarehouseModal() {
   list.innerHTML = '';
 
   tabs.innerHTML = `
-    <button class="btn-back" style="margin:0;flex:1;${warehouseTab==='products'?'background:#f5c518;color:#111':''}" onclick="setWarehouseTab('products')">📦 Товары</button>
-    <button class="btn-back" style="margin:0;flex:1;${warehouseTab==='objects'?'background:#f5c518;color:#111':''}" onclick="setWarehouseTab('objects')">⚙️ Оборудование</button>`;
+    <button class="btn-back warehouse-tab-btn ${warehouseTab==='products'?'active':''}" style="margin:0;flex:1" onclick="setWarehouseTab('products')">📦 Товары</button>
+    <button class="btn-back warehouse-tab-btn ${warehouseTab==='objects'?'active':''}" style="margin:0;flex:1" onclick="setWarehouseTab('objects')">⚙️ Оборудование</button>`;
 
   if (warehouseTab === 'objects') {
     productTabs.style.display = 'none';
@@ -9659,8 +9999,8 @@ function renderWarehouseModal() {
 
   productTabs.style.display = 'flex';
   productTabs.innerHTML = `
-    <button class="btn-back" data-product-tab="transit" style="${warehouseProductTab==='transit'?'background:#f5c518;color:#111':''}" onclick="setWarehouseProductTab('transit')">🚚 В пути</button>
-    <button class="btn-back" data-product-tab="stock" style="${warehouseProductTab==='stock'?'background:#f5c518;color:#111':''}" onclick="setWarehouseProductTab('stock')">📦 На складе</button>`;
+    <button class="btn-back warehouse-product-tab-btn ${warehouseProductTab==='transit'?'active':''}" data-product-tab="transit" onclick="setWarehouseProductTab('transit')">🚚 В пути</button>
+    <button class="btn-back warehouse-product-tab-btn ${warehouseProductTab==='stock'?'active':''}" data-product-tab="stock" onclick="setWarehouseProductTab('stock')">📦 На складе</button>`;
 
   const entries = Object.entries(G.storage);
   const deliveries = (G.deliveries || []).filter(d => d.readyAt > Date.now());
@@ -10016,6 +10356,7 @@ function animate() {
 }
 
 // ── START ──
+loadMenuStyle();
 initializeShopTypeScreen();
 updateHUD();
 animate();
