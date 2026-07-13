@@ -3169,10 +3169,9 @@ function startInternalWallBuild(axis = 'x', storageKey = null) {
     mh.textContent = pendingInternalWallAxis === 'x'
       ? '🧱 Стена ↔: нажимай по полу, каждый кусок 300₽'
       : '🧱 Стена ↕: нажимай по полу, каждый кусок 300₽';
-    mh.style.display = storageKey ? 'none' : 'block';
+    mh.style.display = 'none';
   }
   if (mc) mc.style.display = 'block';
-  if (!storageKey) showToast('🧱 Нажми на пол внутри магазина, чтобы поставить кусок стены');
 }
 
 function stopInternalWallBuildMode() {
@@ -3523,9 +3522,8 @@ function startDecorPlacement(type, storageKey = null) {
   if (bb) bb.style.display = 'none';
   if (ph) {
     ph.textContent = def.place === 'wall' ? '👆 Нажми на стену — повесить декор' : '👆 Нажми на пол — поставить декор';
-    ph.style.display = fromStorage ? 'none' : 'block';
+    ph.style.display = 'none';
   }
-  if (!fromStorage) showToast(def.emoji + ' Выбери место для декорации');
 }
 
 function stopDecorPlaceMode() {
@@ -3565,6 +3563,7 @@ function placeDecorFromTap(clientX, clientY) {
     showToast('✅ Декорация куплена и поставлена');
   }
   stopDecorPlaceMode();
+  enterEditorMode();
 }
 
 function makeWindowMesh(win) {
@@ -4437,8 +4436,8 @@ function buyCashRegister(variant) {
   addCashRegister(variant, x, z);
 
   closeShopModal();
-  startMoveMode();
-  showToast('✅ Касса куплена! Теперь её можно передвинуть');
+  enterEditorMode();
+  showToast('✅ Касса куплена');
 }
 function buyDoor(variant) {
   if (G.money < variant.price) { showToast('❌ Недостаточно денег'); return; }
@@ -4452,8 +4451,8 @@ function buyDoor(variant) {
   addDoor(place.axis, place.pos, variant.id);
 
   closeShopModal();
-  startMoveMode();
-  showToast('🚪 Дверь куплена! Зажми её и перемести по стене');
+  enterEditorMode();
+  showToast('✅ Дверь куплена');
 }
 
 
@@ -6645,8 +6644,8 @@ function renderProductList() {
           updateHUD();
           addWindow(place.axis, place.pos, wt.id);
           closeShopModal();
-          startWinMoveMode();
-          showToast('🪟 Окно куплено! Зажми его и перемести по стене');
+          enterEditorMode();
+          showToast('✅ Окно куплено');
         };
         list.appendChild(el);
       });
@@ -6940,6 +6939,7 @@ function buyShelf(sv) {
   G.shelfRotations.push(0);
   addShelfMesh(idx, nx, nz, sv.color, sv.topColor, sv.id);
   closeShopModal();
+  enterEditorMode();
   showToast('✅ ' + sv.name + ' куплена!');
 }
 
@@ -7611,7 +7611,7 @@ function enterEditorMode() {
     });
   }
   if (toggle) {
-    toggle.textContent = '✕';
+    toggle.textContent = '✕ Выйти из редактора';
     toggle.classList.add('editor-active');
   }
 }
