@@ -449,6 +449,7 @@
   }
   .modal-bg.show { opacity:1; pointer-events:all; }
   .modal-box {
+    position:relative;
     background:#13132a;
     border-radius:20px;
     border:1px solid rgba(255,255,255,0.1);
@@ -517,7 +518,34 @@
   .prod-card .pn { font-size:11px; font-weight:600; margin-top:3px; }
   .prod-card .pc { font-size:10px; color:#f5c518; }
   .prod-card .pp { font-size:9px; color:#00c896; }
-  .modal-close { display:block; margin-top:12px; text-align:center; color:#555; font-size:13px; padding:8px; cursor:pointer; }
+  .modal-close {
+    position:absolute;
+    top:12px;
+    right:12px;
+    z-index:4;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:30px;
+    height:30px;
+    margin:0;
+    padding:0;
+    border-radius:50%;
+    border:1px solid var(--menu-border, rgba(255,255,255,0.12));
+    background:var(--menu-card, rgba(255,255,255,0.07));
+    color:var(--menu-close, #aaa);
+    font-size:16px;
+    line-height:1;
+    font-weight:800;
+    cursor:pointer;
+    backdrop-filter:blur(6px);
+    transition:transform .15s, background .15s, border-color .15s;
+  }
+  .modal-close:active { transform:scale(.9); }
+  .modal-box > h3:first-child,
+  #shopModal #modal-header > h3:first-child,
+  .warehouse-heading-row { padding-right:42px; }
+
 
   /* TOAST */
   #toast {
@@ -825,20 +853,21 @@
 
 
 
-  /* СТИЛИ МЕНЮ МАГАЗИНА И СКЛАДА */
+  /* ГЛОБАЛЬНЫЕ СТИЛИ ВСЕХ МЕНЮ И ОКОН */
   body {
-    --menu-bg:#13132a;
-    --menu-card:rgba(255,255,255,0.05);
-    --menu-card-strong:rgba(255,255,255,0.08);
-    --menu-border:rgba(255,255,255,0.11);
-    --menu-text:#eeeeF6;
-    --menu-muted:#8f8fa6;
-    --menu-accent:#e94560;
+    /* Стандартный стиль: простое бело-серебристое оформление. */
+    --menu-bg:linear-gradient(145deg,#fbfbfb 0%,#e7e7e9 58%,#c9cacf 100%);
+    --menu-card:rgba(255,255,255,0.48);
+    --menu-card-strong:rgba(255,255,255,0.68);
+    --menu-border:rgba(48,51,58,0.19);
+    --menu-text:#27292e;
+    --menu-muted:#686d75;
+    --menu-accent:#8c929d;
     --menu-accent-text:#ffffff;
-    --menu-secondary:#f5c518;
-    --menu-secondary-text:#111111;
-    --menu-profit:#00c896;
-    --menu-close:#68687d;
+    --menu-secondary:#555b65;
+    --menu-secondary-text:#ffffff;
+    --menu-profit:#287660;
+    --menu-close:#676b72;
   }
   body[data-menu-style="sky"] {
     --menu-bg:linear-gradient(145deg,#154963 0%,#277ea2 55%,#54b6d6 100%);
@@ -986,6 +1015,156 @@
   #itemModal .btn-buy {
     background:var(--menu-accent)!important;
     color:var(--menu-accent-text)!important;
+  }
+
+  /*
+     Один выбранный стиль применяется ко всему интерфейсу окон:
+     магазин, склад, квесты, настройки, статистика, работники,
+     витрины, касса, редакторские панели и обучение.
+  */
+  .modal-box,
+  .shop-type-panel,
+  #edit-menu-box,
+  #object-actions,
+  #tutorial-card {
+    background:var(--menu-bg)!important;
+    border-color:var(--menu-border)!important;
+    color:var(--menu-text)!important;
+    transition:background .25s ease,border-color .25s ease,color .25s ease;
+  }
+
+  .modal-box h3,
+  .modal-box .setting-title,
+  .modal-box .rating-name,
+  .modal-box .worker-name,
+  .modal-box .quest-card-title,
+  .modal-box .menu-style-name,
+  .modal-box .item-modal-title,
+  .shop-type-title,
+  .shop-type-confirm-title,
+  .tutorial-title {
+    color:var(--menu-text)!important;
+  }
+
+  .modal-box .setting-sub,
+  .modal-box .worker-sub,
+  .modal-box .quest-card-sub,
+  .modal-box .quest-card-foot,
+  .modal-box .menu-style-sub,
+  .modal-box .item-modal-cat,
+  .modal-box .item-stat-lbl,
+  .modal-box .stats-breakdown,
+  .shop-type-sub,
+  .shop-type-desc,
+  .tutorial-text {
+    color:var(--menu-muted)!important;
+  }
+
+  .modal-box .setting-row,
+  .modal-box .rating-main,
+  .modal-box .stats-card,
+  .modal-box .worker-card,
+  .modal-box .worker-row,
+  .modal-box .style-chip,
+  .modal-box .quest-card,
+  .modal-box .prod-row,
+  .modal-box .prod-card,
+  .modal-box .item-stat,
+  .modal-box .menu-style-option,
+  .modal-box .rating-action-btn,
+  .modal-box .btn-back,
+  .modal-box #shelves-info-list > div,
+  .shop-type-card,
+  #object-actions .object-action-btn,
+  #tutorial-card .tutorial-secondary {
+    background:var(--menu-card)!important;
+    border-color:var(--menu-border)!important;
+    color:var(--menu-text)!important;
+  }
+
+  .modal-box .cat-tab,
+  .modal-box .subcat-tab,
+  .modal-box .warehouse-auto-stock-btn {
+    background:var(--menu-card)!important;
+    border-color:var(--menu-border)!important;
+    color:var(--menu-muted)!important;
+  }
+
+  .modal-box .cat-tab.active,
+  .modal-box .warehouse-tab-btn.active,
+  .modal-box .warehouse-product-tab-btn.active,
+  .modal-box .btn-buy,
+  #edit-menu-box .edit-action-btn,
+  #tutorial-card .tutorial-primary {
+    background:var(--menu-accent)!important;
+    border-color:var(--menu-accent)!important;
+    color:var(--menu-accent-text)!important;
+  }
+
+  .modal-box .subcat-tab.active,
+  .modal-box .style-chip.active,
+  .modal-box .menu-style-option.active,
+  .modal-box .quest-card.active {
+    background:var(--menu-card-strong)!important;
+    border-color:var(--menu-secondary)!important;
+    color:var(--menu-secondary)!important;
+  }
+
+  .modal-box .quest-card.done {
+    background:var(--menu-card-strong)!important;
+    border-color:var(--menu-profit)!important;
+  }
+
+  .modal-box .pr-price,
+  .modal-box .item-stat-val,
+  .modal-box .rating-percent,
+  .modal-box .quest-reward,
+  .tutorial-step-label {
+    color:var(--menu-secondary)!important;
+  }
+
+  .modal-box .pr-profit {
+    color:var(--menu-profit)!important;
+  }
+
+  .modal-box .modal-close {
+    color:var(--menu-close)!important;
+  }
+
+  .modal-box .rating-bar,
+  .modal-box .quest-progress-bar,
+  .modal-box .stats-chart {
+    background:var(--menu-card-strong)!important;
+    border-color:var(--menu-border)!important;
+  }
+
+  .modal-box .rating-bar-fill,
+  .modal-box .quest-progress-fill {
+    background:linear-gradient(90deg,var(--menu-accent),var(--menu-secondary))!important;
+  }
+
+  .modal-box .toggle-switch.on {
+    background:var(--menu-accent)!important;
+  }
+
+  /* Перекрашиваем также внутренние блоки, созданные JavaScript с inline-стилями. */
+  .modal-box [style*="background:rgba(255,255,255"] {
+    background:var(--menu-card)!important;
+    border-color:var(--menu-border)!important;
+  }
+  .modal-box [style*="background:rgba(245,197,24"] {
+    background:var(--menu-card-strong)!important;
+    border-color:var(--menu-secondary)!important;
+  }
+  .modal-box [style*="color:#888"],
+  .modal-box [style*="color:#aaa"] {
+    color:var(--menu-muted)!important;
+  }
+  .modal-box [style*="color:#f5c518"] {
+    color:var(--menu-secondary)!important;
+  }
+  .modal-box [style*="color:#00c896"] {
+    color:var(--menu-profit)!important;
   }
 
   /* Выбор оформления в окне уровня магазина */
@@ -1168,15 +1347,17 @@
 
     #shopModal .modal-close,
     #warehouseModal .modal-close {
-      margin-top:6px;
-      padding:5px;
-      font-size:11px;
+      top:8px;
+      right:8px;
+      width:26px;
+      height:26px;
+      font-size:14px;
     }
   }
 
 </style>
 </head>
-<body>
+<body data-menu-style="standard">
 
 <!-- ПЕРВЫЙ ЗАПУСК: ВЫБОР ТИПА МАГАЗИНА -->
 <div id="shop-type-screen">
@@ -1273,7 +1454,7 @@
   <div class="modal-box">
     <h3>🪟 Витрины</h3>
     <div id="shelves-info-list"></div>
-    <div class="modal-close" onclick="document.getElementById('shelvesModal').classList.remove('show')">✕ Закрыть</div>
+    <button type="button" class="modal-close" onclick="document.getElementById('shelvesModal').classList.remove('show')" aria-label="Закрыть">✕</button>
   </div>
 </div>
 
@@ -1286,7 +1467,7 @@
       <div id="subcat-tabs"></div>
     </div>
     <div id="products-list"></div>
-    <div class="modal-close" onclick="closeShopModal()">✕ Закрыть</div>
+    <button type="button" class="modal-close" onclick="closeShopModal()" aria-label="Закрыть">✕</button>
   </div>
 </div>
 
@@ -1310,7 +1491,7 @@
     <div id="warehouse-tabs" style="display:flex;gap:8px;margin-bottom:12px"></div>
     <div id="warehouse-product-tabs"></div>
     <div id="warehouse-list"></div>
-    <div class="modal-close" onclick="closeWarehouseModal()">✕ Закрыть</div>
+    <button type="button" class="modal-close" onclick="closeWarehouseModal()" aria-label="Закрыть">✕</button>
   </div>
 </div>
 
@@ -1334,7 +1515,7 @@
       </div>
       <button id="sfxToggle" class="toggle-switch" onclick="toggleSfx()" aria-label="Звуковые эффекты"></button>
     </div>
-    <div class="modal-close" onclick="closeSettingsModal()">✕ Закрыть</div>
+    <button type="button" class="modal-close" onclick="closeSettingsModal()" aria-label="Закрыть">✕</button>
   </div>
 </div>
 
@@ -1357,7 +1538,7 @@
         <button class="rating-action-btn menu-style-entry" onclick="openMenuStyleModal()">🎨 Стиль меню</button>
       </div>
     </div>
-    <div class="modal-close" onclick="closeRatingModal()">✕ Закрыть</div>
+    <button type="button" class="modal-close" onclick="closeRatingModal()" aria-label="Закрыть">✕</button>
   </div>
 </div>
 
@@ -1377,7 +1558,7 @@
       <button class="rating-action-btn" onclick="openRatingModal(); closeRatingStatsModal();">↩ Рейтинг</button>
       <button class="rating-action-btn" onclick="openWorkersModal(); closeRatingStatsModal();">👥 Работники</button>
     </div>
-    <div class="modal-close" onclick="closeRatingStatsModal()">✕ Закрыть</div>
+    <button type="button" class="modal-close" onclick="closeRatingStatsModal()" aria-label="Закрыть">✕</button>
   </div>
 </div>
 
@@ -1390,21 +1571,21 @@
       <button class="rating-action-btn" onclick="openRatingModal(); closeWorkersModal();">↩ Рейтинг</button>
       <button class="rating-action-btn" onclick="openRatingStatsModal(); closeWorkersModal();">📊 Статистика</button>
     </div>
-    <div class="modal-close" onclick="closeWorkersModal()">✕ Закрыть</div>
+    <button type="button" class="modal-close" onclick="closeWorkersModal()" aria-label="Закрыть">✕</button>
   </div>
 </div>
 
 <!-- МОДАЛКА СТИЛЯ РАБОТНИКА -->
 <div class="modal-bg" id="workerStyleModal">
   <div class="modal-box">
+    <button type="button" class="modal-close" onclick="closeWorkerStyleModal()" aria-label="Закрыть">✕</button>
     <h3 id="workerStyleTitle">👕 Стиль работника</h3>
     <div class="worker-card">
       <div class="worker-sub">Выбор бесплатный. Стиль применяется ко всем работникам этого типа.</div>
       <div class="style-grid" id="workerStyleList"></div>
     </div>
-    <div class="rating-action-grid">
+    <div class="rating-action-grid" style="grid-template-columns:1fr">
       <button class="rating-action-btn" onclick="openWorkersModal(); closeWorkerStyleModal();">↩ Работники</button>
-      <button class="rating-action-btn" onclick="closeWorkerStyleModal()">Готово</button>
     </div>
   </div>
 </div>
@@ -1412,14 +1593,14 @@
 <!-- МОДАЛКА СТИЛЯ МЕНЮ -->
 <div class="modal-bg" id="menuStyleModal">
   <div class="modal-box">
+    <button type="button" class="modal-close" onclick="closeMenuStyleModal()" aria-label="Закрыть">✕</button>
     <h3>🎨 Стиль меню</h3>
     <div class="worker-card">
-      <div class="worker-sub">Оформление применяется к окнам магазина, выбора товара и склада.</div>
+      <div class="worker-sub">Оформление применяется ко всем окнам и меню игры.</div>
       <div class="menu-style-grid" id="menuStyleList"></div>
     </div>
-    <div class="rating-action-grid">
+    <div class="rating-action-grid" style="grid-template-columns:1fr">
       <button class="rating-action-btn" onclick="openRatingModal(); closeMenuStyleModal();">↩ Рейтинг</button>
-      <button class="rating-action-btn" onclick="closeMenuStyleModal()">Готово</button>
     </div>
   </div>
 </div>
@@ -1431,7 +1612,7 @@
     <div style="font-size:11px;color:#888;margin:-4px 0 12px">Выполняйте задания по порядку. Награда начисляется автоматически.</div>
     <div id="quests-list"></div>
     <button class="btn-back" style="margin-top:4px" onclick="restartTutorial()">🎓 Повторить обучение</button>
-    <div class="modal-close" onclick="closeQuestsModal()">✕ Закрыть</div>
+    <button type="button" class="modal-close" onclick="closeQuestsModal()" aria-label="Закрыть">✕</button>
   </div>
 </div>
 
@@ -7075,8 +7256,8 @@ function addXP(amount) {
 const MENU_STYLE_SAVE_KEY = 'miceshop_menu_style_v1';
 const MENU_STYLE_OPTIONS = [
   {
-    id:'standard', name:'Стандартный', sub:'Тёмный классический стиль',
-    preview:'linear-gradient(145deg,#13132a,#25254b)'
+    id:'standard', name:'Стандартный', sub:'Простое бело-серебристое оформление',
+    preview:'linear-gradient(145deg,#fbfbfb,#c9cacf)'
   },
   {
     id:'sky', name:'Небесно-голубой', sub:'Свежий голубой градиент',
@@ -8280,6 +8461,7 @@ function renderItemDetail() {
 
   const box = document.getElementById('itemModalBox');
   box.innerHTML = `
+    <button type="button" class="modal-close" onclick="closeItemModal()" aria-label="Закрыть">✕</button>
     <span class="item-big-emoji">${p.emoji}</span>
     <div class="item-modal-title">${p.name}</div>
     <div class="item-modal-cat">${p.cat}</div>
@@ -9829,12 +10011,13 @@ function renderShelfDetailModal() {
 
   if (item.soldOut || item.qty <= 0) {
     box.innerHTML = `
+      <button type="button" class="modal-close" onclick="closeShelfDetailModal()" aria-label="Закрыть">✕</button>
       <div style="font-size:34px;text-align:center;margin-bottom:8px">🧹</div>
       <div class="item-modal-title">Витрина ${idx + 1}</div>
       <div style="font-size:13px;color:#888;text-align:center;margin-bottom:14px">${item.product.name} распродан</div>
       <button class="btn-buy" onclick="startShelfCleanup(${idx})">Позвать продавца убрать витрину</button>
       ${wait > 0 ? `<button class="btn-buy" onclick="speedUpShelfSale(${idx})">⚡ Ускорить продажу · 1💎</button>` : `<button class="btn-buy" onclick="sellOneUnitFromShelf(${idx}, 'manual'); renderShelfDetailModal();">Продать сейчас</button>`}
-    <button class="btn-back" onclick="closeShelfDetailModal()">Закрыть</button>`;
+    `;
     return;
   }
 
@@ -9845,6 +10028,7 @@ function renderShelfDetailModal() {
   shelfMoveQty = canMove ? Math.max(1, Math.min(shelfMoveQty, maxMove)) : 0;
 
   box.innerHTML = `
+    <button type="button" class="modal-close" onclick="closeShelfDetailModal()" aria-label="Закрыть">✕</button>
     <span class="item-big-emoji">${item.product.emoji}</span>
     <div class="item-modal-title">Витрина ${idx + 1}</div>
     <div class="item-modal-cat">${item.product.name}</div>
@@ -9868,7 +10052,7 @@ function renderShelfDetailModal() {
       </div>
       <button class="btn-buy" onclick="moveShelfQtyToStorage(${idx})">Убрать ${shelfMoveQty} шт на склад</button>`
       : `<div style="font-size:12px;color:#888;text-align:center;margin:14px 0">На витрине 1 шт — он продолжает продаваться</div>`}
-    <button class="btn-back" onclick="closeShelfDetailModal()">Закрыть</button>`;
+    `;
 }
 
 function changeShelfMoveQty(delta) {
@@ -10234,6 +10418,7 @@ function openCashModal() {
     </div>`
   ).join('');
   box.innerHTML = `
+    <button type="button" class="modal-close" onclick="closeCashModal()" aria-label="Закрыть">✕</button>
     <div style="font-size:32px;text-align:center;margin-bottom:8px">🏦</div>
     <div style="font-size:17px;font-weight:700;text-align:center;margin-bottom:4px">Касса</div>
     <div style="font-size:12px;color:#888;text-align:center;margin-bottom:16px">Ожидает выплаты</div>
@@ -10242,8 +10427,7 @@ function openCashModal() {
       <div style="font-size:12px;color:#888">Итого</div>
       <div style="font-size:26px;font-weight:700;color:#f5c518">💰 ${fmt(G.pendingRevenue)}₽</div>
     </div>
-    <button class="btn-buy" onclick="collectAllRevenue()">Забрать всё</button>
-    <button class="btn-back" onclick="closeCashModal()">Закрыть</button>`;
+    <button class="btn-buy" onclick="collectAllRevenue()">Забрать всё</button>`;
   document.getElementById('cashModal').classList.add('show');
 }
 
