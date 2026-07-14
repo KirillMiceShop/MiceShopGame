@@ -3681,7 +3681,6 @@ function setExteriorYOffset(offset = 0) {
     const baseY = Number.isFinite(mesh.userData.baseExteriorY) ? mesh.userData.baseExteriorY : 0.012;
     mesh.position.y = baseY + offset;
   });
-  if (typeof rebuildExteriorWallFacades === 'function') rebuildExteriorWallFacades();
 }
 
 function makeGroundRect(w, d, color, x, z, y = 0.012) {
@@ -3886,7 +3885,6 @@ let WALL = 0x87CEFA;
 const EXTERIOR_WALL_COLOR = 0x8b6a45;
 
 const wallMeshes = [];
-let exteriorWallFacadeGroup = null;
 let windowClickTargets = [];
 
 let WALL_BACK_Z = -SHOP_HALF;
@@ -3985,6 +3983,36 @@ const DOOR_GLASS = new THREE.MeshPhongMaterial({
   specular: new THREE.Color(0xffffff)
 });
 
+// Одна геометрия стены использует разные материалы на внутренних и наружных гранях.
+// Поэтому дополнительная коричневая стена снаружи больше не нужна.
+const WALL_INTERIOR_MATERIAL = new THREE.MeshLambertMaterial({ color: WALL });
+const WALL_EXTERIOR_MATERIAL = new THREE.MeshLambertMaterial({ color: EXTERIOR_WALL_COLOR });
+
+function getLayeredWallMaterials(exteriorFaceIndex) {
+  const materials = Array(6).fill(WALL_INTERIOR_MATERIAL);
+  materials[exteriorFaceIndex] = WALL_EXTERIOR_MATERIAL;
+  return materials;
+}
+
+function markLayeredExteriorWall(mesh) {
+  mesh.userData.layeredExteriorWall = true;
+  mesh.userData.interiorMaterial = WALL_INTERIOR_MATERIAL;
+  mesh.userData.exteriorMaterial = WALL_EXTERIOR_MATERIAL;
+  return mesh;
+}
+
+function createLayeredWallBox(w, h, d, x, y, z, exteriorFaceIndex) {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    getLayeredWallMaterials(exteriorFaceIndex)
+  );
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  return markLayeredExteriorWall(mesh);
+}
+
 function makeWallPanel(axis, pos) {
   let geo;
   let x;
@@ -4000,8 +4028,10 @@ function makeWallPanel(axis, pos) {
     z = pos;
   }
 
-  const mat = new THREE.MeshLambertMaterial({ color: WALL });
-  const panel = new THREE.Mesh(geo, mat);
+  // BoxGeometry: 0=+X, 1=-X, 4=+Z, 5=-Z.
+  // Задняя стена: наружная грань -Z. Левая стена: наружная грань -X.
+  const exteriorFaceIndex = axis === 'z' ? 5 : 1;
+  const panel = markLayeredExteriorWall(new THREE.Mesh(geo, getLayeredWallMaterials(exteriorFaceIndex)));
 
   panel.position.set(x, 2, z);
   panel.castShadow = true;
@@ -4037,41 +4067,6 @@ function rebuildWallPanels() {
 }
 rebuildWallPanels();
 
-function ensureExteriorWallFacadeGroup() {
-  if (!exteriorWallFacadeGroup) {
-    exteriorWallFacadeGroup = new THREE.Group();
-    scene.add(exteriorWallFacadeGroup);
-  }
-  while (exteriorWallFacadeGroup.children.length) {
-    const child = exteriorWallFacadeGroup.children[0];
-    exteriorWallFacadeGroup.remove(child);
-    child.geometry?.dispose?.();
-    if (child.material) {
-      const mats = Array.isArray(child.material) ? child.material : [child.material];
-      mats.forEach(mat => mat.dispose?.());
-    }
-  }
-}
-
-function rebuildExteriorWallFacades() {
-  ensureExteriorWallFacadeGroup();
-  const addFacade = (w, h, d, x, y, z) => {
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(w, h, d),
-      new THREE.MeshLambertMaterial({ color: EXTERIOR_WALL_COLOR })
-    );
-    mesh.position.set(x, y + exteriorYOffset, z);
-    mesh.receiveShadow = true;
-    exteriorWallFacadeGroup.add(mesh);
-  };
-
-  // Наружная часть стационарных стен всегда остаётся коричневой.
-  addFacade(SHOP_HALF * 2 + 0.02, WALL_H, 0.08, 0, WALL_H / 2, WALL_BACK_Z - 0.19);
-  addFacade(0.08, WALL_H, SHOP_HALF * 2 + 0.02, WALL_LEFT_X - 0.19, WALL_H / 2, 0);
-  addFacade(SHOP_HALF * 2 + 0.02, LOW_WALL_H, 0.08, 0, LOW_WALL_H / 2, SHOP_HALF + 0.12);
-  addFacade(0.08, LOW_WALL_H, SHOP_HALF * 2 + 0.02, SHOP_HALF + 0.12, LOW_WALL_H / 2, 0);
-}
-
 // Правая стена и дверь убраны.
 // Эта сторона магазина теперь открыта полностью.
 function wallBox(w, h, d, color, x, y, z) {
@@ -4084,10 +4079,10 @@ function wallBox(w, h, d, color, x, y, z) {
 // Плинтус убран по просьбе пользователя.
 // Низкий срез стены на открытых сторонах магазина: стена как бы есть, но не закрывает обзор.
 const LOW_WALL_H = 0.45;
-const lowRightWall = box(0.16, LOW_WALL_H, SHOP_HALF * 2, WALL, SHOP_HALF, LOW_WALL_H / 2, 0);
-const lowFrontWall = box(SHOP_HALF * 2, LOW_WALL_H, 0.16, WALL, 0, LOW_WALL_H / 2, SHOP_HALF);
+// Правая низкая стена: наружная грань +X. Передняя низкая стена: наружная грань +Z.
+const lowRightWall = createLayeredWallBox(0.16, LOW_WALL_H, SHOP_HALF * 2, SHOP_HALF, LOW_WALL_H / 2, 0, 0);
+const lowFrontWall = createLayeredWallBox(SHOP_HALF * 2, LOW_WALL_H, 0.16, 0, LOW_WALL_H / 2, SHOP_HALF, 4);
 wallMeshes.push(lowRightWall, lowFrontWall);
-rebuildExteriorWallFacades();
 
 
 function getWindowWorldPosition(axis, pos) {
@@ -5824,14 +5819,25 @@ function getDoorExitPoint(door) {
 
 function recolorWalls(color) {
   WALL = color;
+  WALL_INTERIOR_MATERIAL.color.setHex(color);
 
-  wallMeshes.forEach(m => {
-    m.material.color.setHex(color);
+  wallMeshes.forEach(mesh => {
+    // У стационарной наружной стены меняется только внутренняя грань.
+    // Коричневая наружная грань остаётся неизменной.
+    if (mesh?.userData?.layeredExteriorWall) return;
+
+    const materials = Array.isArray(mesh?.material) ? mesh.material : [mesh?.material];
+    materials.forEach(material => {
+      if (material?.color) material.color.setHex(color);
+    });
   });
 
   if (typeof doorGapMeshes !== 'undefined') {
-    doorGapMeshes.forEach(m => {
-      m.material.color.setHex(color);
+    doorGapMeshes.forEach(mesh => {
+      const materials = Array.isArray(mesh?.material) ? mesh.material : [mesh?.material];
+      materials.forEach(material => {
+        if (material?.color) material.color.setHex(color);
+      });
     });
   }
 }
@@ -8849,7 +8855,6 @@ function applyShopStageVisuals() {
   // Перестраиваем стены, брусчатку, дороги и низкие срезы стен.
   rebuildWallPanels();
   rebuildExterior();
-  rebuildExteriorWallFacades();
 
   lowRightWall.geometry.dispose();
   lowRightWall.geometry = new THREE.BoxGeometry(0.16, LOW_WALL_H, SHOP_HALF * 2);
