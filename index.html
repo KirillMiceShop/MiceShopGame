@@ -4072,8 +4072,6 @@ function rebuildExteriorWallFacades() {
   addFacade(0.08, LOW_WALL_H, SHOP_HALF * 2 + 0.02, SHOP_HALF + 0.12, LOW_WALL_H / 2, 0);
 }
 
-rebuildExteriorWallFacades();
-
 // Правая стена и дверь убраны.
 // Эта сторона магазина теперь открыта полностью.
 function wallBox(w, h, d, color, x, y, z) {
@@ -4089,6 +4087,7 @@ const LOW_WALL_H = 0.45;
 const lowRightWall = box(0.16, LOW_WALL_H, SHOP_HALF * 2, WALL, SHOP_HALF, LOW_WALL_H / 2, 0);
 const lowFrontWall = box(SHOP_HALF * 2, LOW_WALL_H, 0.16, WALL, 0, LOW_WALL_H / 2, SHOP_HALF);
 wallMeshes.push(lowRightWall, lowFrontWall);
+rebuildExteriorWallFacades();
 
 
 function getWindowWorldPosition(axis, pos) {
