@@ -252,6 +252,61 @@
   .toggle-switch.on { background:#f5c518; }
   .toggle-switch.on::after { left:29px; background:#111; }
 
+  .developer-settings-card {
+    margin-top:14px;
+    padding:12px 14px;
+    border-radius:14px;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.08);
+  }
+  .developer-settings-title {
+    font-size:14px;
+    font-weight:900;
+    color:#eee;
+  }
+  .developer-level-controls {
+    display:grid;
+    grid-template-columns:38px minmax(64px,1fr) 38px;
+    gap:7px;
+    margin-top:10px;
+  }
+  .developer-level-step,
+  .developer-level-apply {
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:12px;
+    background:rgba(255,255,255,0.08);
+    color:#fff;
+    font-size:16px;
+    font-weight:900;
+    cursor:pointer;
+  }
+  .developer-level-step:active,
+  .developer-level-apply:active { transform:scale(.96); }
+  #developerLevelInput {
+    width:100%;
+    min-width:0;
+    padding:9px 8px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,0.12);
+    background:rgba(0,0,0,0.18);
+    color:#fff;
+    font-size:15px;
+    font-weight:900;
+    text-align:center;
+    outline:none;
+  }
+  .developer-level-apply {
+    width:100%;
+    margin-top:8px;
+    padding:10px 12px;
+    font-size:13px;
+  }
+  #developerLevelStatus {
+    margin-top:8px;
+    font-size:11px;
+    color:#888;
+  }
+
   #hud-stats {
     position:fixed;
     top:calc(env(safe-area-inset-top, 0px) + 10px);
@@ -309,6 +364,39 @@
   #xp-bar { height:3px; background:rgba(255,255,255,0.13); border-radius:6px; overflow:hidden; }
   #xp-fill { height:100%; background:linear-gradient(90deg,#e94560,#9c27b0); border-radius:6px; transition:width .5s; }
   #xp-label { font-size:8px; color:#8e8ea7; margin-top:3px; text-align:right; }
+
+  /* ЛИФТ МЕЖДУ ЭТАЖАМИ */
+  #lift-btn {
+    position:fixed;
+    right:12px;
+    bottom:82px;
+    z-index:12;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    min-height:36px;
+    padding:8px 13px;
+    border-radius:18px;
+    border:1px solid rgba(255,255,255,0.16);
+    background:rgba(20,20,40,0.88);
+    color:#fff;
+    font-size:11px;
+    font-weight:900;
+    cursor:pointer;
+    backdrop-filter:blur(8px);
+    box-shadow:0 6px 18px rgba(0,0,0,0.24);
+    white-space:nowrap;
+  }
+  #lift-btn.show { display:flex; }
+  #lift-btn {
+    background:var(--menu-bg, rgba(20,20,40,0.88));
+    border-color:var(--menu-border, rgba(255,255,255,0.16));
+    color:var(--menu-text, #fff);
+  }
+  #lift-btn:active { transform:scale(.95); }
+  @media (orientation:landscape) and (max-height:600px) {
+    #lift-btn { right:8px; bottom:60px; min-height:30px; padding:6px 10px; font-size:9px; }
+  }
 
   /* НИЖНИЕ КНОПКИ */
   #bottom-btns {
@@ -1035,6 +1123,7 @@
 
   .modal-box h3,
   .modal-box .setting-title,
+  .modal-box .developer-settings-title,
   .modal-box .rating-name,
   .modal-box .worker-name,
   .modal-box .quest-card-title,
@@ -1047,6 +1136,7 @@
   }
 
   .modal-box .setting-sub,
+  .modal-box #developerLevelStatus,
   .modal-box .worker-sub,
   .modal-box .quest-card-sub,
   .modal-box .quest-card-foot,
@@ -1061,6 +1151,7 @@
   }
 
   .modal-box .setting-row,
+  .modal-box .developer-settings-card,
   .modal-box .rating-main,
   .modal-box .stats-card,
   .modal-box .worker-card,
@@ -1084,6 +1175,9 @@
 
   .modal-box .cat-tab,
   .modal-box .subcat-tab,
+  .modal-box .developer-level-step,
+  .modal-box .developer-level-apply,
+  .modal-box #developerLevelInput,
   .modal-box .warehouse-auto-stock-btn {
     background:var(--menu-card)!important;
     border-color:var(--menu-border)!important;
@@ -1431,6 +1525,9 @@
   <button id="editor-action-store" class="object-action-btn" title="На склад" onclick="event.stopPropagation();editorActionStore()">📦</button>
 </div>
 
+<!-- ЛИФТ МЕЖДУ ЭТАЖАМИ -->
+<button id="lift-btn" onclick="switchShopFloor()">🛗 На 2 этаж</button>
+
 <!-- НИЖНИЕ КНОПКИ -->
 <div id="bottom-btns">
   <button id="editor-toggle-btn" class="bot-btn" onclick="toggleEditorMode()">✏️ Редактор</button>
@@ -1514,6 +1611,18 @@
         <div class="setting-sub">Звук нажатия кнопок и объектов</div>
       </div>
       <button id="sfxToggle" class="toggle-switch" onclick="toggleSfx()" aria-label="Звуковые эффекты"></button>
+    </div>
+
+    <div class="developer-settings-card">
+      <div class="developer-settings-title">🛠 Для разработчика</div>
+      <div class="setting-sub">Установите уровень магазина от 1 до 100 для проверки всех разблокировок.</div>
+      <div class="developer-level-controls">
+        <button class="developer-level-step" type="button" onclick="adjustDeveloperLevel(-1)" aria-label="Уменьшить уровень">−</button>
+        <input id="developerLevelInput" type="number" min="1" max="100" step="1" inputmode="numeric" value="1" aria-label="Уровень магазина">
+        <button class="developer-level-step" type="button" onclick="adjustDeveloperLevel(1)" aria-label="Увеличить уровень">+</button>
+      </div>
+      <button class="developer-level-apply" type="button" onclick="applyDeveloperLevel()">Применить уровень</button>
+      <div id="developerLevelStatus">Текущий уровень: 1</div>
     </div>
     <button type="button" class="modal-close" onclick="closeSettingsModal()" aria-label="Закрыть">✕</button>
   </div>
@@ -1649,6 +1758,8 @@
 const G = {
   money: 5000, crystals: 20, xp: 0, level: 1, shopStage: 1,
   shopType: null,
+  currentFloor: 1,
+  liftBuilt: false,
   totalEarned: 0, totalSold: 0,
   slots: Array(1).fill(null), // each: {product, qty, maxQty, nextSaleAt, soldOut}
   storage: {}, // productId -> qty
@@ -2413,9 +2524,59 @@ function bindMusicUnlock() {
   window.addEventListener('click', unlock);
 }
 
+function updateDeveloperLevelUI() {
+  const input = document.getElementById('developerLevelInput');
+  const status = document.getElementById('developerLevelStatus');
+  const level = Math.max(1, Math.min(MAX_LEVEL, Number(G.level) || 1));
+  if (input) input.value = level;
+  if (status) status.textContent = 'Текущий уровень: ' + level + ' — ' + getLevelTitle(level);
+}
+
+function adjustDeveloperLevel(change) {
+  const input = document.getElementById('developerLevelInput');
+  if (!input) return;
+  const current = Number.parseInt(input.value, 10);
+  const next = Math.max(1, Math.min(MAX_LEVEL, (Number.isFinite(current) ? current : (G.level || 1)) + change));
+  input.value = next;
+}
+
+function applyDeveloperLevel() {
+  const input = document.getElementById('developerLevelInput');
+  if (!input) return;
+
+  const requested = Number.parseInt(input.value, 10);
+  if (!Number.isFinite(requested)) {
+    showToast('❌ Введите уровень от 1 до ' + MAX_LEVEL, '#e94560');
+    updateDeveloperLevelUI();
+    return;
+  }
+
+  const level = Math.max(1, Math.min(MAX_LEVEL, requested));
+  G.level = level;
+  G.xp = LEVELS[level].xp;
+
+  updateHUD();
+  updateDeveloperLevelUI();
+
+  const shopModal = document.getElementById('shopModal');
+  if (shopModal && shopModal.classList.contains('show')) {
+    renderCatTabs();
+    renderProductList();
+  }
+
+  const warehouseModal = document.getElementById('warehouseModal');
+  if (warehouseModal && warehouseModal.classList.contains('show')) {
+    renderWarehouseModal();
+  }
+
+  notifyGameEvent('level_reached', level, { level, developer:true });
+  showToast('🛠 Установлен уровень ' + level + ' — ' + getLevelTitle(level), '#687487');
+}
+
 function openSettingsModal() {
   updateMusicToggleUI();
   updateSfxToggleUI();
+  updateDeveloperLevelUI();
   document.getElementById('settingsModal').classList.add('show');
 }
 
@@ -2467,6 +2628,8 @@ const SHOP_STAGE_MIN = 1;
 const SHOP_EXPANSION_LEVELS = [10, 18, 28, 39, 53, 63];
 const SHOP_STAGE_MAX = SHOP_STAGE_MIN + SHOP_EXPANSION_LEVELS.length;
 const SHOP_UPGRADE_COST = 5000;
+const SECOND_FLOOR_UNLOCK_LEVEL = 25;
+const LIFT_BUILD_COST = SHOP_UPGRADE_COST;
 const SHOP_HALF_MIN = 8.0;
 const SHOP_HALF_MAX = 12.5;
 
@@ -3159,7 +3322,7 @@ canvas.addEventListener('click', e=>{
 // ── RAYCASTING: клик по витрине ──
 const raycaster=new THREE.Raycaster();
 const mouse2D=new THREE.Vector2();
-const shelfClickTargets=[];
+let shelfClickTargets=[];
 let highlightedShelf = -1;
 
 function clearShelfHighlight() {
@@ -3679,7 +3842,7 @@ rebuildExterior();
 let WALL = 0x87CEFA;
 
 const wallMeshes = [];
-const windowClickTargets = [];
+let windowClickTargets = [];
 
 let WALL_BACK_Z = -SHOP_HALF;
 let WALL_LEFT_X = -SHOP_HALF;
@@ -3706,11 +3869,11 @@ const wallPanels = {
   x: []
 };
 
-const windows = [];
+let windows = [];
 let nextWindowId = 0;
 
-const doors = [];
-const doorClickTargets = [];
+let doors = [];
+let doorClickTargets = [];
 let nextDoorId = 0;
 const MAX_DOORS = 2;
 
@@ -3719,8 +3882,8 @@ const MAX_DOORS = 2;
 const INTERNAL_WALL_PRICE = 300;
 const INTERNAL_WALL_LEN = WINDOW_W; // один кусок = размер окна
 const INTERNAL_WALL_THICK = 0.25;
-const internalWalls = [];
-const internalWallClickTargets = [];
+let internalWalls = [];
+let internalWallClickTargets = [];
 let nextInternalWallId = 0;
 let internalWallBuildMode = false;
 let pendingInternalWallAxis = 'x'; // x = горизонтально, z = вертикально
@@ -3741,8 +3904,8 @@ const DECOR_VARIANTS = [
   { id:'plant_tall',  name:'Высокое дерево в горшке', emoji:'🌳', place:'floor', width:0.75, depth:0.75, desc:'Высокое растение' },
   { id:'plant_short', name:'Низкое дерево в горшке',  emoji:'🪴', place:'floor', width:0.65, depth:0.65, desc:'Низкое растение' },
 ];
-const decorations = [];
-const decorClickTargets = [];
+let decorations = [];
+let decorClickTargets = [];
 let nextDecorId = 0;
 let decorPlaceMode = false;
 let pendingDecorId = null;
@@ -5527,7 +5690,7 @@ function updateDoor() {
 
 // ── ВИТРИНЫ (полки) ──
 // Позиции 6 витрин в магазине
-const SHELF_POSITIONS = [
+let SHELF_POSITIONS = [
   [0, 0, -1.0], // стартовая витрина
 ];
 
@@ -5556,7 +5719,7 @@ const SHELF_HIT_Y = SHELF_HIT_H / 2;
 const SHELF_COLLISION_X = 2.0;
 const SHELF_COLLISION_Z = 1.45;
 
-const shelfMeshes = [];
+let shelfMeshes = [];
 
 SHELF_POSITIONS.forEach((pos, i) => {
   const [x, y, z] = pos;
@@ -5601,8 +5764,8 @@ const CASH_REGISTER_VARIANTS = [
   { id:'cash_classic', name:'Касса классик',  color:0x4a3828, topColor:0x5c4a32, emoji:'💵', price:700 },
   { id:'cash_orange',  name:'Касса оранжевая',color:0xb05a10, topColor:0xff8a00, emoji:'🟧', price:700 },
 ];
-const cashRegisters = [];
-const cashRegisterTargets = [];
+let cashRegisters = [];
+let cashRegisterTargets = [];
 
 function makeCashRegisterModel(x, z, variant, index) {
   const group = new THREE.Group();
@@ -5767,7 +5930,7 @@ addCashRegister(CASH_REGISTER_VARIANTS[0], -1.8, 2.0);
 const CHARACTER_SIZE_MULT = 1.5;
 const SELLER_SHIFT_MS = 180000;
 let sellerShiftStart = Date.now();
-const sellers = [];
+let sellers = [];
 
 function createSeller(color, x, z, name, staffType = 'seller') {
   const group = new THREE.Group();
@@ -7982,7 +8145,9 @@ function updateHUD() {
 
   const safeLevel = Math.max(1, Math.min(MAX_LEVEL, G.level || 1));
   G.level = safeLevel;
-  document.getElementById('levelLabel').textContent = 'Ур.'+safeLevel+' — '+getLevelTitle(safeLevel);
+  const floorNo = G.currentFloor || 1;
+  document.getElementById('levelLabel').textContent = floorNo+' эт. · Ур.'+safeLevel+' — '+getLevelTitle(safeLevel);
+  updateLiftButton();
 
   const currentThreshold = LEVELS[safeLevel].xp;
   const xpInCurrentLevel = Math.max(0, G.xp - currentThreshold);
@@ -8511,6 +8676,7 @@ function applyShopStageVisuals() {
     rebuildDoorVisual(d);
   });
   applyWindowHoles();
+  if (typeof rebuildSecondFloorFacade === 'function') rebuildSecondFloorFacade();
 }
 
 function buyShopExpansion() {
@@ -8707,6 +8873,30 @@ function renderProductList() {
         </div>`;
       if (expansionUnlocked && !expansionMaxed) expRow.onclick = buyShopExpansion;
       list.appendChild(expRow);
+
+      const onFirstFloor = (G.currentFloor || 1) === 1;
+      const liftUnlocked = G.liftBuilt || (onFirstFloor && (G.level || 1) >= SECOND_FLOOR_UNLOCK_LEVEL);
+      const liftCanBuild = !G.liftBuilt && liftUnlocked && G.money >= LIFT_BUILD_COST;
+      const liftRow = document.createElement('div');
+      liftRow.className = 'prod-row' + ((G.liftBuilt || liftCanBuild) ? '' : ' cant');
+      const secondType = shopFloorStates[2]?.shopType || getOppositeShopType(G.shopType);
+      liftRow.innerHTML = `
+        <div class="pr-emoji">${G.liftBuilt ? '🛗' : (liftUnlocked ? '🏗️' : '🔒')}</div>
+        <div class="pr-info">
+          <div class="pr-name">Лифт и второй этаж</div>
+          <div class="pr-sub">${G.liftBuilt
+            ? ('Открыт ' + (shopFloorStates[2] ? SHOP_TYPES[shopFloorStates[2].shopType].name : SHOP_TYPES[secondType].name) + ' · у каждого этажа свой уровень и расширения')
+            : (liftUnlocked
+              ? ('Построить лифт и открыть ' + SHOP_TYPES[secondType].name + ' с 1 уровня')
+              : ('Откроется на 25 уровне первого этажа'))}</div>
+        </div>
+        <div class="pr-right">
+          <div class="pr-price">${G.liftBuilt ? ((G.currentFloor || 1) === 1 ? 'На 2 этаж' : 'На 1 этаж') : (liftUnlocked ? ('💰' + fmt(LIFT_BUILD_COST)) : '🔒 Ур.25')}</div>
+          <div class="pr-profit" style="color:#aaa">${G.liftBuilt ? ((G.currentFloor || 1) + '/2 этаж') : '0/1'}</div>
+        </div>`;
+      if (G.liftBuilt) liftRow.onclick = switchShopFloor;
+      else if (liftUnlocked) liftRow.onclick = buildShopLift;
+      list.appendChild(liftRow);
     }
 
     if (showSubcat('shelves')) {
@@ -9125,6 +9315,305 @@ function rebuildStarterShelfForShopType() {
   addShelfMesh(0, x, z, variant.color, variant.topColor, starterId);
 }
 
+
+// ══════════════════════════════════════
+//  ЭТАЖИ МАГАЗИНА И ЛИФТ
+// ══════════════════════════════════════
+// Каждый этаж хранит собственный уровень, XP, расширение, планировку,
+// работников и посетителей. Деньги, кристаллы и склад остаются общими.
+const shopFloorStates = {};
+let shopFloorSystemReady = false;
+let secondFloorFacadeGroup = null;
+
+function getOppositeShopType(type) {
+  return type === 'electronics' ? 'clothing' : 'electronics';
+}
+
+function captureCurrentFloorState(floorNumber = G.currentFloor || 1) {
+  const state = shopFloorStates[floorNumber] || {};
+  Object.assign(state, {
+    floorNumber,
+    shopType: G.shopType,
+    level: G.level,
+    xp: G.xp,
+    shopStage: G.shopStage,
+    slots: G.slots,
+    shelfRotations: G.shelfRotations,
+    shelfVariants: G.shelfVariants,
+    staff: G.staff,
+    staffStyles: G.staffStyles,
+    shelfPositions: SHELF_POSITIONS,
+    shelfMeshes,
+    shelfClickTargets,
+    shelfItemMeshes,
+    cashRegisters,
+    cashRegisterTargets,
+    windows,
+    windowClickTargets,
+    doors,
+    doorClickTargets,
+    internalWalls,
+    internalWallClickTargets,
+    decorations,
+    decorClickTargets,
+    sellers,
+    customers,
+    nextWindowId,
+    nextDoorId,
+    nextInternalWallId,
+    nextDecorId,
+  });
+  shopFloorStates[floorNumber] = state;
+  return state;
+}
+
+function bindShopFloorState(state) {
+  G.currentFloor = state.floorNumber;
+  G.shopType = state.shopType;
+  G.level = state.level;
+  G.xp = state.xp;
+  G.shopStage = state.shopStage;
+  G.slots = state.slots;
+  G.shelfRotations = state.shelfRotations;
+  G.shelfVariants = state.shelfVariants;
+  G.staff = state.staff;
+  G.staffStyles = state.staffStyles;
+
+  SHELF_POSITIONS = state.shelfPositions;
+  shelfMeshes = state.shelfMeshes;
+  shelfClickTargets = state.shelfClickTargets;
+  shelfItemMeshes = state.shelfItemMeshes;
+  cashRegisters = state.cashRegisters;
+  cashRegisterTargets = state.cashRegisterTargets;
+  windows = state.windows;
+  windowClickTargets = state.windowClickTargets;
+  doors = state.doors;
+  doorClickTargets = state.doorClickTargets;
+  internalWalls = state.internalWalls;
+  internalWallClickTargets = state.internalWallClickTargets;
+  decorations = state.decorations;
+  decorClickTargets = state.decorClickTargets;
+  sellers = state.sellers;
+  customers = state.customers;
+
+  nextWindowId = state.nextWindowId;
+  nextDoorId = state.nextDoorId;
+  nextInternalWallId = state.nextInternalWallId;
+  nextDecorId = state.nextDecorId;
+}
+
+function setFloorObjectVisible(object, visible) {
+  if (object) object.visible = visible;
+}
+
+function setShopFloorStateVisible(state, visible) {
+  if (!state) return;
+
+  (state.shelfMeshes || []).forEach(shelf => {
+    if (!shelf) return;
+    [shelf.group, shelf.base, shelf.stand, shelf.topShelf, shelf.label].forEach(obj => setFloorObjectVisible(obj, visible));
+  });
+  (state.shelfClickTargets || []).forEach(obj => setFloorObjectVisible(obj, visible));
+  Object.values(state.shelfItemMeshes || {}).forEach(obj => setFloorObjectVisible(obj, visible));
+  (state.cashRegisters || []).forEach(cr => {
+    setFloorObjectVisible(cr.group, visible);
+    setFloorObjectVisible(cr.hitZone, visible);
+  });
+  (state.windows || []).forEach(win => {
+    setFloorObjectVisible(win.group, visible);
+    setFloorObjectVisible(win.hitZone, visible);
+  });
+  (state.doors || []).forEach(door => {
+    setFloorObjectVisible(door.group, visible);
+    setFloorObjectVisible(door.hitZone, visible);
+  });
+  (state.internalWalls || []).forEach(wall => {
+    setFloorObjectVisible(wall.group, visible);
+    setFloorObjectVisible(wall.hitZone, visible);
+  });
+  (state.decorations || []).forEach(decor => {
+    setFloorObjectVisible(decor.group, visible);
+    setFloorObjectVisible(decor.hitZone, visible);
+  });
+  (state.sellers || []).forEach(worker => setFloorObjectVisible(worker.group, visible));
+  (state.customers || []).forEach(customer => setFloorObjectVisible(customer.group, visible));
+}
+
+function clearOpenInterfaceForFloorSwitch() {
+  document.querySelectorAll('.modal-bg.show').forEach(el => el.classList.remove('show'));
+  placingMode = false;
+  G.pendingSlot = null;
+  cleanupTask = null;
+  G.cashServiceUntil = 0;
+  G.cashServiceRegisterId = null;
+  if (typeof closeEditorModes === 'function') closeEditorModes();
+}
+
+function createSecondFloorState() {
+  if (shopFloorStates[2]) return shopFloorStates[2];
+  const firstState = captureCurrentFloorState(1);
+  setShopFloorStateVisible(firstState, false);
+
+  const secondType = getOppositeShopType(firstState.shopType);
+  const starterId = SHOP_TYPES[secondType].starterShelf;
+  const starterVariant = getShelfVariantById(starterId);
+
+  const secondState = {
+    floorNumber: 2,
+    shopType: secondType,
+    level: 1,
+    xp: 0,
+    shopStage: 1,
+    slots: [null],
+    shelfRotations: [0],
+    shelfVariants: [starterId],
+    staff: { cashier:1, seller:1, cleaner:0, guard:0 },
+    staffStyles: { cashier:'classic', seller:'classic', cleaner:'classic', guard:'classic' },
+    shelfPositions: [[0, 0, -1.0]],
+    shelfMeshes: [],
+    shelfClickTargets: [],
+    shelfItemMeshes: {},
+    cashRegisters: [],
+    cashRegisterTargets: [],
+    windows: [],
+    windowClickTargets: [],
+    doors: [],
+    doorClickTargets: [],
+    internalWalls: [],
+    internalWallClickTargets: [],
+    decorations: [],
+    decorClickTargets: [],
+    sellers: [],
+    customers: [],
+    nextWindowId: 0,
+    nextDoorId: 0,
+    nextInternalWallId: 0,
+    nextDecorId: 0,
+  };
+
+  bindShopFloorState(secondState);
+  applyShopStageVisuals();
+  addShelfMesh(0, 0, -1.0, starterVariant.color, starterVariant.topColor, starterId);
+  addCashRegister(CASH_REGISTER_VARIANTS[0], -1.8, 2.0);
+  addWindow('z', -2.6, 'grid');
+  addWindow('z', 2.6, 'grid');
+  addDoor('z', 0, 'single');
+  createSeller(0x1565c0, -1.8, SHOP_HALF - 1.2, 'Кассир 1', 'cashier');
+  createSeller(0xe94560, -1.5, 2.2, 'Продавец 1', 'seller');
+  captureCurrentFloorState(2);
+  setShopFloorStateVisible(shopFloorStates[2], false);
+
+  bindShopFloorState(firstState);
+  setShopFloorStateVisible(firstState, true);
+  applyShopStageVisuals();
+  activeCat = firstState.shopType === 'electronics' ? 'tech' : 'clothes';
+  return shopFloorStates[2];
+}
+
+function initializeShopFloorSystem() {
+  if (shopFloorSystemReady || !G.shopType) return;
+  G.currentFloor = 1;
+  captureCurrentFloorState(1);
+  shopFloorSystemReady = true;
+  rebuildSecondFloorFacade();
+  updateLiftButton();
+}
+
+function buildShopLift() {
+  if (G.liftBuilt) {
+    showToast('✅ Лифт уже построен');
+    return;
+  }
+  if ((G.currentFloor || 1) !== 1 || (G.level || 1) < SECOND_FLOOR_UNLOCK_LEVEL) {
+    showToast('🔒 Лифт откроется на 25 уровне первого этажа', '#e94560ee');
+    return;
+  }
+  if (G.money < LIFT_BUILD_COST) {
+    showToast('❌ Нужно ' + fmt(LIFT_BUILD_COST) + '₽');
+    return;
+  }
+
+  G.money -= LIFT_BUILD_COST;
+  G.liftBuilt = true;
+  createSecondFloorState();
+  updateHUD();
+  renderProductList();
+  showToast('🛗 Лифт построен. Второй этаж открыт!');
+}
+
+function switchShopFloor() {
+  if (!G.liftBuilt) return;
+  initializeShopFloorSystem();
+  const fromFloor = G.currentFloor || 1;
+  const targetFloor = fromFloor === 1 ? 2 : 1;
+  if (!shopFloorStates[targetFloor]) createSecondFloorState();
+
+  clearOpenInterfaceForFloorSwitch();
+  const currentState = captureCurrentFloorState(fromFloor);
+  setShopFloorStateVisible(currentState, false);
+
+  const targetState = shopFloorStates[targetFloor];
+  bindShopFloorState(targetState);
+  setShopFloorStateVisible(targetState, true);
+  applyShopStageVisuals();
+  applyWindowHoles();
+  activeCat = G.shopType === 'electronics' ? 'tech' : 'clothes';
+  if (!activeSubcatByCategory[activeCat]) activeSubcatByCategory[activeCat] = 'all';
+  sellerShiftStart = Date.now();
+  camTarget.set(0, 0, 0);
+  updateCamera();
+  updateHUD();
+  renderProductList();
+  renderWarehouseModal();
+  showToast('🛗 ' + targetFloor + ' этаж · ' + SHOP_TYPES[G.shopType].name);
+}
+
+function updateLiftButton() {
+  const btn = document.getElementById('lift-btn');
+  if (!btn) return;
+  btn.classList.toggle('show', !!G.liftBuilt && !!gameStarted);
+  if (G.liftBuilt) btn.textContent = (G.currentFloor || 1) === 1 ? '🛗 На 2 этаж' : '🛗 На 1 этаж';
+}
+
+function rebuildSecondFloorFacade() {
+  if (!scene) return;
+  if (!secondFloorFacadeGroup) {
+    secondFloorFacadeGroup = new THREE.Group();
+    scene.add(secondFloorFacadeGroup);
+  }
+  while (secondFloorFacadeGroup.children.length) {
+    const child = secondFloorFacadeGroup.children[0];
+    secondFloorFacadeGroup.remove(child);
+    if (child.geometry) child.geometry.dispose();
+    if (child.material && child.material.dispose) child.material.dispose();
+  }
+
+  const addFacadePart = (w, h, d, color, x, y, z, materialOptions = {}) => {
+    const material = materialOptions.glass
+      ? new THREE.MeshPhongMaterial({ color, transparent:true, opacity:.48, shininess:120 })
+      : new THREE.MeshLambertMaterial({ color });
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+    mesh.position.set(x, y, z);
+    mesh.receiveShadow = true;
+    secondFloorFacadeGroup.add(mesh);
+    return mesh;
+  };
+
+  // Нижняя часть здания видна под магазином и создаёт ощущение,
+  // что текущая локация находится над закрытым первым этажом.
+  addFacadePart(SHOP_HALF * 2 + .35, .28, SHOP_HALF * 2 + .35, 0xb8bcc2, 0, -.20, 0);
+  addFacadePart(.22, 3.2, SHOP_HALF * 2, 0xc8cbd0, SHOP_HALF + .08, -1.8, 0);
+  addFacadePart(SHOP_HALF * 2, 3.2, .22, 0xc8cbd0, 0, -1.8, SHOP_HALF + .08);
+
+  const windowColor = 0x9ed8ef;
+  const zPositions = [-SHOP_HALF * .55, 0, SHOP_HALF * .55];
+  zPositions.forEach(z => addFacadePart(.10, 1.55, 2.0, windowColor, SHOP_HALF + .20, -1.75, z, {glass:true}));
+  const xPositions = [-SHOP_HALF * .55, 0, SHOP_HALF * .55];
+  xPositions.forEach(x => addFacadePart(2.0, 1.55, .10, windowColor, x, -1.75, SHOP_HALF + .20, {glass:true}));
+
+  secondFloorFacadeGroup.visible = !!G.liftBuilt && (G.currentFloor || 1) === 2;
+}
+
 let shopTypeChoiceLocked = false;
 function chooseShopType(type) {
   if (shopTypeChoiceLocked || !SHOP_TYPES[type]) return;
@@ -9133,6 +9622,7 @@ function chooseShopType(type) {
   G.shopType = type;
   activeCat = type === 'electronics' ? 'tech' : 'clothes';
   rebuildStarterShelfForShopType();
+  initializeShopFloorSystem();
 
   const config = SHOP_TYPES[type];
   const choice = document.getElementById('shop-type-choice');
@@ -9159,6 +9649,7 @@ function initializeShopTypeScreen() {
   const screen = document.getElementById('shop-type-screen');
   if (G.shopType && SHOP_TYPES[G.shopType]) {
     rebuildStarterShelfForShopType();
+    initializeShopFloorSystem();
     if (screen) screen.classList.add('hidden');
     gameStarted = true;
   } else {
@@ -10224,7 +10715,7 @@ const CATEGORY_COLORS = {
 };
 
 // Хранилище 3D-объектов на полках
-const shelfItemMeshes = {}; // slotIndex -> THREE.Group
+let shelfItemMeshes = {}; // slotIndex -> THREE.Group
 
 function getShelfDisplayTopY(slotIdx) {
   const kind = getShelfKindForIndex(slotIdx);
