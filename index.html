@@ -5796,7 +5796,9 @@ function createSeller(color, x, z, name, staffType = 'seller') {
     role: 'floor',
     target: null,
     wait: 0,
-    speed: 0.035,
+    // Работники двигаются быстрее покупателей. Скорость хранится как
+    // базовый шаг для 60 FPS и ниже умножается на реальное время кадра.
+    speed: staffType === 'cleaner' ? 0.052 : (staffType === 'cashier' ? 0.048 : 0.050),
     legAngle: 0,
     legDir: 1,
     roleKey: '',
@@ -5988,10 +5990,11 @@ function updateSellerMovement(seller) {
   if (dist > 0.12) {
     const beforeX = seller.group.position.x;
     const beforeZ = seller.group.position.z;
-    const moved = moveGroupAvoidingShelves(seller.group, seller.target, seller.speed, 0.18 * CHARACTER_SIZE_MULT);
+    const frameSpeed = getNavigationStep(seller.speed);
+    const moved = moveGroupAvoidingShelves(seller.group, seller.target, frameSpeed, 0.18 * CHARACTER_SIZE_MULT);
     const realMove = Math.hypot(seller.group.position.x - beforeX, seller.group.position.z - beforeZ);
 
-    if (!moved || realMove < seller.speed * 0.2) {
+    if (!isGroupYielding(seller.group) && (!moved || realMove < frameSpeed * 0.2)) {
       seller.stuck = (seller.stuck || 0) + 1;
 
       // Сначала сбрасываем только старый путь. Саму рабочую цель кассира,
@@ -6011,7 +6014,7 @@ function updateSellerMovement(seller) {
 
     // Ноги двигаются только когда персонаж реально сдвинулся. Раньше кассир
     // мог идти на месте перед препятствием, из-за чего движение выглядело дёрганым.
-    if (realMove > seller.speed * 0.18) {
+    if (realMove > frameSpeed * 0.18) {
       seller.legAngle += 0.14 * seller.legDir;
       if (Math.abs(seller.legAngle) > 0.4) seller.legDir *= -1;
     } else {
@@ -6020,12 +6023,14 @@ function updateSellerMovement(seller) {
     if (seller.group.children[2]) seller.group.children[2].rotation.x = seller.legAngle;
     if (seller.group.children[3]) seller.group.children[3].rotation.x = -seller.legAngle;
   } else if (seller.role === 'floor') {
+    stopNavigationMotion(seller.group);
     seller.wait--;
     if (seller.wait <= 0) {
       seller.target = chooseSellerFloorTarget(seller.group);
       seller.wait = 100 + Math.floor(Math.random() * 120);
     }
   } else {
+    stopNavigationMotion(seller.group);
     seller.legAngle *= 0.72;
     if (seller.group.children[2]) seller.group.children[2].rotation.x = seller.legAngle;
     if (seller.group.children[3]) seller.group.children[3].rotation.x = -seller.legAngle;
@@ -6221,6 +6226,31 @@ const CUSTOMER_COLORS = [0xff6b6b, 0x4ecdc4, 0xffe66d, 0xa8e6cf, 0xff8b94, 0xc7c
 // поэтому для них используется лёгкое локальное огибание на каждом шаге.
 let nextNavigationAgentId = 1;
 const CHARACTER_MIN_DISTANCE = 0.36 * CHARACTER_SIZE_MULT;
+const CUSTOMER_VISION_DISTANCE = 1.65 * CHARACTER_SIZE_MULT;
+const STAFF_VISION_DISTANCE = 2.15 * CHARACTER_SIZE_MULT;
+let navigationFrameScale = 1;
+let navigationLastFrameAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+let navigationAgentCacheToken = 0;
+let navigationAgentCacheBuiltToken = -1;
+let navigationAgentCache = [];
+
+function invalidateCharacterAgentCache() {
+  navigationAgentCacheToken++;
+}
+
+function updateNavigationFrameScale() {
+  const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  const elapsed = Math.max(1, now - navigationLastFrameAt);
+  navigationLastFrameAt = now;
+  invalidateCharacterAgentCache();
+  // При 60 FPS коэффициент равен 1. На слабом телефоне шаг увеличивается,
+  // поэтому персонажи не превращаются в «черепах» из-за низкого FPS.
+  navigationFrameScale = Math.max(0.55, Math.min(1.8, elapsed / 16.6667));
+}
+
+function getNavigationStep(baseSpeed) {
+  return baseSpeed * navigationFrameScale;
+}
 
 function ensureNavigationAgentId(group) {
   if (!group.userData) group.userData = {};
@@ -6229,6 +6259,8 @@ function ensureNavigationAgentId(group) {
 }
 
 function getCharacterAgents() {
+  if (navigationAgentCacheBuiltToken === navigationAgentCacheToken) return navigationAgentCache;
+
   const agents = [];
   try {
     sellers.forEach(s => { if (s && s.group) agents.push({ group:s.group, kind:'staff', ref:s }); });
@@ -6236,7 +6268,204 @@ function getCharacterAgents() {
   try {
     customers.forEach(c => { if (c && c.group && c.state !== 'removed') agents.push({ group:c.group, kind:'customer', ref:c }); });
   } catch (e) {}
-  return agents;
+
+  navigationAgentCache = agents;
+  navigationAgentCacheBuiltToken = navigationAgentCacheToken;
+  return navigationAgentCache;
+}
+
+
+function getCharacterAgent(group) {
+  return getCharacterAgents().find(agent => agent.group === group) || null;
+}
+
+function getAgentPriority(agent) {
+  if (!agent || !agent.ref) return 0;
+  if (agent.kind === 'staff') {
+    const role = agent.ref.role || 'floor';
+    if (role === 'cash-service') return 110;
+    if (role === 'cleaning') return 100;
+    if (role === 'stocking') return 95;
+    if ((agent.ref.staffType || 'seller') === 'cashier') return 62;
+    return 58;
+  }
+
+  const state = agent.ref.state || 'wandering';
+  if (state === 'checkout_wait') return 105;
+  if (state === 'browsing' || state === 'wandering_pause') return 92;
+  if (state === 'leaving_to_door' || state === 'leaving_outside') return 82;
+  if (state === 'checkout' || state === 'entering_checkout') return 74;
+  if (state === 'entering') return 66;
+  if (state === 'walking') return 52;
+  return 46;
+}
+
+function getAgentVisionDistance(agent) {
+  return agent && agent.kind === 'staff' ? STAFF_VISION_DISTANCE : CUSTOMER_VISION_DISTANCE;
+}
+
+function getNavigationNow() {
+  return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+}
+
+function isGroupYielding(group) {
+  return !!(group && group.userData && (group.userData.navYieldUntil || 0) > getNavigationNow());
+}
+
+function recordNavigationMotion(group, dx, dz) {
+  if (!group.userData) group.userData = {};
+  group.userData.navVelocityX = dx;
+  group.userData.navVelocityZ = dz;
+}
+
+function stopNavigationMotion(group) {
+  if (!group || !group.userData) return;
+  group.userData.navVelocityX = 0;
+  group.userData.navVelocityZ = 0;
+}
+
+function shouldAgentYieldTo(selfAgent, otherAgent) {
+  if (!selfAgent || !otherAgent) return false;
+  const selfAnchored = isCharacterAnchored(selfAgent);
+  const otherAnchored = isCharacterAnchored(otherAgent);
+  if (selfAnchored && !otherAnchored) return false;
+  if (!selfAnchored && otherAnchored) return true;
+
+  const selfPriority = getAgentPriority(selfAgent);
+  const otherPriority = getAgentPriority(otherAgent);
+  if (selfPriority !== otherPriority) return selfPriority < otherPriority;
+
+  // При равном приоритете уступает персонаж с большим постоянным id.
+  // Благодаря этому оба не останавливаются одновременно.
+  return ensureNavigationAgentId(selfAgent.group) > ensureNavigationAgentId(otherAgent.group);
+}
+
+function chooseYieldTarget(group, travelX, travelZ, padding) {
+  const len = Math.hypot(travelX, travelZ) || 1;
+  const ux = travelX / len;
+  const uz = travelZ / len;
+  const sideX = -uz;
+  const sideZ = ux;
+  const id = ensureNavigationAgentId(group);
+  const firstSide = id % 2 === 0 ? 1 : -1;
+  const sides = [firstSide, -firstSide];
+  const distances = [0.34, 0.50, 0.66];
+
+  for (const side of sides) {
+    for (const distance of distances) {
+      const x = group.position.x + sideX * side * distance;
+      const z = group.position.z + sideZ * side * distance;
+      if (!isCustomerPointFree(x, z, padding)) continue;
+      if (!isCharacterPointFree(group, x, z, CHARACTER_MIN_DISTANCE * 0.82)) continue;
+      return { x, z };
+    }
+  }
+  return null;
+}
+
+function beginCharacterYield(group, passingDirectionX, passingDirectionZ, padding) {
+  if (!group) return;
+  if (!group.userData) group.userData = {};
+  const now = getNavigationNow();
+  if ((group.userData.navYieldUntil || 0) > now) return;
+
+  group.userData.navYieldUntil = now + 560 + (ensureNavigationAgentId(group) % 4) * 55;
+  group.userData.navYieldTarget = chooseYieldTarget(group, passingDirectionX, passingDirectionZ, padding);
+  group.userData.navWasYielding = true;
+  stopNavigationMotion(group);
+}
+
+function processCharacterYield(group, speed, padding) {
+  if (!group || !group.userData) return false;
+  const now = getNavigationNow();
+  if ((group.userData.navYieldUntil || 0) <= now) {
+    group.userData.navYieldUntil = 0;
+    group.userData.navYieldTarget = null;
+    group.userData.navWasYielding = false;
+    return false;
+  }
+
+  group.userData.navWasYielding = true;
+  const target = group.userData.navYieldTarget;
+  if (target) {
+    const dx = target.x - group.position.x;
+    const dz = target.z - group.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > 0.04) {
+      const step = Math.min(speed * 0.72, dist);
+      const nx = group.position.x + (dx / dist) * step;
+      const nz = group.position.z + (dz / dist) * step;
+      if (isCustomerPointFree(nx, nz, padding) && isCharacterPointFree(group, nx, nz, CHARACTER_MIN_DISTANCE * 0.78)) {
+        const oldX = group.position.x;
+        const oldZ = group.position.z;
+        group.position.x = nx;
+        group.position.z = nz;
+        group.rotation.y = Math.atan2(dx, dz);
+        recordNavigationMotion(group, nx - oldX, nz - oldZ);
+        return true;
+      }
+    }
+  }
+
+  stopNavigationMotion(group);
+  // Возвращаем true даже когда персонаж уже остановился: это осознанное ожидание,
+  // а не застревание, поэтому старый путь не должен аварийно сбрасываться.
+  return true;
+}
+
+function findPredictedCharacterConflict(group, directionX, directionZ) {
+  const selfAgent = getCharacterAgent(group);
+  if (!selfAgent) return null;
+  const len = Math.hypot(directionX, directionZ);
+  if (len <= 0.0001) return null;
+  const ux = directionX / len;
+  const uz = directionZ / len;
+  const vision = getAgentVisionDistance(selfAgent);
+  const corridor = CHARACTER_MIN_DISTANCE * 1.08;
+  const recordedSelfSpeed = Math.hypot(group.userData?.navVelocityX || 0, group.userData?.navVelocityZ || 0);
+  const expectedSelfSpeed = Math.max(recordedSelfSpeed, selfAgent.kind === 'staff' ? 0.043 : 0.022);
+  const selfVX = ux * expectedSelfSpeed;
+  const selfVZ = uz * expectedSelfSpeed;
+
+  let best = null;
+  let bestTime = Infinity;
+  for (const other of getCharacterAgents()) {
+    if (!other.group || other.group === group) continue;
+    const relX = other.group.position.x - group.position.x;
+    const relZ = other.group.position.z - group.position.z;
+    const distance = Math.hypot(relX, relZ);
+    if (distance > vision) continue;
+
+    // Персонаж учитывает не только текущее положение другого человека,
+    // но и ближайшую точку двух траекторий в течение следующих ~0,6 секунды.
+    const otherVX = other.group.userData?.navVelocityX || 0;
+    const otherVZ = other.group.userData?.navVelocityZ || 0;
+    const relativeVX = otherVX - selfVX;
+    const relativeVZ = otherVZ - selfVZ;
+    const relativeSpeedSq = relativeVX * relativeVX + relativeVZ * relativeVZ;
+    const maxPredictionFrames = Math.min(36, vision / expectedSelfSpeed);
+    let timeToClosest = 0;
+    if (relativeSpeedSq > 0.000001) {
+      timeToClosest = -(relX * relativeVX + relZ * relativeVZ) / relativeSpeedSq;
+      timeToClosest = Math.max(0, Math.min(maxPredictionFrames, timeToClosest));
+    }
+
+    const closestX = relX + relativeVX * timeToClosest;
+    const closestZ = relZ + relativeVZ * timeToClosest;
+    const closestDistance = Math.hypot(closestX, closestZ);
+    const forward = relX * ux + relZ * uz;
+    const lateral = Math.abs(relX * uz - relZ * ux);
+
+    const directlyAhead = forward > 0.03 && forward <= corridor * 2.6 && lateral <= corridor;
+    const trajectoriesCross = forward > 0.03 && timeToClosest > 0 && closestDistance <= corridor;
+    if (!directlyAhead && !trajectoriesCross) continue;
+
+    if (timeToClosest < bestTime) {
+      bestTime = timeToClosest;
+      best = { selfAgent, otherAgent:other, forward, timeToClosest, closestDistance };
+    }
+  }
+  return best;
 }
 
 function isCharacterPointFree(ignoreGroup, x, z, minDistance = CHARACTER_MIN_DISTANCE) {
@@ -6259,17 +6488,46 @@ function commitCharacterStep(group, desiredX, desiredZ, faceDx, faceDz, padding,
 
   ensureNavigationAgentId(group);
 
-  // Сначала пробуем задуманный шаг. Он должен быть свободен и от мебели,
-  // и от другого персонажа.
-  if (isCustomerPointFree(desiredX, desiredZ, padding) && isCharacterPointFree(group, desiredX, desiredZ)) {
+  // Персонаж смотрит вперёд на несколько корпусов. Если траектории людей
+  // пересекутся, уступает только один — с меньшим приоритетом.
+  const conflict = findPredictedCharacterConflict(group, faceDx || dx, faceDz || dz);
+  if (conflict) {
+    if (shouldAgentYieldTo(conflict.selfAgent, conflict.otherAgent)) {
+      beginCharacterYield(group, faceDx || dx, faceDz || dz, padding);
+      return false;
+    }
+    if (shouldAgentYieldTo(conflict.otherAgent, conflict.selfAgent)) {
+      beginCharacterYield(conflict.otherAgent.group, faceDx || dx, faceDz || dz, padding);
+    }
+  }
+
+  // Сначала пробуем задуманный шаг. Он должен быть свободен от мебели.
+  // Другой человек может уже отходить в сторону, поэтому опасную близость
+  // проверяем отдельно и не заставляем обоих мгновенно останавливаться.
+  const staticFree = isCustomerPointFree(desiredX, desiredZ, padding);
+  const characterFree = getCharacterAgents().every(agent => {
+    if (!agent.group || agent.group === group) return true;
+    const ddx = agent.group.position.x - desiredX;
+    const ddz = agent.group.position.z - desiredZ;
+    const d = Math.hypot(ddx, ddz);
+    if (d >= CHARACTER_MIN_DISTANCE) return true;
+    const selfAgent = getCharacterAgent(group);
+    if (selfAgent && shouldAgentYieldTo(agent, selfAgent)) {
+      return d >= CHARACTER_MIN_DISTANCE * 0.60;
+    }
+    return false;
+  });
+
+  if (staticFree && characterFree) {
     group.position.x = desiredX;
     group.position.z = desiredZ;
     group.rotation.y = Math.atan2(faceDx, faceDz);
+    recordNavigationMotion(group, desiredX - curX, desiredZ - curZ);
     return true;
   }
 
-  // Если впереди человек, пробуем короткий боковой обход. Направление первого
-  // шага зависит от id персонажа, поэтому двое встречных не выбирают одну сторону.
+  // Если путь перекрыт мебелью или человек ещё не успел уступить, пробуем
+  // короткое боковое огибание. Это запасной вариант, а не основная навигация.
   const baseAngle = Math.atan2(dx, dz);
   const side = (group.userData.navigationAgentId % 2 === 0) ? 1 : -1;
   const offsets = [
@@ -6287,7 +6545,7 @@ function commitCharacterStep(group, desiredX, desiredZ, faceDx, faceDz, padding,
     const px = curX + Math.sin(angle) * step;
     const pz = curZ + Math.cos(angle) * step;
     if (!isCustomerPointFree(px, pz, padding)) continue;
-    if (!isCharacterPointFree(group, px, pz)) continue;
+    if (!isCharacterPointFree(group, px, pz, CHARACTER_MIN_DISTANCE * 0.88)) continue;
     const score = finalTarget
       ? Math.hypot(finalTarget.x - px, finalTarget.z - pz) + Math.abs(offset) * 0.08
       : Math.abs(offset);
@@ -6297,10 +6555,14 @@ function commitCharacterStep(group, desiredX, desiredZ, faceDx, faceDz, padding,
     }
   }
 
-  if (!best) return false;
+  if (!best) {
+    stopNavigationMotion(group);
+    return false;
+  }
   group.position.x = best.x;
   group.position.z = best.z;
   group.rotation.y = best.angle;
+  recordNavigationMotion(group, best.x - curX, best.z - curZ);
   return true;
 }
 
@@ -6700,12 +6962,24 @@ function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACT
   const curZ = group.position.z;
   if (!group.userData) group.userData = {};
 
+  // Если персонаж уступает дорогу, он сначала немного отходит в сторону,
+  // затем спокойно ждёт. Это не считается застреванием.
+  if (processCharacterYield(group, speed, padding)) return true;
+
   const targetKey = `${Math.round(target.x * 10)}:${Math.round(target.z * 10)}`;
   if (group.userData.navTargetKey !== targetKey) {
     group.userData.navTargetKey = targetKey;
     group.userData.navPath = [];
     group.userData.navRepathAt = 0;
     group.userData.navFail = 0;
+
+    // Новый маршрут строится сразу при назначении цели, если между персонажем
+    // и целью есть мебель. Раньше A* запускался только после упора в объект.
+    if (isInsideShopWalkArea(curX, curZ) && !hasClearWalkLine(curX, curZ, target.x, target.z, padding)) {
+      const initialPath = findWalkPath(curX, curZ, target.x, target.z, padding);
+      group.userData.navPath = initialPath || [];
+      group.userData.navRepathAt = getNavigationNow() + (initialPath && initialPath.length ? 520 : 900);
+    }
   }
 
   // Если объект передвинули на персонажа, сначала мягко выводим его наружу.
@@ -6717,9 +6991,12 @@ function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACT
       const ed = Math.hypot(ex, ez);
       if (ed > 0.0001) {
         const step = Math.min(speed * 1.5, ed);
+        const oldX = group.position.x;
+        const oldZ = group.position.z;
         group.position.x += (ex / ed) * step;
         group.position.z += (ez / ed) * step;
         group.rotation.y = Math.atan2(ex, ez);
+        recordNavigationMotion(group, group.position.x - oldX, group.position.z - oldZ);
         return true;
       }
     }
@@ -6733,27 +7010,47 @@ function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACT
   const dx = target.x - curX;
   const dz = target.z - curZ;
   const dist = Math.hypot(dx, dz);
-  if (dist <= 0.0001) return false;
-
-  // Сначала пробуем обычный маленький шаг прямо к цели.
-  const directStep = Math.min(speed, dist);
-  const directX = curX + (dx / dist) * directStep;
-  const directZ = curZ + (dz / dist) * directStep;
-  if (commitCharacterStep(group, directX, directZ, dx, dz, padding, target)) {
-    group.userData.navFail = 0;
-    return true;
+  if (dist <= 0.0001) {
+    stopNavigationMotion(group);
+    return false;
   }
 
-  // Путь строится только после реального столкновения и не чаще нескольких раз в секунду.
-  const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-  if (now >= (group.userData.navRepathAt || 0)) {
+  // Перед прямым движением персонаж проверяет коридор впереди. Если препятствие
+  // видно заранее, маршрут строится до фактического столкновения.
+  const lookDistance = Math.min(dist, getCharacterAgent(group)?.kind === 'staff' ? STAFF_VISION_DISTANCE : CUSTOMER_VISION_DISTANCE);
+  const lookX = curX + (dx / dist) * lookDistance;
+  const lookZ = curZ + (dz / dist) * lookDistance;
+  const obstacleAhead = !hasClearWalkLine(curX, curZ, lookX, lookZ, padding);
+
+  const now = getNavigationNow();
+  if (obstacleAhead && now >= (group.userData.navRepathAt || 0)) {
     const path = findWalkPath(curX, curZ, target.x, target.z, padding);
-    group.userData.navRepathAt = now + (path && path.length ? 450 : 900);
+    group.userData.navRepathAt = now + (path && path.length ? 520 : 900);
     group.userData.navPath = path || [];
     if (group.userData.navPath.length && followWalkPath(group, target, speed, padding)) return true;
   }
 
-  // Короткое локальное огибание помогает двигаться плавно, пока путь пересчитывается.
+  // Если обзор свободен, пробуем обычный шаг к цели.
+  if (!obstacleAhead) {
+    const directStep = Math.min(speed, dist);
+    const directX = curX + (dx / dist) * directStep;
+    const directZ = curZ + (dz / dist) * directStep;
+    if (commitCharacterStep(group, directX, directZ, dx, dz, padding, target)) {
+      group.userData.navFail = 0;
+      return true;
+    }
+  }
+
+  // Если прямой путь временно перекрыт человеком, либо маршрут устарел,
+  // пересчитываем A* с ограничением частоты.
+  if (now >= (group.userData.navRepathAt || 0)) {
+    const path = findWalkPath(curX, curZ, target.x, target.z, padding);
+    group.userData.navRepathAt = now + (path && path.length ? 520 : 900);
+    group.userData.navPath = path || [];
+    if (group.userData.navPath.length && followWalkPath(group, target, speed, padding)) return true;
+  }
+
+  // Короткое локальное огибание — только запасной вариант.
   const baseAngle = Math.atan2(dx, dz);
   const angleOptions = [
     Math.PI / 8, -Math.PI / 8,
@@ -6766,9 +7063,9 @@ function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACT
   let bestScore = Infinity;
   for (const offset of angleOptions) {
     const a = baseAngle + offset;
-    const step = speed * 0.95;
-    const px = curX + Math.sin(a) * step;
-    const pz = curZ + Math.cos(a) * step;
+    const localStep = speed * 0.95;
+    const px = curX + Math.sin(a) * localStep;
+    const pz = curZ + Math.cos(a) * localStep;
     if (!isCustomerPointFree(px, pz, padding)) continue;
     const score = Math.hypot(target.x - px, target.z - pz) + Math.abs(offset) * 0.06;
     if (score < bestScore) {
@@ -6784,7 +7081,7 @@ function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACT
 
   group.userData.navFail = (group.userData.navFail || 0) + 1;
 
-  // Только после продолжительного реального застревания ищем ближайшую свободную точку.
+  // После продолжительного реального застревания ищем ближайшую свободную точку.
   if (group.userData.navFail > 55) {
     const rescue = findNearestFreeWalkPoint(curX, curZ, padding, target, 3.5);
     if (rescue) {
@@ -6792,9 +7089,9 @@ function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACT
       const rz = rescue.z - curZ;
       const rd = Math.hypot(rx, rz);
       if (rd > 0.0001) {
-        const step = Math.min(speed * 1.35, rd);
-        const nx = group.position.x + (rx / rd) * step;
-        const nz = group.position.z + (rz / rd) * step;
+        const rescueStep = Math.min(speed * 1.35, rd);
+        const nx = group.position.x + (rx / rd) * rescueStep;
+        const nz = group.position.z + (rz / rd) * rescueStep;
         if (commitCharacterStep(group, nx, nz, rx, rz, padding, target)) {
           group.userData.navFail = 0;
           group.userData.navRepathAt = 0;
@@ -6804,22 +7101,45 @@ function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACT
     }
   }
 
+  stopNavigationMotion(group);
   return false;
 }
 
 function moveGroupDirect(group, target, speed) {
+  if (processCharacterYield(group, speed, 0.10 * CHARACTER_SIZE_MULT)) return true;
   const dx = target.x - group.position.x;
   const dz = target.z - group.position.z;
   const dist = Math.hypot(dx, dz);
-  if (dist <= 0.0001) return false;
+  if (dist <= 0.0001) {
+    stopNavigationMotion(group);
+    return false;
+  }
+
+  const conflict = findPredictedCharacterConflict(group, dx, dz);
+  if (conflict) {
+    if (shouldAgentYieldTo(conflict.selfAgent, conflict.otherAgent)) {
+      beginCharacterYield(group, dx, dz, 0.10 * CHARACTER_SIZE_MULT);
+      stopNavigationMotion(group);
+      return true;
+    }
+    if (shouldAgentYieldTo(conflict.otherAgent, conflict.selfAgent)) {
+      beginCharacterYield(conflict.otherAgent.group, dx, dz, 0.10 * CHARACTER_SIZE_MULT);
+    }
+  }
+
   const step = Math.min(speed, dist);
-  const nx = group.position.x + (dx / dist) * step;
-  const nz = group.position.z + (dz / dist) * step;
-  // Даже в дверном проёме персонажи идут по одному, а не проходят друг сквозь друга.
-  if (!isCharacterPointFree(group, nx, nz, CHARACTER_MIN_DISTANCE * 0.9)) return false;
+  const oldX = group.position.x;
+  const oldZ = group.position.z;
+  const nx = oldX + (dx / dist) * step;
+  const nz = oldZ + (dz / dist) * step;
+  if (!isCharacterPointFree(group, nx, nz, CHARACTER_MIN_DISTANCE * 0.82)) {
+    stopNavigationMotion(group);
+    return false;
+  }
   group.position.x = nx;
   group.position.z = nz;
   group.rotation.y = Math.atan2(dx, dz);
+  recordNavigationMotion(group, nx - oldX, nz - oldZ);
   return true;
 }
 
@@ -6964,7 +7284,8 @@ class Customer {
     this.targetPos = getDoorInsidePoint(this.entryDoor);
     this.targetShelf = null;
     this.stuckTimer = 0;
-    this.speed = 0.025 + Math.random() * 0.015;
+    // Покупатели ходят спокойнее работников и имеют небольшую разницу темпа.
+    this.speed = 0.021 + Math.random() * 0.007;
     this.waitTimer = 0;
     this.legAngle = 0;
     this.legDir = 1;
@@ -6989,7 +7310,7 @@ class Customer {
       .map((s, i) => (s && s.qty > 0 && !s.soldOut) ? i : -1)
       .filter(i => i >= 0);
 
-    if (occupied.length > 0 && Math.random() < 0.7) {
+    if (occupied.length > 0 && Math.random() < 0.62) {
       const idx = occupied[Math.floor(Math.random() * occupied.length)];
       this.targetShelf = idx;
       this.targetPos = getShelfApproachPoint(idx, this.group.position, this.group);
@@ -7043,12 +7364,16 @@ class Customer {
       const isOutsideWalkArea = !isInsideShopWalkArea(this.group.position.x, this.group.position.z);
       const crossesDoorDirectly = this.state === 'leaving_outside' ||
         ((this.state === 'entering' || this.state === 'entering_checkout') && isOutsideWalkArea);
+      const calmWalkMultiplier = this.state === 'wandering' ? 0.72 : (this.state === 'walking' ? 0.90 : 1);
+      const frameSpeed = getNavigationStep(this.speed * calmWalkMultiplier);
       const moved = crossesDoorDirectly
-        ? moveGroupDirect(this.group, this.targetPos, this.speed)
-        : moveGroupAvoidingShelves(this.group, this.targetPos, this.speed);
+        ? moveGroupDirect(this.group, this.targetPos, frameSpeed)
+        : moveGroupAvoidingShelves(this.group, this.targetPos, frameSpeed);
 
       const realMove = Math.sqrt((this.group.position.x - oldX) ** 2 + (this.group.position.z - oldZ) ** 2);
-      this.stuckTimer = (!moved || realMove < this.speed * 0.25) ? this.stuckTimer + 1 : 0;
+      this.stuckTimer = isGroupYielding(this.group)
+        ? 0
+        : ((!moved || realMove < frameSpeed * 0.25) ? this.stuckTimer + 1 : 0);
 
       // Сначала просто сбрасываем устаревший маршрут. Цель меняем только если
       // персонаж действительно долго не может сдвинуться, чтобы убрать подёргивания.
@@ -7073,7 +7398,7 @@ class Customer {
         this.stuckTimer = 0;
       }
 
-      if (realMove > this.speed * 0.18) {
+      if (realMove > frameSpeed * 0.18) {
         this.legAngle += 0.15 * this.legDir;
         if (Math.abs(this.legAngle) > 0.4) this.legDir *= -1;
       } else {
@@ -7083,6 +7408,8 @@ class Customer {
       if (this.group.children[3]) this.group.children[3].rotation.x = -this.legAngle;
       return false;
     }
+
+    stopNavigationMotion(this.group);
 
     if (this.state === 'entering') {
       this.chooseTarget();
@@ -7101,7 +7428,7 @@ class Customer {
       }
     } else if (this.state === 'wandering') {
       this.state = 'wandering_pause';
-      this.waitTimer = 70 + Math.floor(Math.random() * 120);
+      this.waitTimer = 105 + Math.floor(Math.random() * 150);
     } else if (this.state === 'wandering_pause') {
       this.waitTimer--;
       if (this.waitTimer <= 0) this.chooseTarget();
@@ -7253,7 +7580,6 @@ function addXP(amount) {
   notifyGameEvent('level_reached', G.level || 1, { level:G.level || 1 });
 }
 
-const MENU_STYLE_SAVE_KEY = 'miceshop_menu_style_v1';
 const MENU_STYLE_OPTIONS = [
   {
     id:'standard', name:'Стандартный', sub:'Простое бело-серебристое оформление',
@@ -7285,19 +7611,17 @@ function getMenuStyleOption(styleId = G.menuStyle) {
   return MENU_STYLE_OPTIONS.find(style => style.id === styleId) || MENU_STYLE_OPTIONS[0];
 }
 
-function applyMenuStyle(styleId = G.menuStyle, save = false) {
+function applyMenuStyle(styleId = G.menuStyle) {
   const selected = getMenuStyleOption(styleId);
   G.menuStyle = selected.id;
   document.body.dataset.menuStyle = selected.id;
-  if (save) {
-    try { localStorage.setItem(MENU_STYLE_SAVE_KEY, selected.id); } catch (e) {}
-  }
 }
 
 function loadMenuStyle() {
-  let saved = 'standard';
-  try { saved = localStorage.getItem(MENU_STYLE_SAVE_KEY) || 'standard'; } catch (e) {}
-  applyMenuStyle(saved, false);
+  // Стиль интерфейса не сохраняется между запусками.
+  // Каждый новый вход всегда начинается со стандартной бело-серебристой темы.
+  try { localStorage.removeItem('miceshop_menu_style_v1'); } catch (e) {}
+  applyMenuStyle('standard');
 }
 
 function renderMenuStyleList() {
@@ -7314,7 +7638,7 @@ function renderMenuStyleList() {
 
 function setMenuStyle(styleId) {
   const selected = getMenuStyleOption(styleId);
-  applyMenuStyle(selected.id, true);
+  applyMenuStyle(selected.id);
   renderMenuStyleList();
   showToast('🎨 Стиль меню: ' + selected.name);
 }
@@ -10462,6 +10786,7 @@ function animate() {
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 0.95;
   frame++;
+  updateNavigationFrameScale();
 
   if (!gameStarted) {
     renderer.render(scene, camera);
@@ -10483,6 +10808,7 @@ function animate() {
 
   // Обновляем покупателей
   customers = customers.filter(c => !c.update());
+  invalidateCharacterAgentCache();
 
   // Анимация раздвижных дверей
   updateDoor();
