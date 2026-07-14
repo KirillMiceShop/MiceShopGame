@@ -2632,7 +2632,7 @@ const SHOP_STAGE_MAX = SHOP_STAGE_MIN + SHOP_EXPANSION_LEVELS.length;
 const SHOP_UPGRADE_COST = 5000;
 const SECOND_FLOOR_UNLOCK_LEVEL = 25;
 const SECOND_FLOOR_UNLOCK_STEP = 2;
-const SHOP_FLOOR_HEIGHT = 4.4;
+const SHOP_FLOOR_HEIGHT = 4.0;
 const LIFT_BUILD_COST = SHOP_UPGRADE_COST;
 const SHOP_HALF_MIN = 8.0;
 const SHOP_HALF_MAX = 12.5;
@@ -9903,10 +9903,12 @@ function rebuildSecondFloorFacade() {
     });
   }
 
-  const firstStage = shopFloorStates[1]?.shopStage || 1;
-  const half = getShopHalfForStage(firstStage);
+  // Видимый нижний объём строится строго по контуру активного второго этажа.
+  // Благодаря этому наружные стены двух этажей не выступают и не уходят внутрь.
+  const secondStage = shopFloorStates[2]?.shopStage || ((G.currentFloor || 1) === 2 ? G.shopStage : 1);
+  const half = getShopHalfForStage(secondStage);
   const baseY = -SHOP_FLOOR_HEIGHT;
-  const wallH = 3.8;
+  const wallH = SHOP_FLOOR_HEIGHT;
   const wallColor = EXTERIOR_WALL_COLOR;
   const frameColor = 0x6f5234;
 
@@ -9919,17 +9921,18 @@ function rebuildSecondFloorFacade() {
     return mesh;
   };
 
-  // Нижний объём первого этажа показывается как закрытый фасад без внутренней жизни:
-  // когда игрок на втором этаже, первый этаж превращается в «оболочку» с окнами,
-  // а его продажи продолжаются пассивно в фоне без движения персонажей.
-  addBox(half * 2 + .25, .18, half * 2 + .25, 0xd8c4aa, 0, baseY - .08, 0);
-  addBox(half * 2 + .30, .22, half * 2 + .30, frameColor, 0, -.12, 0);
+  // Нижний объём заканчивается точно на y=0 — там же начинается второй этаж.
+  // Отдельной выступающей плиты между этажами больше нет, поэтому щель исчезает.
+  const fullWallThickness = 0.30;
+  const openSideThickness = 0.16;
+  const wallCenterY = baseY + wallH / 2;
 
-  addBox(half * 2, wallH, .24, wallColor, 0, baseY + wallH / 2, -half);
-  addBox(half * 2, wallH, .24, wallColor, 0, baseY + wallH / 2, half);
-  addBox(.24, wallH, half * 2, wallColor, -half, baseY + wallH / 2, 0);
-  addBox(.24, wallH, half * 2, wallColor, half, baseY + wallH / 2, 0);
+  // Задняя и левая стены совпадают с толщиной полноразмерных стен второго этажа.
+  addBox(half * 2, wallH, fullWallThickness, wallColor, 0, wallCenterY, -half);
+  addBox(fullWallThickness, wallH, half * 2, wallColor, -half, wallCenterY, 0);
 
+  // Передняя и правая стороны собираются из отдельных сегментов,
+  // чтобы окна были не накладкой поверх стены, а реальными проёмами.
   const windowGlassMat = new THREE.MeshPhongMaterial({
     color:0xcfd8df,
     transparent:true,
@@ -9944,27 +9947,76 @@ function rebuildSecondFloorFacade() {
   const sillY = baseY + 1.85;
   const frontWindowXs = [-half * 0.58, 0, half * 0.58];
   const sideWindowZs = [-half * 0.58, 0, half * 0.58];
+  const winBottom = sillY - winH / 2;
+  const winTop = sillY + winH / 2;
+  const lowerWallH = Math.max(0.12, winBottom - baseY);
+  const upperWallH = Math.max(0.12, 0 - winTop);
+  const lowerWallY = baseY + lowerWallH / 2;
+  const upperWallY = winTop + upperWallH / 2;
+  const frontFaceZ = half + openSideThickness / 2;
+  const rightFaceX = half + openSideThickness / 2;
+
+  function addFrontWallSegment(x1, x2, yCenter, h) {
+    const w = x2 - x1;
+    if (w <= 0.05 || h <= 0.05) return;
+    addBox(w, h, openSideThickness, wallColor, (x1 + x2) / 2, yCenter, frontFaceZ);
+  }
+
+  function addRightWallSegment(z1, z2, yCenter, h) {
+    const d = z2 - z1;
+    if (d <= 0.05 || h <= 0.05) return;
+    addBox(openSideThickness, h, d, wallColor, rightFaceX, yCenter, (z1 + z2) / 2);
+  }
+
+  function addWindowPiers(positions, axis) {
+    const ranges = positions.map(pos => [pos - winW / 2, pos + winW / 2]);
+    const segments = [];
+    let cursor = -half;
+    for (const [start, end] of ranges) {
+      segments.push([cursor, start]);
+      cursor = end;
+    }
+    segments.push([cursor, half]);
+
+    segments.forEach(([a, b]) => {
+      if (axis === 'front') {
+        addFrontWallSegment(a, b, wallCenterY, wallH);
+      } else {
+        addRightWallSegment(a, b, wallCenterY, wallH);
+      }
+    });
+  }
+
+  // Сплошные нижняя и верхняя полосы стены над и под окнами.
+  addBox(half * 2, lowerWallH, openSideThickness, wallColor, 0, lowerWallY, frontFaceZ);
+  addBox(half * 2, upperWallH, openSideThickness, wallColor, 0, upperWallY, frontFaceZ);
+  addBox(openSideThickness, lowerWallH, half * 2, wallColor, rightFaceX, lowerWallY, 0);
+  addBox(openSideThickness, upperWallH, half * 2, wallColor, rightFaceX, upperWallY, 0);
+
+  // Вертикальные простенки между окнами и по краям.
+  addWindowPiers(frontWindowXs, 'front');
+  addWindowPiers(sideWindowZs, 'side');
 
   function addFacadeWindow(axis, pos) {
     if (axis === 'front') {
-      addBox(winW + .22, winH + .22, .08, frameColor, pos, sillY, half + .01);
-      addBox(winW, winH, .04, voidMat.color.getHex(), pos, sillY, half + .03, windowGlassMat);
-      addBox(winW * .06, winH, .07, frameColor, pos, sillY, half + .02);
-      addBox(winW, .08, .07, frameColor, pos, sillY, half + .02);
+      addBox(winW + .20, winH + .20, .06, frameColor, pos, sillY, frontFaceZ + .01);
+      addBox(winW, winH, .04, voidMat.color.getHex(), pos, sillY, frontFaceZ + .03, windowGlassMat);
+      addBox(winW * .06, winH, .05, frameColor, pos, sillY, frontFaceZ + .02);
+      addBox(winW, .06, .05, frameColor, pos, sillY, frontFaceZ + .02);
     } else {
-      addBox(.08, winH + .22, winW + .22, frameColor, half + .01, sillY, pos);
-      addBox(.04, winH, winW, voidMat.color.getHex(), half + .03, sillY, pos, windowGlassMat.clone());
-      addBox(.07, winH, winW * .06, frameColor, half + .02, sillY, pos);
-      addBox(.07, .08, winW, frameColor, half + .02, sillY, pos);
+      addBox(.06, winH + .20, winW + .20, frameColor, rightFaceX + .01, sillY, pos);
+      addBox(.04, winH, winW, voidMat.color.getHex(), rightFaceX + .03, sillY, pos, windowGlassMat.clone());
+      addBox(.05, winH, winW * .06, frameColor, rightFaceX + .02, sillY, pos);
+      addBox(.05, .06, winW, frameColor, rightFaceX + .02, sillY, pos);
     }
   }
 
   frontWindowXs.forEach(x => addFacadeWindow('front', x));
   sideWindowZs.forEach(z => addFacadeWindow('side', z));
 
-  const columnY = baseY + wallH / 2;
-  [-half, 0, half].forEach(x => addBox(.12, wallH, .12, frameColor, x, columnY, half));
-  [-half, 0, half].forEach(z => addBox(.12, wallH, .12, frameColor, half, columnY, z));
+  const columnY = wallCenterY;
+  [-half, 0, half].forEach(x => addBox(.08, wallH, .06, frameColor, x, columnY, frontFaceZ));
+  [-half, 0, half].forEach(z => addBox(.06, wallH, .08, frameColor, rightFaceX, columnY, z));
 
   secondFloorFacadeGroup.visible = !!G.liftBuilt && (G.currentFloor || 1) === 2;
 }
