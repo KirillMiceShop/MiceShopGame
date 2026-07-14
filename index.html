@@ -4871,7 +4871,7 @@ function makeDecorMesh(decor) {
     if (def.id === 'glass_elevator') {
       const W = def.width || 2.0;
       const D = def.depth || 2.0;
-      const H = 2.65;
+      const H = 3.75;
       const frameMat = new THREE.MeshPhongMaterial({ color:0xd6dde3, shininess:150, specular:0xffffff });
       const glassMat = new THREE.MeshPhongMaterial({ color:0xa9ddf4, transparent:true, opacity:0.28, shininess:220, specular:0xffffff, side:THREE.DoubleSide });
       const darkMat = new THREE.MeshPhongMaterial({ color:0x24313a, shininess:90 });
@@ -4935,14 +4935,14 @@ function makeDecorMesh(decor) {
     const scale = def.scale || INTERIOR_OBJECT_SIZE_MULT;
     const hitW = (def.width || 0.7) * scale + 0.15;
     const hitD = (def.depth || 0.7) * scale + 0.15;
-    hitGeo = new THREE.BoxGeometry(hitW, def.id === 'glass_elevator' ? 2.9 : 1.5, hitD);
+    hitGeo = new THREE.BoxGeometry(hitW, def.id === 'glass_elevator' ? 4.0 : 1.5, hitD);
   }
   const hitZone = new THREE.Mesh(hitGeo, new THREE.MeshBasicMaterial({ visible:false }));
   if (def.place === 'wall') {
     const wp = getWallDecorWorldPosition(decor.axis, decor.pos);
     hitZone.position.set(wp.x, 2.45, wp.z);
   } else {
-    hitZone.position.set(decor.x, def.id === 'glass_elevator' ? 1.45 : 0.75, decor.z);
+    hitZone.position.set(decor.x, def.id === 'glass_elevator' ? 2.0 : 0.75, decor.z);
     hitZone.rotation.y = decor.rotation || 0;
   }
   hitZone.userData.decorId = decor.id;
@@ -9482,6 +9482,7 @@ function rebuildStarterShelfForShopType() {
 const shopFloorStates = {};
 let shopFloorSystemReady = false;
 let secondFloorFacadeGroup = null;
+let lastPassiveFloorUpdateAt = 0;
 
 function getOppositeShopType(type) {
   return type === 'electronics' ? 'clothing' : 'electronics';
@@ -9635,6 +9636,45 @@ function setShopFloorStateYOffset(state, nextOffset = 0) {
   state.visualYOffset = nextOffset;
 }
 
+function processPassiveFloorSales(state, now = Date.now()) {
+  if (!state || !Array.isArray(state.slots)) return;
+  for (let i = 0; i < state.slots.length; i++) {
+    const item = state.slots[i];
+    if (!item || item.qty <= 0 || item.soldOut || !item.nextSaleAt) continue;
+    let safety = 0;
+    while (item.qty > 0 && !item.soldOut && item.nextSaleAt && now >= item.nextSaleAt && safety < 8) {
+      safety++;
+      const isDiscounted = (item.discountedQty || 0) > 0;
+      const saleAmount = isDiscounted ? Math.floor(item.product.sell / 2) : item.product.sell;
+      item.qty -= 1;
+      if (isDiscounted) item.discountedQty = Math.max(0, (item.discountedQty || 0) - 1);
+      G.pendingRevenue += saleAmount;
+      G.pendingItems.push({ name:item.product.name, emoji:item.product.emoji, amount:saleAmount });
+      G.totalSold++;
+      addXP(item.product.xp);
+      if (item.qty <= 0) {
+        item.qty = 0;
+        item.soldOut = true;
+        item.nextSaleAt = null;
+      } else {
+        item.nextSaleAt += item.product.time * 1000;
+        if (item.nextSaleAt < now - item.product.time * 1000) item.nextSaleAt = now + item.product.time * 1000;
+      }
+    }
+  }
+}
+
+function updatePassiveFloors(now = Date.now()) {
+  if (!shopFloorSystemReady || !gameStarted) return;
+  if (now - lastPassiveFloorUpdateAt < 1000) return;
+  lastPassiveFloorUpdateAt = now;
+  const activeFloor = G.currentFloor || 1;
+  Object.values(shopFloorStates).forEach(state => {
+    if (!state || state.floorNumber === activeFloor) return;
+    processPassiveFloorSales(state, now);
+  });
+}
+
 function clearOpenInterfaceForFloorSwitch() {
   document.querySelectorAll('.modal-bg.show').forEach(el => el.classList.remove('show'));
   placingMode = false;
@@ -9754,23 +9794,13 @@ function switchShopFloor() {
   clearOpenInterfaceForFloorSwitch();
   const currentState = captureCurrentFloorState(fromFloor);
 
-  if (fromFloor === 1) {
-    // Первый этаж остаётся настоящим магазином под активным вторым этажом.
-    setShopFloorStateYOffset(currentState, -SHOP_FLOOR_HEIGHT);
-    setShopFloorStateVisible(currentState, true);
-  } else {
-    setShopFloorStateVisible(currentState, false);
-  }
+  setShopFloorStateYOffset(currentState, 0);
+  setShopFloorStateVisible(currentState, false);
 
   const targetState = shopFloorStates[targetFloor];
   bindShopFloorState(targetState);
   setShopFloorStateYOffset(targetState, 0);
   setShopFloorStateVisible(targetState, true);
-
-  if (targetFloor === 1) {
-    setShopFloorStateYOffset(targetState, 0);
-    setShopFloorStateVisible(targetState, true);
-  }
 
   setExteriorYOffset(targetFloor === 2 ? -SHOP_FLOOR_HEIGHT : 0);
   applyShopStageVisuals();
@@ -9829,25 +9859,48 @@ function rebuildSecondFloorFacade() {
     return mesh;
   };
 
-  // Настоящий нижний объём: внутри него остаются реальные объекты первого этажа,
-  // которые при просмотре второго этажа сдвигаются вниз, а не заменяются картинкой.
+  // Нижний объём первого этажа показывается как закрытый фасад без внутренней жизни:
+  // когда игрок на втором этаже, первый этаж превращается в «оболочку» с окнами,
+  // а его продажи продолжаются пассивно в фоне без движения персонажей.
   addBox(half * 2 + .25, .18, half * 2 + .25, 0xd8c4aa, 0, baseY - .08, 0);
   addBox(half * 2 + .30, .22, half * 2 + .30, frameColor, 0, -.12, 0);
-  addBox(half * 2, wallH, .22, wallColor, 0, baseY + wallH / 2, -half);
-  addBox(.22, wallH, half * 2, wallColor, -half, baseY + wallH / 2, 0);
 
-  const glassMat = new THREE.MeshPhongMaterial({
-    color:0xaedcf0,
+  addBox(half * 2, wallH, .24, wallColor, 0, baseY + wallH / 2, -half);
+  addBox(half * 2, wallH, .24, wallColor, 0, baseY + wallH / 2, half);
+  addBox(.24, wallH, half * 2, wallColor, -half, baseY + wallH / 2, 0);
+  addBox(.24, wallH, half * 2, wallColor, half, baseY + wallH / 2, 0);
+
+  const windowGlassMat = new THREE.MeshPhongMaterial({
+    color:0xcfd8df,
     transparent:true,
-    opacity:.22,
-    shininess:160,
+    opacity:.88,
+    shininess:110,
     specular:0xffffff,
     side:THREE.DoubleSide
   });
-  // Открытые стороны первого этажа закрыты прозрачным фасадом, через который
-  // видны его реальные витрины, кассы, работники и установленный лифт.
-  addBox(half * 2 - .5, wallH - .35, .06, 0xffffff, 0, baseY + wallH / 2, half, glassMat);
-  addBox(.06, wallH - .35, half * 2 - .5, 0xffffff, half, baseY + wallH / 2, 0, glassMat.clone());
+  const voidMat = new THREE.MeshLambertMaterial({ color:0xe8ebee });
+  const winW = Math.max(1.5, Math.min(2.0, half * 0.42));
+  const winH = 1.65;
+  const sillY = baseY + 1.85;
+  const frontWindowXs = [-half * 0.58, 0, half * 0.58];
+  const sideWindowZs = [-half * 0.58, 0, half * 0.58];
+
+  function addFacadeWindow(axis, pos) {
+    if (axis === 'front') {
+      addBox(winW + .22, winH + .22, .08, frameColor, pos, sillY, half + .01);
+      addBox(winW, winH, .04, voidMat.color.getHex(), pos, sillY, half + .03, windowGlassMat);
+      addBox(winW * .06, winH, .07, frameColor, pos, sillY, half + .02);
+      addBox(winW, .08, .07, frameColor, pos, sillY, half + .02);
+    } else {
+      addBox(.08, winH + .22, winW + .22, frameColor, half + .01, sillY, pos);
+      addBox(.04, winH, winW, voidMat.color.getHex(), half + .03, sillY, pos, windowGlassMat.clone());
+      addBox(.07, winH, winW * .06, frameColor, half + .02, sillY, pos);
+      addBox(.07, .08, winW, frameColor, half + .02, sillY, pos);
+    }
+  }
+
+  frontWindowXs.forEach(x => addFacadeWindow('front', x));
+  sideWindowZs.forEach(z => addFacadeWindow('side', z));
 
   const columnY = baseY + wallH / 2;
   [-half, 0, half].forEach(x => addBox(.12, wallH, .12, frameColor, x, columnY, half));
@@ -11642,6 +11695,8 @@ function animate(now = performance.now()) {
     return;
   }
 
+  updatePassiveFloors(Date.now());
+
   // Количество покупателей зависит от рейтинга магазина.
   // До 10% — 1 покупатель, 10% — 2, 20% — 3 и далее +1 за каждые 10%.
   const nowForCustomers = Date.now();
@@ -11649,7 +11704,7 @@ function animate(now = performance.now()) {
   const spawnInterval = getCustomerSpawnIntervalMs();
   if (lastCustomerSpawnAt === 0) lastCustomerSpawnAt = nowForCustomers - spawnInterval + 3000;
   if (nowForCustomers - lastCustomerSpawnAt >= spawnInterval && customers.length < customerCapacity) {
-    if (doors.length > 0) {
+    if (getRandomDoor()) {
       try { customers.push(new Customer()); } catch(e) { console.warn('Customer spawn error:', e); }
     }
     lastCustomerSpawnAt = nowForCustomers;
