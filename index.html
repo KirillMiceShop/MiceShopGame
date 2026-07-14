@@ -2676,11 +2676,19 @@ function getUnlockSummaryForLevels(fromLevel, toLevel, shopType = G.shopType) {
 // ══════════════════════════════════════
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-// Графика: включаем мягкие тени и более приятную цветопередачу.
+// На телефонах ограничиваем внутреннее разрешение рендера.
+// Значение 2 рисовало примерно в четыре раза больше пикселей, чем pixelRatio 1.
+const isMobileRenderer = window.matchMedia('(pointer: coarse)').matches || Math.min(window.innerWidth, window.innerHeight) < 900;
+const MAX_RENDER_PIXEL_RATIO = isMobileRenderer ? 1.25 : 1.75;
+function updateRendererPixelRatio() {
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_RENDER_PIXEL_RATIO));
+}
+updateRendererPixelRatio();
+
+// Более лёгкие тени для мобильных устройств: обычный PCF вместо PCFSoft.
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.NoToneMapping;
 renderer.toneMappingExposure = 1.0;
@@ -2724,6 +2732,7 @@ function updateCamera() {
   camera.updateProjectionMatrix();
 }
 function onResize() {
+  updateRendererPixelRatio();
   renderer.setSize(window.innerWidth, window.innerHeight);
   updateCamera();
 }
@@ -3357,8 +3366,8 @@ sun.target.position.set(1, 0, 1);
 sun.castShadow = true;
 
 // Качество и область теней.
-sun.shadow.mapSize.width = 1024;
-sun.shadow.mapSize.height = 1024;
+sun.shadow.mapSize.width = 512;
+sun.shadow.mapSize.height = 512;
 sun.shadow.camera.left = -18;
 sun.shadow.camera.right = 18;
 sun.shadow.camera.top = 18;
@@ -5506,7 +5515,8 @@ function updateDoor() {
     });
 
     const target = nearCustomer ? 1 : 0;
-    door.openAmount = (door.openAmount || 0) + (target - (door.openAmount || 0)) * 0.16;
+    const doorEase = 1 - Math.pow(1 - 0.16, getFrameTimeUnits());
+    door.openAmount = (door.openAmount || 0) + (target - (door.openAmount || 0)) * doorEase;
 
     door.leafPivots.forEach(lp => {
       const angleMax = door.type === 'double' ? OPEN_ANGLE_DOUBLE : OPEN_ANGLE_SINGLE;
@@ -5995,11 +6005,12 @@ function updateSellerMovement(seller) {
     const realMove = Math.hypot(seller.group.position.x - beforeX, seller.group.position.z - beforeZ);
 
     if (!isGroupYielding(seller.group) && (!moved || realMove < frameSpeed * 0.2)) {
-      seller.stuck = (seller.stuck || 0) + 1;
+      const previousStuck = seller.stuck || 0;
+      seller.stuck = previousStuck + getFrameTimeUnits();
 
       // Сначала сбрасываем только старый путь. Саму рабочую цель кассира,
       // уборщика или продавца не заменяем случайной точкой магазина.
-      if (seller.stuck === 28) clearGroupNavigation(seller.group);
+      if (previousStuck < 28 && seller.stuck >= 28) clearGroupNavigation(seller.group);
 
       if (seller.stuck > 105) {
         clearGroupNavigation(seller.group);
@@ -6024,7 +6035,7 @@ function updateSellerMovement(seller) {
     if (seller.group.children[3]) seller.group.children[3].rotation.x = -seller.legAngle;
   } else if (seller.role === 'floor') {
     stopNavigationMotion(seller.group);
-    seller.wait--;
+    seller.wait -= getFrameTimeUnits();
     if (seller.wait <= 0) {
       seller.target = chooseSellerFloorTarget(seller.group);
       seller.wait = 100 + Math.floor(Math.random() * 120);
@@ -6234,6 +6245,20 @@ let navigationAgentCacheToken = 0;
 let navigationAgentCacheBuiltToken = -1;
 let navigationAgentCache = [];
 
+// Пространственная сетка: персонаж проверяет только людей в соседних клетках,
+// а не каждого человека во всём магазине.
+const CHARACTER_GRID_CELL_SIZE = Math.max(2.4, STAFF_VISION_DISTANCE);
+let navigationSpatialGrid = new Map();
+let navigationAgentByGroup = new Map();
+
+function getCharacterGridKey(cellX, cellZ) {
+  return cellX + ':' + cellZ;
+}
+
+function getCharacterGridCell(value) {
+  return Math.floor(value / CHARACTER_GRID_CELL_SIZE);
+}
+
 function invalidateCharacterAgentCache() {
   navigationAgentCacheToken++;
 }
@@ -6243,13 +6268,17 @@ function updateNavigationFrameScale() {
   const elapsed = Math.max(1, now - navigationLastFrameAt);
   navigationLastFrameAt = now;
   invalidateCharacterAgentCache();
-  // При 60 FPS коэффициент равен 1. На слабом телефоне шаг увеличивается,
-  // поэтому персонажи не превращаются в «черепах» из-за низкого FPS.
-  navigationFrameScale = Math.max(0.55, Math.min(1.8, elapsed / 16.6667));
+  // Коэффициент показывает, сколько условных кадров 60 FPS прошло.
+  // При основном лимите 30 FPS он близок к 2, а под открытым меню — к 4.
+  navigationFrameScale = Math.max(0.55, Math.min(4.25, elapsed / 16.6667));
 }
 
 function getNavigationStep(baseSpeed) {
   return baseSpeed * navigationFrameScale;
+}
+
+function getFrameTimeUnits() {
+  return navigationFrameScale;
 }
 
 function ensureNavigationAgentId(group) {
@@ -6269,14 +6298,42 @@ function getCharacterAgents() {
     customers.forEach(c => { if (c && c.group && c.state !== 'removed') agents.push({ group:c.group, kind:'customer', ref:c }); });
   } catch (e) {}
 
+  navigationSpatialGrid = new Map();
+  navigationAgentByGroup = new Map();
+  agents.forEach((agent, index) => {
+    agent.gridIndex = index;
+    navigationAgentByGroup.set(agent.group, agent);
+    const cellX = getCharacterGridCell(agent.group.position.x);
+    const cellZ = getCharacterGridCell(agent.group.position.z);
+    const key = getCharacterGridKey(cellX, cellZ);
+    if (!navigationSpatialGrid.has(key)) navigationSpatialGrid.set(key, []);
+    navigationSpatialGrid.get(key).push(agent);
+  });
+
   navigationAgentCache = agents;
   navigationAgentCacheBuiltToken = navigationAgentCacheToken;
   return navigationAgentCache;
 }
 
+function getNearbyCharacterAgents(x, z, radius = CHARACTER_GRID_CELL_SIZE) {
+  getCharacterAgents();
+  const centerX = getCharacterGridCell(x);
+  const centerZ = getCharacterGridCell(z);
+  const cellRadius = Math.max(1, Math.ceil(radius / CHARACTER_GRID_CELL_SIZE));
+  const nearby = [];
+
+  for (let cx = centerX - cellRadius; cx <= centerX + cellRadius; cx++) {
+    for (let cz = centerZ - cellRadius; cz <= centerZ + cellRadius; cz++) {
+      const bucket = navigationSpatialGrid.get(getCharacterGridKey(cx, cz));
+      if (bucket) nearby.push(...bucket);
+    }
+  }
+  return nearby;
+}
 
 function getCharacterAgent(group) {
-  return getCharacterAgents().find(agent => agent.group === group) || null;
+  getCharacterAgents();
+  return navigationAgentByGroup.get(group) || null;
 }
 
 function getAgentPriority(agent) {
@@ -6429,7 +6486,7 @@ function findPredictedCharacterConflict(group, directionX, directionZ) {
 
   let best = null;
   let bestTime = Infinity;
-  for (const other of getCharacterAgents()) {
+  for (const other of getNearbyCharacterAgents(group.position.x, group.position.z, vision)) {
     if (!other.group || other.group === group) continue;
     const relX = other.group.position.x - group.position.x;
     const relZ = other.group.position.z - group.position.z;
@@ -6470,7 +6527,7 @@ function findPredictedCharacterConflict(group, directionX, directionZ) {
 
 function isCharacterPointFree(ignoreGroup, x, z, minDistance = CHARACTER_MIN_DISTANCE) {
   const minSq = minDistance * minDistance;
-  return getCharacterAgents().every(agent => {
+  return getNearbyCharacterAgents(x, z, minDistance).every(agent => {
     if (!agent.group || agent.group === ignoreGroup) return true;
     const dx = agent.group.position.x - x;
     const dz = agent.group.position.z - z;
@@ -6505,7 +6562,7 @@ function commitCharacterStep(group, desiredX, desiredZ, faceDx, faceDz, padding,
   // Другой человек может уже отходить в сторону, поэтому опасную близость
   // проверяем отдельно и не заставляем обоих мгновенно останавливаться.
   const staticFree = isCustomerPointFree(desiredX, desiredZ, padding);
-  const characterFree = getCharacterAgents().every(agent => {
+  const characterFree = getNearbyCharacterAgents(desiredX, desiredZ, CHARACTER_MIN_DISTANCE).every(agent => {
     if (!agent.group || agent.group === group) return true;
     const ddx = agent.group.position.x - desiredX;
     const ddz = agent.group.position.z - desiredZ;
@@ -6579,9 +6636,11 @@ function resolveCharacterOverlaps() {
   const minimum = CHARACTER_MIN_DISTANCE * 0.92;
 
   for (let i = 0; i < agents.length; i++) {
-    for (let j = i + 1; j < agents.length; j++) {
-      const a = agents[i];
-      const b = agents[j];
+    const a = agents[i];
+    const nearby = getNearbyCharacterAgents(a.group.position.x, a.group.position.z, minimum);
+    for (const b of nearby) {
+      // Каждую пару обрабатываем только один раз.
+      if (!b || b.gridIndex <= i) continue;
       let dx = b.group.position.x - a.group.position.x;
       let dz = b.group.position.z - a.group.position.z;
       let dist = Math.hypot(dx, dz);
@@ -7252,7 +7311,7 @@ class Customer {
       new THREE.MeshLambertMaterial({ color })
     );
     body.position.y = 0.3;
-    body.castShadow = true;
+    body.castShadow = false;
     this.group.add(body);
 
     const head = new THREE.Mesh(
@@ -7260,7 +7319,7 @@ class Customer {
       new THREE.MeshLambertMaterial({ color: 0xffcc99 })
     );
     head.position.y = 0.85;
-    head.castShadow = true;
+    head.castShadow = false;
     this.group.add(head);
 
     [-0.1, 0.1].forEach(x => {
@@ -7269,7 +7328,7 @@ class Customer {
         new THREE.MeshLambertMaterial({ color: 0x37474f })
       );
       leg.position.set(x, -0.2, 0);
-      leg.castShadow = true;
+      leg.castShadow = false;
       this.group.add(leg);
     });
 
@@ -7373,11 +7432,11 @@ class Customer {
       const realMove = Math.sqrt((this.group.position.x - oldX) ** 2 + (this.group.position.z - oldZ) ** 2);
       this.stuckTimer = isGroupYielding(this.group)
         ? 0
-        : ((!moved || realMove < frameSpeed * 0.25) ? this.stuckTimer + 1 : 0);
+        : ((!moved || realMove < frameSpeed * 0.25) ? this.stuckTimer + getFrameTimeUnits() : 0);
 
       // Сначала просто сбрасываем устаревший маршрут. Цель меняем только если
       // персонаж действительно долго не может сдвинуться, чтобы убрать подёргивания.
-      if (this.stuckTimer === 35) {
+      if (this.stuckTimer >= 35 && this.stuckTimer - getFrameTimeUnits() < 35) {
         clearGroupNavigation(this.group);
       }
 
@@ -7421,7 +7480,7 @@ class Customer {
       this.state = 'browsing';
       this.waitTimer = 70 + Math.floor(Math.random() * 90);
     } else if (this.state === 'browsing') {
-      this.waitTimer--;
+      this.waitTimer -= getFrameTimeUnits();
       if (this.waitTimer <= 0) {
         customerTakeProductFromShelf(this.targetShelf);
         this.chooseTarget();
@@ -7430,7 +7489,7 @@ class Customer {
       this.state = 'wandering_pause';
       this.waitTimer = 105 + Math.floor(Math.random() * 150);
     } else if (this.state === 'wandering_pause') {
-      this.waitTimer--;
+      this.waitTimer -= getFrameTimeUnits();
       if (this.waitTimer <= 0) this.chooseTarget();
     } else if (this.state === 'checkout') {
       const cash = cashRegisters.find(c => c.id === this.checkoutCashRegisterId) || getDutyCashRegister();
@@ -7445,7 +7504,7 @@ class Customer {
       // Только первый покупатель в очереди обслуживается. Остальные занимают
       // отдельные точки и по мере освобождения кассы плавно продвигаются вперёд.
       const queueIndex = cash ? getCheckoutQueueIndex(cash, this) : 0;
-      this.checkoutQueueRefresh--;
+      this.checkoutQueueRefresh -= getFrameTimeUnits();
       if (cash && this.checkoutQueueRefresh <= 0) {
         this.checkoutQueueRefresh = 18;
         const queuePoint = getCashCustomerPoint(cash, this.group, queueIndex);
@@ -7457,7 +7516,7 @@ class Customer {
         }
       }
 
-      if (queueIndex === 0 && (!cash || isSellerNearCashRegister(cash))) this.waitTimer--;
+      if (queueIndex === 0 && (!cash || isSellerNearCashRegister(cash))) this.waitTimer -= getFrameTimeUnits();
       if (this.waitTimer <= 0) {
         if (!this.checkoutSoundPlayed) {
           playCashSound();
@@ -10211,7 +10270,7 @@ function createItemMesh(product, slotIdx) {
     mainGeo,
     new THREE.MeshPhongMaterial({ color: col.body, shininess: 60 })
   );
-  mainMesh.castShadow = true;
+  mainMesh.castShadow = false;
 
   // Акцентная полоска сверху
   const stripMesh = new THREE.Mesh(
@@ -10779,14 +10838,48 @@ document.getElementById('cashModal').addEventListener('click', e => {
 // ══════════════════════════════════════
 let frame = 0;
 let gameStarted = false;
-function animate() {
+
+// Основная игра работает максимум в 30 FPS. Под открытыми окнами достаточно 15 FPS:
+// 3D-сцена всё равно частично закрыта интерфейсом, поэтому лишние кадры только греют телефон.
+const ACTIVE_GAME_FPS = 30;
+const MENU_GAME_FPS = 15;
+let lastProcessedFrameAt = 0;
+let lastWarehouseRefreshAt = 0;
+let lastHUDRefreshAt = 0;
+let pageRenderingPaused = document.hidden;
+
+function isHeavyMenuOpen() {
+  return !gameStarted || !!document.querySelector('.modal-bg.show');
+}
+
+document.addEventListener('visibilitychange', () => {
+  pageRenderingPaused = document.hidden;
+  const now = performance.now();
+  lastProcessedFrameAt = now;
+  navigationLastFrameAt = now;
+});
+
+function animate(now = performance.now()) {
   requestAnimationFrame(animate);
+
+  // Когда вкладка или приложение свёрнуты, полностью пропускаем 3D-логику и рендер.
+  if (pageRenderingPaused || document.hidden) return;
+
+  const targetFPS = isHeavyMenuOpen() ? MENU_GAME_FPS : ACTIVE_GAME_FPS;
+  const targetFrameMs = 1000 / targetFPS;
+  const elapsedSinceProcessed = lastProcessedFrameAt ? now - lastProcessedFrameAt : targetFrameMs;
+  if (elapsedSinceProcessed < targetFrameMs - 1) return;
+  // Сохраняем остаток времени, чтобы 30 FPS не превращались в 20 FPS
+  // из-за округления временных меток requestAnimationFrame.
+  lastProcessedFrameAt = now - (elapsedSinceProcessed % targetFrameMs);
+
   // Защита: туманность всегда выключена.
   scene.fog = null;
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 0.95;
   frame++;
   updateNavigationFrameScale();
+  const animationTick = now / 16.6667;
 
   if (!gameStarted) {
     renderer.render(scene, camera);
@@ -10815,10 +10908,14 @@ function animate() {
 
   // Доставки товаров
   updateDeliveries();
-  if (frame % 60 === 0 && document.getElementById('warehouseModal')?.classList.contains('show')) renderWarehouseModal();
+  if (now - lastWarehouseRefreshAt >= 1000 && document.getElementById('warehouseModal')?.classList.contains('show')) {
+    lastWarehouseRefreshAt = now;
+    renderWarehouseModal();
+  }
 
   // Сотрудники: кассиры, продавцы, уборщики
   updateSellers();
+  invalidateCharacterAgentCache();
 
   // После движения мягко раздвигаем персонажей, если они оказались слишком близко.
   resolveCharacterOverlaps();
@@ -10835,7 +10932,7 @@ function animate() {
       }
 
       const waitReady = item.nextSaleAt && Date.now() >= item.nextSaleAt;
-      const pulse = waitReady ? (Math.sin(frame * 0.08) * 0.5 + 0.5) : 0;
+      const pulse = waitReady ? (Math.sin(animationTick * 0.08) * 0.5 + 0.5) : 0;
 
       if (waitReady) {
         shelfMeshes[i].label.material.color.setRGB(0.8 + pulse * 0.2, 0.75 + pulse * 0.2, 0);
@@ -10846,10 +10943,10 @@ function animate() {
       if (shelfItemMeshes[i]) {
         const geo = shelfItemMeshes[i].children[0]?.geometry?.parameters;
         const h = geo ? geo.height : 0.3;
-        shelfItemMeshes[i].position.y = getShelfDisplayTopY(i) + h / 2 + 0.02 + (waitReady ? Math.sin(frame * 0.12) * 0.035 : 0);
+        shelfItemMeshes[i].position.y = getShelfDisplayTopY(i) + h / 2 + 0.02 + (waitReady ? Math.sin(animationTick * 0.12) * 0.035 : 0);
       }
     } else if (item && item.soldOut) {
-      const pulse = Math.sin(frame * 0.12) * 0.5 + 0.5;
+      const pulse = Math.sin(animationTick * 0.12) * 0.5 + 0.5;
       shelfMeshes[i].label.material.color.setRGB(0.9, 0.25 + pulse * 0.25, 0.15);
       if (shelfItemMeshes[i]) shelfItemMeshes[i].scale.set(0.55, 0.55, 0.55);
     } else {
@@ -10857,8 +10954,11 @@ function animate() {
     }
   });
 
-  // Обновляем HUD каждые 2 секунды
-  if (frame % 120 === 0) updateHUD();
+  // HUD обновляется раз в 2 секунды независимо от выбранного лимита FPS.
+  if (now - lastHUDRefreshAt >= 2000) {
+    lastHUDRefreshAt = now;
+    updateHUD();
+  }
 
   if (editorMode && editorSelection) updateEditorActionPosition();
 
