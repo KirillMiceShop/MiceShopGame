@@ -3681,6 +3681,7 @@ function setExteriorYOffset(offset = 0) {
     const baseY = Number.isFinite(mesh.userData.baseExteriorY) ? mesh.userData.baseExteriorY : 0.012;
     mesh.position.y = baseY + offset;
   });
+  if (typeof rebuildExteriorWallFacades === 'function') rebuildExteriorWallFacades();
 }
 
 function makeGroundRect(w, d, color, x, z, y = 0.012) {
@@ -3882,8 +3883,10 @@ rebuildExterior();
 // 4. Когда окно уходит — старые панели возвращаются, новые панели скрываются.
 
 let WALL = 0x87CEFA;
+const EXTERIOR_WALL_COLOR = 0x8b6a45;
 
 const wallMeshes = [];
+let exteriorWallFacadeGroup = null;
 let windowClickTargets = [];
 
 let WALL_BACK_Z = -SHOP_HALF;
@@ -4033,6 +4036,43 @@ function rebuildWallPanels() {
   for (let p = WALL_MIN; p <= WALL_MAX + 0.001; p += PANEL_SIZE) makeWallPanel('x', p);
 }
 rebuildWallPanels();
+
+function ensureExteriorWallFacadeGroup() {
+  if (!exteriorWallFacadeGroup) {
+    exteriorWallFacadeGroup = new THREE.Group();
+    scene.add(exteriorWallFacadeGroup);
+  }
+  while (exteriorWallFacadeGroup.children.length) {
+    const child = exteriorWallFacadeGroup.children[0];
+    exteriorWallFacadeGroup.remove(child);
+    child.geometry?.dispose?.();
+    if (child.material) {
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      mats.forEach(mat => mat.dispose?.());
+    }
+  }
+}
+
+function rebuildExteriorWallFacades() {
+  ensureExteriorWallFacadeGroup();
+  const addFacade = (w, h, d, x, y, z) => {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshLambertMaterial({ color: EXTERIOR_WALL_COLOR })
+    );
+    mesh.position.set(x, y + exteriorYOffset, z);
+    mesh.receiveShadow = true;
+    exteriorWallFacadeGroup.add(mesh);
+  };
+
+  // Наружная часть стационарных стен всегда остаётся коричневой.
+  addFacade(SHOP_HALF * 2 + 0.02, WALL_H, 0.08, 0, WALL_H / 2, WALL_BACK_Z - 0.19);
+  addFacade(0.08, WALL_H, SHOP_HALF * 2 + 0.02, WALL_LEFT_X - 0.19, WALL_H / 2, 0);
+  addFacade(SHOP_HALF * 2 + 0.02, LOW_WALL_H, 0.08, 0, LOW_WALL_H / 2, SHOP_HALF + 0.12);
+  addFacade(0.08, LOW_WALL_H, SHOP_HALF * 2 + 0.02, SHOP_HALF + 0.12, LOW_WALL_H / 2, 0);
+}
+
+rebuildExteriorWallFacades();
 
 // Правая стена и дверь убраны.
 // Эта сторона магазина теперь открыта полностью.
@@ -8810,6 +8850,7 @@ function applyShopStageVisuals() {
   // Перестраиваем стены, брусчатку, дороги и низкие срезы стен.
   rebuildWallPanels();
   rebuildExterior();
+  rebuildExteriorWallFacades();
 
   lowRightWall.geometry.dispose();
   lowRightWall.geometry = new THREE.BoxGeometry(0.16, LOW_WALL_H, SHOP_HALF * 2);
@@ -9594,6 +9635,12 @@ function setShopFloorStateVisible(state, visible) {
   (state.customers || []).forEach(customer => setFloorObjectVisible(customer.group, visible));
 }
 
+function setShopFloorCharactersVisible(state, visible) {
+  if (!state) return;
+  (state.sellers || []).forEach(worker => setFloorObjectVisible(worker.group, visible));
+  (state.customers || []).forEach(customer => setFloorObjectVisible(customer.group, visible));
+}
+
 function getShopFloorStateSceneRoots(state) {
   const roots = new Set();
   const add = object => {
@@ -9794,13 +9841,22 @@ function switchShopFloor() {
   clearOpenInterfaceForFloorSwitch();
   const currentState = captureCurrentFloorState(fromFloor);
 
-  setShopFloorStateYOffset(currentState, 0);
-  setShopFloorStateVisible(currentState, false);
+  if (fromFloor === 1) {
+    // Первый этаж остаётся видимым через прозрачные окна, но без ходящих людей.
+    setShopFloorStateYOffset(currentState, -SHOP_FLOOR_HEIGHT);
+    setShopFloorStateVisible(currentState, true);
+    setShopFloorCharactersVisible(currentState, false);
+  } else {
+    setShopFloorStateYOffset(currentState, 0);
+    setShopFloorStateVisible(currentState, false);
+    setShopFloorCharactersVisible(currentState, true);
+  }
 
   const targetState = shopFloorStates[targetFloor];
   bindShopFloorState(targetState);
   setShopFloorStateYOffset(targetState, 0);
   setShopFloorStateVisible(targetState, true);
+  setShopFloorCharactersVisible(targetState, true);
 
   setExteriorYOffset(targetFloor === 2 ? -SHOP_FLOOR_HEIGHT : 0);
   applyShopStageVisuals();
@@ -9847,8 +9903,8 @@ function rebuildSecondFloorFacade() {
   const half = getShopHalfForStage(firstStage);
   const baseY = -SHOP_FLOOR_HEIGHT;
   const wallH = 3.8;
-  const wallColor = 0xc7c9cd;
-  const frameColor = 0xb8bdc3;
+  const wallColor = EXTERIOR_WALL_COLOR;
+  const frameColor = 0x6f5234;
 
   const addBox = (w, h, d, color, x, y, z, material = null) => {
     const mat = material || new THREE.MeshLambertMaterial({ color });
@@ -9873,7 +9929,7 @@ function rebuildSecondFloorFacade() {
   const windowGlassMat = new THREE.MeshPhongMaterial({
     color:0xcfd8df,
     transparent:true,
-    opacity:.88,
+    opacity:.22,
     shininess:110,
     specular:0xffffff,
     side:THREE.DoubleSide
