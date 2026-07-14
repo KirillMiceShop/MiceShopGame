@@ -9933,42 +9933,30 @@ function rebuildSecondFloorFacade() {
 
   // Передняя и правая стороны собираются из отдельных сегментов,
   // чтобы окна были не накладкой поверх стены, а реальными проёмами.
-  const windowGlassMat = new THREE.MeshPhongMaterial({
-    color:0xcfd8df,
-    transparent:true,
-    opacity:.22,
-    shininess:110,
-    specular:0xffffff,
-    side:THREE.DoubleSide
-  });
-  const voidMat = new THREE.MeshLambertMaterial({ color:0xe8ebee });
-  const winW = Math.max(1.5, Math.min(2.0, half * 0.42));
-  const winH = 1.65;
-  const sillY = baseY + 1.85;
+  const windowGlassMat = WIN_GLASS.clone();
+  windowGlassMat.opacity = WIN_GLASS.opacity;
+  windowGlassMat.transparent = true;
+  const winW = Math.max(1.7, Math.min(2.2, half * 0.42));
+  const winH = Math.max(3.35, wallH - 0.18);
+  const sillY = baseY + wallH / 2;
   const frontWindowXs = [-half * 0.58, 0, half * 0.58];
   const sideWindowZs = [-half * 0.58, 0, half * 0.58];
-  const winBottom = sillY - winH / 2;
-  const winTop = sillY + winH / 2;
-  const lowerWallH = Math.max(0.12, winBottom - baseY);
-  const upperWallH = Math.max(0.12, 0 - winTop);
-  const lowerWallY = baseY + lowerWallH / 2;
-  const upperWallY = winTop + upperWallH / 2;
   const frontFaceZ = half + openSideThickness / 2;
   const rightFaceX = half + openSideThickness / 2;
 
-  function addFrontWallSegment(x1, x2, yCenter, h) {
+  function addFrontWallSegment(x1, x2) {
     const w = x2 - x1;
-    if (w <= 0.05 || h <= 0.05) return;
-    addBox(w, h, openSideThickness, wallColor, (x1 + x2) / 2, yCenter, frontFaceZ);
+    if (w <= 0.05) return;
+    addBox(w, wallH, openSideThickness, wallColor, (x1 + x2) / 2, wallCenterY, frontFaceZ);
   }
 
-  function addRightWallSegment(z1, z2, yCenter, h) {
+  function addRightWallSegment(z1, z2) {
     const d = z2 - z1;
-    if (d <= 0.05 || h <= 0.05) return;
-    addBox(openSideThickness, h, d, wallColor, rightFaceX, yCenter, (z1 + z2) / 2);
+    if (d <= 0.05) return;
+    addBox(openSideThickness, wallH, d, wallColor, rightFaceX, wallCenterY, (z1 + z2) / 2);
   }
 
-  function addWindowPiers(positions, axis) {
+  function addWallPiers(positions, axis) {
     const ranges = positions.map(pos => [pos - winW / 2, pos + winW / 2]);
     const segments = [];
     let cursor = -half;
@@ -9979,44 +9967,27 @@ function rebuildSecondFloorFacade() {
     segments.push([cursor, half]);
 
     segments.forEach(([a, b]) => {
-      if (axis === 'front') {
-        addFrontWallSegment(a, b, wallCenterY, wallH);
-      } else {
-        addRightWallSegment(a, b, wallCenterY, wallH);
-      }
+      if (axis === 'front') addFrontWallSegment(a, b);
+      else addRightWallSegment(a, b);
     });
   }
 
-  // Сплошные нижняя и верхняя полосы стены над и под окнами.
-  addBox(half * 2, lowerWallH, openSideThickness, wallColor, 0, lowerWallY, frontFaceZ);
-  addBox(half * 2, upperWallH, openSideThickness, wallColor, 0, upperWallY, frontFaceZ);
-  addBox(openSideThickness, lowerWallH, half * 2, wallColor, rightFaceX, lowerWallY, 0);
-  addBox(openSideThickness, upperWallH, half * 2, wallColor, rightFaceX, upperWallY, 0);
-
-  // Вертикальные простенки между окнами и по краям.
-  addWindowPiers(frontWindowXs, 'front');
-  addWindowPiers(sideWindowZs, 'side');
+  // Внизу остаются только простенки — сами окна занимают почти всю высоту стены.
+  addWallPiers(frontWindowXs, 'front');
+  addWallPiers(sideWindowZs, 'side');
 
   function addFacadeWindow(axis, pos) {
     if (axis === 'front') {
-      addBox(winW + .20, winH + .20, .06, frameColor, pos, sillY, frontFaceZ + .01);
-      addBox(winW, winH, .04, voidMat.color.getHex(), pos, sillY, frontFaceZ + .03, windowGlassMat);
-      addBox(winW * .06, winH, .05, frameColor, pos, sillY, frontFaceZ + .02);
-      addBox(winW, .06, .05, frameColor, pos, sillY, frontFaceZ + .02);
+      addBox(winW + .12, winH + .12, .05, FRAME, pos, sillY, frontFaceZ + .01);
+      addBox(winW, winH, .03, 0xffffff, pos, sillY, frontFaceZ + .03, windowGlassMat);
     } else {
-      addBox(.06, winH + .20, winW + .20, frameColor, rightFaceX + .01, sillY, pos);
-      addBox(.04, winH, winW, voidMat.color.getHex(), rightFaceX + .03, sillY, pos, windowGlassMat.clone());
-      addBox(.05, winH, winW * .06, frameColor, rightFaceX + .02, sillY, pos);
-      addBox(.05, .06, winW, frameColor, rightFaceX + .02, sillY, pos);
+      addBox(.05, winH + .12, winW + .12, FRAME, rightFaceX + .01, sillY, pos);
+      addBox(.03, winH, winW, 0xffffff, rightFaceX + .03, sillY, pos, windowGlassMat.clone());
     }
   }
 
   frontWindowXs.forEach(x => addFacadeWindow('front', x));
   sideWindowZs.forEach(z => addFacadeWindow('side', z));
-
-  const columnY = wallCenterY;
-  [-half, 0, half].forEach(x => addBox(.08, wallH, .06, frameColor, x, columnY, frontFaceZ));
-  [-half, 0, half].forEach(z => addBox(.06, wallH, .08, frameColor, rightFaceX, columnY, z));
 
   secondFloorFacadeGroup.visible = !!G.liftBuilt && (G.currentFloor || 1) === 2;
 }
