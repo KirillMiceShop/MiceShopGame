@@ -9936,9 +9936,10 @@ function rebuildSecondFloorFacade() {
   const windowGlassMat = WIN_GLASS.clone();
   windowGlassMat.opacity = WIN_GLASS.opacity;
   windowGlassMat.transparent = true;
-  const winW = Math.max(1.7, Math.min(2.2, half * 0.42));
-  const winH = Math.max(3.35, wallH - 0.18);
-  const sillY = baseY + wallH / 2;
+  const winW = WINDOW_W;
+  const winH = WINDOW_H;
+  const wy = baseY + 2.0;
+  const FW = 0.12;
   const frontWindowXs = [-half * 0.58, 0, half * 0.58];
   const sideWindowZs = [-half * 0.58, 0, half * 0.58];
   const frontFaceZ = half + openSideThickness / 2;
@@ -9972,17 +9973,24 @@ function rebuildSecondFloorFacade() {
     });
   }
 
-  // Внизу остаются только простенки — сами окна занимают почти всю высоту стены.
+  // Оставляем только простенки между тремя окнами и по краям —
+  // сами проёмы полностью заняты стандартными панорамными окнами.
   addWallPiers(frontWindowXs, 'front');
   addWallPiers(sideWindowZs, 'side');
 
   function addFacadeWindow(axis, pos) {
     if (axis === 'front') {
-      addBox(winW + .12, winH + .12, .05, FRAME, pos, sillY, frontFaceZ + .01);
-      addBox(winW, winH, .03, 0xffffff, pos, sillY, frontFaceZ + .03, windowGlassMat);
+      addBox(winW, FW, openSideThickness, FRAME, pos, wy + winH / 2 - FW / 2, frontFaceZ + 0.01);
+      addBox(winW, FW, openSideThickness, FRAME, pos, wy - winH / 2 + FW / 2, frontFaceZ + 0.01);
+      addBox(FW, winH - FW * 2, openSideThickness, FRAME, pos - winW / 2 + FW / 2, wy, frontFaceZ + 0.01);
+      addBox(FW, winH - FW * 2, openSideThickness, FRAME, pos + winW / 2 - FW / 2, wy, frontFaceZ + 0.01);
+      addBox(winW - FW * 2, winH - FW * 2, 0.03, 0xffffff, pos, wy, frontFaceZ + 0.03, windowGlassMat);
     } else {
-      addBox(.05, winH + .12, winW + .12, FRAME, rightFaceX + .01, sillY, pos);
-      addBox(.03, winH, winW, 0xffffff, rightFaceX + .03, sillY, pos, windowGlassMat.clone());
+      addBox(openSideThickness, FW, winW, FRAME, rightFaceX + 0.01, wy + winH / 2 - FW / 2, pos);
+      addBox(openSideThickness, FW, winW, FRAME, rightFaceX + 0.01, wy - winH / 2 + FW / 2, pos);
+      addBox(openSideThickness, winH - FW * 2, FW, FRAME, rightFaceX + 0.01, wy, pos - winW / 2 + FW / 2);
+      addBox(openSideThickness, winH - FW * 2, FW, FRAME, rightFaceX + 0.01, wy, pos + winW / 2 - FW / 2);
+      addBox(0.03, winH - FW * 2, winW - FW * 2, 0xffffff, rightFaceX + 0.03, wy, pos, windowGlassMat.clone());
     }
   }
 
