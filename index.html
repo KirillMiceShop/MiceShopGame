@@ -1449,6 +1449,92 @@
     }
   }
 
+
+
+  /* СТАРТОВЫЙ ЭКРАН — НЕПРОЗРАЧНОЕ ЗОЛОТО */
+  #shop-type-screen {
+    padding:clamp(14px, 4vh, 34px)!important;
+    background:
+      radial-gradient(circle at 50% 10%, rgba(255,244,174,.95), transparent 34%),
+      linear-gradient(145deg, #f7d45a 0%, #d7a824 52%, #a97812 100%)!important;
+  }
+  #shop-type-screen .shop-type-panel {
+    width:min(430px, 100%)!important;
+    max-height:calc(100dvh - 24px);
+    padding:12px 16px!important;
+    background:transparent!important;
+    border:none!important;
+    box-shadow:none!important;
+    color:#2c210d!important;
+  }
+  #shop-type-screen .shop-type-logo {
+    margin-bottom:12px;
+    color:#6d4700!important;
+    font-size:clamp(23px, 5vw, 31px);
+    text-shadow:0 1px 0 rgba(255,255,255,.45);
+  }
+  #shop-type-screen .shop-type-title {
+    max-width:390px;
+    margin:0 auto;
+    color:#2b210e!important;
+    font-size:clamp(23px, 6vw, 32px)!important;
+    line-height:1.08;
+  }
+  #shop-type-screen .shop-type-grid {
+    display:grid;
+    grid-template-columns:1fr!important;
+    gap:12px!important;
+    width:min(360px, 100%);
+    margin:22px auto 0!important;
+  }
+  #shop-type-screen .shop-type-card {
+    width:100%;
+    min-height:78px;
+    aspect-ratio:auto!important;
+    display:flex;
+    flex-direction:row!important;
+    align-items:center;
+    justify-content:flex-start!important;
+    gap:16px!important;
+    padding:13px 20px!important;
+    border:1px solid rgba(70,45,0,.24)!important;
+    border-radius:18px!important;
+    background:rgba(255,255,255,.86)!important;
+    box-shadow:0 8px 20px rgba(91,57,0,.17);
+    color:#2b210e!important;
+  }
+  #shop-type-screen .shop-type-card:active {
+    transform:scale(.97);
+  }
+  #shop-type-screen .shop-type-icon {
+    flex:0 0 auto;
+    font-size:38px!important;
+  }
+  #shop-type-screen .shop-type-name {
+    color:#2b210e!important;
+    font-size:18px!important;
+    font-weight:900;
+    text-align:left;
+  }
+  #shop-type-screen #shop-type-confirm {
+    color:#2b210e!important;
+  }
+  #shop-type-screen .shop-type-confirm-title,
+  #shop-type-screen .shop-type-confirm-name {
+    color:#2b210e!important;
+  }
+
+  @media (max-height:620px) {
+    #shop-type-screen { padding:10px!important; }
+    #shop-type-screen .shop-type-panel { padding:6px 12px!important; }
+    #shop-type-screen .shop-type-logo { margin-bottom:7px; font-size:22px; }
+    #shop-type-screen .shop-type-title { font-size:22px!important; }
+    #shop-type-screen .shop-type-grid { margin-top:14px!important; gap:9px!important; }
+    #shop-type-screen .shop-type-card { min-height:64px; padding:9px 16px!important; }
+    #shop-type-screen .shop-type-icon { font-size:31px!important; }
+    #shop-type-screen .shop-type-name { font-size:16px!important; }
+  }
+
 </style>
 </head>
 <body data-menu-style="standard">
@@ -1458,18 +1544,15 @@
   <div class="shop-type-panel">
     <div id="shop-type-choice">
       <div class="shop-type-logo">🐭 MiceShop</div>
-      <div class="shop-type-title">Выберите, с какого магазина начать</div>
-      <div class="shop-type-sub">Выбор определит доступные товары и витрины.</div>
+      <div class="shop-type-title">Каким магазином желаете управлять</div>
       <div class="shop-type-grid">
         <button class="shop-type-card" onclick="chooseShopType('clothing')">
           <div class="shop-type-icon">👕</div>
           <div class="shop-type-name">Магазин одежды</div>
-          <div class="shop-type-desc">Одежда, обувь и витрины для них</div>
         </button>
         <button class="shop-type-card" onclick="chooseShopType('electronics')">
           <div class="shop-type-icon">📱</div>
           <div class="shop-type-name">Магазин электроники</div>
-          <div class="shop-type-desc">Телефоны, ноутбуки, наушники и техно-витрины</div>
         </button>
       </div>
     </div>
