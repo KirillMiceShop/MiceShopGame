@@ -4048,33 +4048,116 @@ const DOOR_GLASS = new THREE.MeshPhongMaterial({
 });
 
 // Одна геометрия стены использует разные материалы на внутренних и наружных гранях.
-// Поэтому дополнительная коричневая стена снаружи больше не нужна.
+// Внутренняя грань перекрашивается игроком, а наружная всегда остаётся кирпичной.
 const WALL_INTERIOR_MATERIAL = new THREE.MeshLambertMaterial({ color: WALL });
-const WALL_EXTERIOR_MATERIAL = new THREE.MeshLambertMaterial({ color: EXTERIOR_WALL_COLOR });
 
-function getLayeredWallMaterials(exteriorFaceIndex) {
+function createExteriorBrickTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+
+  // Светлый раствор между кирпичами.
+  ctx.fillStyle = '#d4bea0';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const brickW = 48;
+  const brickH = 24;
+  const mortar = 3;
+  const palette = ['#875434', '#98613b', '#a06b43', '#75472f', '#91603e'];
+
+  for (let row = 0; row < Math.ceil(canvas.height / brickH) + 1; row++) {
+    const offset = row % 2 === 0 ? 0 : -brickW / 2;
+    for (let x = offset; x < canvas.width + brickW; x += brickW) {
+      const colorIndex = Math.abs((row * 7 + Math.round(x / brickW) * 3)) % palette.length;
+      ctx.fillStyle = palette[colorIndex];
+      ctx.fillRect(
+        x + mortar / 2,
+        row * brickH + mortar / 2,
+        brickW - mortar,
+        brickH - mortar
+      );
+
+      // Очень лёгкий блик сверху делает кирпич объёмнее без тяжёлых карт нормалей.
+      ctx.fillStyle = 'rgba(255,255,255,0.07)';
+      ctx.fillRect(
+        x + mortar / 2,
+        row * brickH + mortar / 2,
+        brickW - mortar,
+        2
+      );
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  texture.needsUpdate = true;
+  return texture;
+}
+
+const EXTERIOR_BRICK_BASE_TEXTURE = createExteriorBrickTexture();
+const EXTERIOR_BRICK_MATERIAL_CACHE = new Map();
+
+function getExteriorBrickMaterial(surfaceWidth = 1, surfaceHeight = 1) {
+  const widthKey = Math.max(0.25, Math.round(surfaceWidth * 4) / 4);
+  const heightKey = Math.max(0.25, Math.round(surfaceHeight * 4) / 4);
+  const key = widthKey + 'x' + heightKey;
+  if (EXTERIOR_BRICK_MATERIAL_CACHE.has(key)) {
+    return EXTERIOR_BRICK_MATERIAL_CACHE.get(key);
+  }
+
+  const texture = EXTERIOR_BRICK_BASE_TEXTURE.clone();
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(
+    Math.max(1, widthKey / 0.75),
+    Math.max(1, heightKey / 0.38)
+  );
+  texture.needsUpdate = true;
+
+  const material = new THREE.MeshLambertMaterial({
+    color: 0xffffff,
+    map: texture
+  });
+  material.userData.sharedBrickMaterial = true;
+  EXTERIOR_BRICK_MATERIAL_CACHE.set(key, material);
+  return material;
+}
+
+function getLayeredWallMaterials(exteriorFaceIndex, surfaceWidth = 1, surfaceHeight = WALL_H) {
   const materials = Array(6).fill(WALL_INTERIOR_MATERIAL);
-  materials[exteriorFaceIndex] = WALL_EXTERIOR_MATERIAL;
+  materials[exteriorFaceIndex] = getExteriorBrickMaterial(surfaceWidth, surfaceHeight);
   return materials;
 }
 
-function markLayeredExteriorWall(mesh) {
+function markLayeredExteriorWall(mesh, exteriorFaceIndex) {
   mesh.userData.layeredExteriorWall = true;
   mesh.userData.interiorMaterial = WALL_INTERIOR_MATERIAL;
-  mesh.userData.exteriorMaterial = WALL_EXTERIOR_MATERIAL;
+  mesh.userData.exteriorFaceIndex = exteriorFaceIndex;
+  mesh.userData.exteriorMaterial = Array.isArray(mesh.material)
+    ? mesh.material[exteriorFaceIndex]
+    : mesh.material;
   return mesh;
 }
 
+function setLayeredWallMaterials(mesh, exteriorFaceIndex, surfaceWidth, surfaceHeight) {
+  mesh.material = getLayeredWallMaterials(exteriorFaceIndex, surfaceWidth, surfaceHeight);
+  return markLayeredExteriorWall(mesh, exteriorFaceIndex);
+}
+
 function createLayeredWallBox(w, h, d, x, y, z, exteriorFaceIndex) {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
-    getLayeredWallMaterials(exteriorFaceIndex)
-  );
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d));
+  const surfaceWidth = (exteriorFaceIndex === 0 || exteriorFaceIndex === 1) ? d : w;
+  setLayeredWallMaterials(mesh, exteriorFaceIndex, surfaceWidth, h);
   mesh.position.set(x, y, z);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   scene.add(mesh);
-  return markLayeredExteriorWall(mesh);
+  return mesh;
 }
 
 function makeWallPanel(axis, pos) {
@@ -4095,7 +4178,8 @@ function makeWallPanel(axis, pos) {
   // BoxGeometry: 0=+X, 1=-X, 4=+Z, 5=-Z.
   // Задняя стена: наружная грань -Z. Левая стена: наружная грань -X.
   const exteriorFaceIndex = axis === 'z' ? 5 : 1;
-  const panel = markLayeredExteriorWall(new THREE.Mesh(geo, getLayeredWallMaterials(exteriorFaceIndex)));
+  const panel = new THREE.Mesh(geo);
+  setLayeredWallMaterials(panel, exteriorFaceIndex, PANEL_SIZE, WALL_H);
 
   panel.position.set(x, 2, z);
   panel.castShadow = true;
@@ -8923,10 +9007,12 @@ function applyShopStageVisuals() {
 
   lowRightWall.geometry.dispose();
   lowRightWall.geometry = new THREE.BoxGeometry(0.16, LOW_WALL_H, SHOP_HALF * 2);
+  setLayeredWallMaterials(lowRightWall, 0, SHOP_HALF * 2, LOW_WALL_H);
   lowRightWall.position.set(SHOP_HALF, LOW_WALL_H / 2, 0);
 
   lowFrontWall.geometry.dispose();
   lowFrontWall.geometry = new THREE.BoxGeometry(SHOP_HALF * 2, LOW_WALL_H, 0.16);
+  setLayeredWallMaterials(lowFrontWall, 4, SHOP_HALF * 2, LOW_WALL_H);
   lowFrontWall.position.set(0, LOW_WALL_H / 2, SHOP_HALF);
 
   // Двери/окна остаются на своих местах, но стены под них пересчитываются.
@@ -9964,7 +10050,11 @@ function rebuildSecondFloorFacade() {
       if (part.geometry) part.geometry.dispose();
       if (part.material) {
         const mats = Array.isArray(part.material) ? part.material : [part.material];
-        mats.forEach(mat => mat.dispose?.());
+        mats.forEach(mat => {
+          if (mat?.userData?.sharedBrickMaterial) return;
+          if (mat?.map) mat.map.dispose?.();
+          mat?.dispose?.();
+        });
       }
     });
   }
@@ -9979,7 +10069,9 @@ function rebuildSecondFloorFacade() {
   const frameColor = 0x6f5234;
 
   const addBox = (w, h, d, color, x, y, z, material = null) => {
-    const mat = material || new THREE.MeshLambertMaterial({ color });
+    const mat = material || (color === wallColor
+      ? getExteriorBrickMaterial(Math.max(w, d), h)
+      : new THREE.MeshLambertMaterial({ color }));
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     mesh.position.set(x, y, z);
     mesh.receiveShadow = true;
