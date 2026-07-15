@@ -3608,6 +3608,69 @@ floor.receiveShadow = true;
 scene.add(floor);
 
 const tileMeshes = [];
+let lowerFloorPreviewGroup = null;
+
+function ensureLowerFloorPreviewGroup() {
+  if (!lowerFloorPreviewGroup) {
+    lowerFloorPreviewGroup = new THREE.Group();
+    lowerFloorPreviewGroup.visible = false;
+    scene.add(lowerFloorPreviewGroup);
+  }
+}
+
+function clearLowerFloorPreviewGroup() {
+  ensureLowerFloorPreviewGroup();
+  while (lowerFloorPreviewGroup.children.length) {
+    const child = lowerFloorPreviewGroup.children.pop();
+    lowerFloorPreviewGroup.remove(child);
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      mats.forEach(mat => mat.dispose && mat.dispose());
+    }
+  }
+}
+
+function rebuildLowerFloorPreview() {
+  clearLowerFloorPreviewGroup();
+
+  const previewFloor = new THREE.Mesh(
+    new THREE.PlaneGeometry(SHOP_HALF * 2 + 0.2, SHOP_HALF * 2 + 0.2),
+    new THREE.MeshLambertMaterial({ color: floorMat.color.getHex() })
+  );
+  previewFloor.rotation.x = -Math.PI / 2;
+  previewFloor.position.set(0, 0, 0);
+  previewFloor.receiveShadow = false;
+  lowerFloorPreviewGroup.add(previewFloor);
+
+  const step = 2.2;
+  const tileSize = 1.95;
+  const maxCoord = SHOP_HALF - tileSize / 2 - 0.18;
+  const count = Math.max(1, Math.floor((maxCoord * 2) / step) + 1);
+  const start = -((count - 1) * step) / 2;
+
+  for (let i = 0; i < count; i++) {
+    for (let j = 0; j < count; j++) {
+      const x = start + i * step;
+      const z = start + j * step;
+      if (Math.abs(x) + tileSize / 2 > SHOP_HALF - 0.08) continue;
+      if (Math.abs(z) + tileSize / 2 > SHOP_HALF - 0.08) continue;
+
+      const tile = new THREE.Mesh(
+        new THREE.PlaneGeometry(tileSize, tileSize),
+        new THREE.MeshLambertMaterial({ color: floorMat.color.getHex() })
+      );
+      tile.rotation.x = -Math.PI / 2;
+      tile.position.set(x, 0.011, z);
+      tile.receiveShadow = false;
+      lowerFloorPreviewGroup.add(tile);
+    }
+  }
+
+  lowerFloorPreviewGroup.position.set(0, -SHOP_FLOOR_HEIGHT, 0);
+  lowerFloorPreviewGroup.visible = (G.currentFloor || 1) === 2;
+}
+
 function rebuildFloorTiles() {
   tileMeshes.forEach(t => {
     scene.remove(t);
@@ -3641,6 +3704,7 @@ function rebuildFloorTiles() {
       tileMeshes.push(tile);
     }
   }
+  rebuildLowerFloorPreview();
 }
 rebuildFloorTiles();
 
@@ -8855,6 +8919,7 @@ function applyShopStageVisuals() {
   // Перестраиваем стены, брусчатку, дороги и низкие срезы стен.
   rebuildWallPanels();
   rebuildExterior();
+  rebuildLowerFloorPreview();
 
   lowRightWall.geometry.dispose();
   lowRightWall.geometry = new THREE.BoxGeometry(0.16, LOW_WALL_H, SHOP_HALF * 2);
@@ -9863,6 +9928,7 @@ function switchShopFloor() {
   setShopFloorCharactersVisible(targetState, true);
 
   setExteriorYOffset(targetFloor === 2 ? -SHOP_FLOOR_HEIGHT : 0);
+  if (lowerFloorPreviewGroup) lowerFloorPreviewGroup.visible = targetFloor === 2;
   applyShopStageVisuals();
   applyWindowHoles();
   rebuildSecondFloorFacade();
