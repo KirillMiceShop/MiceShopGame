@@ -3078,10 +3078,36 @@ function getCameraDownLimit() {
   return 6 - t * 11.8; // от 6 на близком виде до ~-5.8 на дальнем
 }
 
+function getCameraPanCloseness() {
+  // Дополнительное перемещение нужно только при сильном приближении.
+  // После camZoom 10 сохраняем прежние ограничения, чтобы камера не уходила в пустоту.
+  const closeZoomLimit = 10;
+  return Math.max(0, Math.min(1, (closeZoomLimit - camZoom) / (closeZoomLimit - CAM_ZOOM_MIN)));
+}
+
+function getExpandedShopCameraBounds() {
+  const closeness = getCameraPanCloseness();
+
+  // Камера смотрит на магазин по диагонали. Поэтому противоположные углы
+  // квадратного магазина находятся дальше по горизонтали экрана, чем его стены.
+  const cornerHorizontal = SHOP_HALF * Math.SQRT2 + 0.6;
+  const cornerVertical = SHOP_HALF * 0.9 + 0.6;
+
+  const oldMaxX = 8;
+  const oldMinZ = -6;
+  const oldMaxZ = getCameraDownLimit();
+
+  return {
+    maxX: oldMaxX + (Math.max(oldMaxX, cornerHorizontal) - oldMaxX) * closeness,
+    minZ: oldMinZ + (-Math.max(6, cornerVertical) - oldMinZ) * closeness,
+    maxZ: oldMaxZ + (Math.max(6, cornerVertical) - oldMaxZ) * closeness,
+  };
+}
+
 function clampCameraOffsets() {
-  camOffsetX = Math.max(-8, Math.min(8, camOffsetX));
-  const maxDown = getCameraDownLimit();
-  camOffsetZ = Math.max(-6, Math.min(maxDown, camOffsetZ));
+  const bounds = getExpandedShopCameraBounds();
+  camOffsetX = Math.max(-bounds.maxX, Math.min(bounds.maxX, camOffsetX));
+  camOffsetZ = Math.max(bounds.minZ, Math.min(bounds.maxZ, camOffsetZ));
 }
 
 function updateCamera() {
@@ -4025,6 +4051,10 @@ function makeCrosswalk(x, z, orientation = 'horizontal') {
     }
   }
 }
+
+// Состояния этажей должны существовать до первого построения окружения.
+// rebuildExterior() вызывается при запуске раньше инициализации системы этажей.
+const shopFloorStates = {};
 
 function rebuildExterior() {
   // В groundMeshes храним только улицу/брусчатку/асфальт.
@@ -9937,7 +9967,6 @@ function rebuildStarterShelfForShopType() {
 // ══════════════════════════════════════
 // Уровень и XP общие для всего магазина. Каждый этаж хранит только свою
 // планировку, расширения, работников и посетителей. Деньги и склад тоже общие.
-const shopFloorStates = {};
 let shopFloorSystemReady = false;
 let secondFloorFacadeGroup = null;
 let lastPassiveFloorUpdateAt = 0;
