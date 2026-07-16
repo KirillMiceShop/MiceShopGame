@@ -283,7 +283,8 @@
   .developer-level-step:active,
   .developer-level-apply:active { transform:scale(.96); }
   #developerLevelInput,
-  #developerMoneyInput {
+  #developerMoneyInput,
+  #developerSeasonSelect {
     width:100%;
     min-width:0;
     padding:9px 8px;
@@ -307,6 +308,9 @@
     margin-top:0;
     white-space:nowrap;
   }
+  #developerSeasonSelect {
+    text-align:left;
+  }
   .developer-level-apply {
     width:100%;
     margin-top:8px;
@@ -314,7 +318,8 @@
     font-size:13px;
   }
   #developerLevelStatus,
-  #developerMoneyStatus {
+  #developerMoneyStatus,
+  #developerSeasonStatus {
     margin-top:8px;
     font-size:11px;
     color:#888;
@@ -1208,6 +1213,7 @@
   .modal-box .developer-level-apply,
   .modal-box #developerLevelInput,
   .modal-box #developerMoneyInput,
+  .modal-box #developerSeasonSelect,
   .modal-box .warehouse-auto-stock-btn {
     background:var(--menu-card)!important;
     border-color:var(--menu-border)!important;
@@ -1750,6 +1756,18 @@
         <button class="developer-level-apply" type="button" onclick="applyDeveloperMoney()">Применить деньги</button>
       </div>
       <div id="developerMoneyStatus">Текущий баланс: 5 000</div>
+
+      <div class="setting-sub" style="margin-top:14px">Переключите сезон для проверки сезонных цен.</div>
+      <div class="developer-money-controls">
+        <select id="developerSeasonSelect" aria-label="Сезон">
+          <option value="winter">❄️ Зима</option>
+          <option value="spring">🌷 Весна</option>
+          <option value="summer">☀️ Лето</option>
+          <option value="autumn">🍂 Осень</option>
+        </select>
+        <button class="developer-level-apply" type="button" onclick="applyDeveloperSeason()">Применить сезон</button>
+      </div>
+      <div id="developerSeasonStatus">Текущий сезон: Зима</div>
     </div>
     <button type="button" class="modal-close" onclick="closeSettingsModal()" aria-label="Закрыть">✕</button>
   </div>
@@ -1886,6 +1904,8 @@ const G = {
   money: 5000, crystals: 20, xp: 0, level: 1, shopStage: 1,
   shopType: null,
   currentFloor: 1,
+  currentSeason: 'winter',
+  seasonStartedAt: Date.now(),
   liftPurchased: false,
   liftBuilt: false,
   liftPosition: null,
@@ -2723,6 +2743,26 @@ function applyDeveloperMoney() {
   showToast('💰 Баланс установлен: ' + fmtFull(money), '#687487');
 }
 
+function updateDeveloperSeasonUI() {
+  const select = document.getElementById('developerSeasonSelect');
+  const status = document.getElementById('developerSeasonStatus');
+  const season = getSeasonDef(G.currentSeason);
+  if (select) select.value = season.id;
+  if (status) {
+    const elapsed = Math.max(0, Date.now() - (Number(G.seasonStartedAt) || Date.now()));
+    const leftMs = Math.max(0, SEASON_DURATION_MS - (elapsed % SEASON_DURATION_MS));
+    status.textContent = 'Текущий сезон: ' + season.emoji + ' ' + season.name + ' · смена через ' + fmtTime(Math.ceil(leftMs / 1000));
+  }
+}
+
+function applyDeveloperSeason() {
+  const select = document.getElementById('developerSeasonSelect');
+  if (!select) return;
+  const season = getSeasonDef(select.value);
+  setSeason(season.id, { developer:true, announce:true });
+  updateDeveloperSeasonUI();
+}
+
 function applyDeveloperLevel() {
   const input = document.getElementById('developerLevelInput');
   if (!input) return;
@@ -2762,6 +2802,7 @@ function openSettingsModal() {
   updateInternalWallTransparencyToggleUI();
   updateDeveloperLevelUI();
   updateDeveloperMoneyUI();
+  updateDeveloperSeasonUI();
   document.getElementById('settingsModal').classList.add('show');
 }
 
@@ -2927,7 +2968,172 @@ const PRODUCTS = [
   {id:'bag',    name:'Сумка',      emoji:'👜', cat:'Аксессуары', cost:600,   sell:1100,  time:150, xp:40,  shelfKinds:['glass_case']},
   {id:'phone',  name:'Смартфон',   emoji:'📱', cat:'Техника',   cost:5000,  sell:8500,  time:480, xp:200, shelfKinds:['tech_island']},
   {id:'laptop', name:'Ноутбук',    emoji:'💻', cat:'Техника',   cost:12000, sell:20000, time:720, xp:400, shelfKinds:['tech_island']},
+
+  // Сезонные товары. Базовая цена указана без сезонного коэффициента.
+  {id:'women_winter_boots', name:'Женские зимние сапоги', emoji:'👢', cat:'Обувь', cost:1200, sell:2200, time:220, xp:65, shelfKinds:['shoe_cubby'], season:'winter', lowSeasons:['spring','summer']},
+  {id:'men_winter_boots', name:'Мужские зимние ботинки', emoji:'🥾', cat:'Обувь', cost:1300, sell:2400, time:230, xp:70, shelfKinds:['shoe_cubby'], season:'winter', lowSeasons:['spring','summer']},
+  {id:'winter_hat', name:'Зимняя шапка', emoji:'🧢', cat:'Аксессуары', cost:350, sell:700, time:90, xp:25, shelfKinds:['classic_counter'], season:'winter', lowSeasons:['spring','summer']},
+
+  {id:'umbrella', name:'Зонт', emoji:'☂️', cat:'Аксессуары', cost:500, sell:950, time:120, xp:35, shelfKinds:['classic_counter'], season:'autumn', lowSeasons:['spring','summer']},
+  {id:'rubber_boots', name:'Резиновые сапоги', emoji:'👢', cat:'Обувь', cost:900, sell:1700, time:190, xp:55, shelfKinds:['shoe_cubby'], season:'autumn', lowSeasons:['spring','summer']},
+  {id:'autumn_raincoat', name:'Осенний плащ', emoji:'🧥', cat:'Одежда', cost:1100, sell:2050, time:220, xp:65, shelfKinds:['hanging_rack'], season:'autumn', lowSeasons:['spring','summer']},
+  {id:'windbreaker', name:'Ветровка', emoji:'🧥', cat:'Одежда', cost:850, sell:1600, time:180, xp:50, shelfKinds:['hanging_rack'], season:'autumn', lowSeasons:['spring','summer']},
+
+  {id:'thin_turtleneck', name:'Тонкая водолазка', emoji:'👚', cat:'Одежда', cost:600, sell:1150, time:140, xp:40, shelfKinds:['hanging_rack'], season:'spring', lowSeasons:['summer','autumn']},
+  {id:'leather_jacket', name:'Кожаная куртка', emoji:'🧥', cat:'Одежда', cost:1450, sell:2600, time:250, xp:80, shelfKinds:['hanging_rack'], season:'spring', lowSeasons:['summer','autumn']},
+
+  {id:'swimsuit', name:'Купальник', emoji:'🩱', cat:'Одежда', cost:650, sell:1200, time:150, xp:42, shelfKinds:['hanging_rack'], season:'summer', lowSeasons:['autumn','winter']},
+  {id:'flip_flops', name:'Сланцы', emoji:'🩴', cat:'Обувь', cost:300, sell:650, time:85, xp:24, shelfKinds:['shoe_cubby'], season:'summer', lowSeasons:['autumn','winter']},
 ];
+
+
+// ══════════════════════════════════════
+//  СЕЗОНЫ И СЕЗОННЫЕ ЦЕНЫ
+// ══════════════════════════════════════
+const SEASON_DURATION_MS = 10 * 60 * 1000;
+const SEASONS = [
+  { id:'winter', name:'Зима', emoji:'❄️' },
+  { id:'spring', name:'Весна', emoji:'🌷' },
+  { id:'summer', name:'Лето', emoji:'☀️' },
+  { id:'autumn', name:'Осень', emoji:'🍂' },
+];
+
+// Небольшие общие изменения цен действуют на обычные товары обоих магазинов.
+// Для специальных сезонных товаров применяются отдельные правила ниже.
+const REGULAR_SEASON_PRICE_MULTIPLIERS = {
+  clothing:   { winter:1.10, spring:0.98, summer:1.08, autumn:1.04 },
+  electronics:{ winter:1.08, spring:1.02, summer:0.96, autumn:1.05 },
+};
+
+let lastSeasonCheckAt = 0;
+
+function getSeasonDef(seasonId = G.currentSeason) {
+  return SEASONS.find(season => season.id === seasonId) || SEASONS[0];
+}
+
+function getProductShopType(product) {
+  return product?.cat === 'Техника' ? 'electronics' : 'clothing';
+}
+
+function getSeasonPriceMultiplier(product, seasonId = G.currentSeason) {
+  if (!product) return 1;
+
+  // Сезонный товар в свой сезон продаётся в 2 раза дороже.
+  // В перечисленные несезонные периоды цена делится на 1,5.
+  if (product.season) {
+    if (seasonId === product.season) return 2;
+    if (Array.isArray(product.lowSeasons) && product.lowSeasons.includes(seasonId)) return 1 / 1.5;
+    return 1;
+  }
+
+  const shopType = getProductShopType(product);
+  return REGULAR_SEASON_PRICE_MULTIPLIERS[shopType]?.[seasonId] || 1;
+}
+
+function getSeasonalSellPrice(product, seasonId = G.currentSeason) {
+  if (!product) return 0;
+  return Math.max(1, Math.round(product.sell * getSeasonPriceMultiplier(product, seasonId)));
+}
+
+function getShelfActiveBasePrice(item) {
+  if (!item?.product) return 0;
+  const locked = Number(item.activeSalePrice);
+  return Number.isFinite(locked) && locked > 0
+    ? Math.round(locked)
+    : getSeasonalSellPrice(item.product);
+}
+
+function getShelfCurrentSaleAmount(item) {
+  const basePrice = getShelfActiveBasePrice(item);
+  return (item?.discountedQty || 0) > 0 ? Math.floor(basePrice / 2) : basePrice;
+}
+
+function getKnownFloorSlotArrays() {
+  const arrays = new Set();
+  if (Array.isArray(G.slots)) arrays.add(G.slots);
+  if (typeof shopFloorStates !== 'undefined') {
+    Object.values(shopFloorStates).forEach(state => {
+      if (Array.isArray(state?.slots)) arrays.add(state.slots);
+    });
+  }
+  return [...arrays];
+}
+
+function lockCurrentTimedSalePrices(seasonId = G.currentSeason) {
+  getKnownFloorSlotArrays().forEach(slots => {
+    slots.forEach(item => {
+      if (!item || item.qty <= 0 || item.soldOut || !item.nextSaleAt) return;
+      const current = Number(item.activeSalePrice);
+      if (!Number.isFinite(current) || current <= 0) {
+        item.activeSalePrice = getSeasonalSellPrice(item.product, seasonId);
+      }
+    });
+  });
+}
+
+function refreshSeasonSensitiveUI() {
+  const shopModal = document.getElementById('shopModal');
+  if (shopModal?.classList.contains('show')) renderProductList();
+
+  const itemModal = document.getElementById('itemModal');
+  if (itemModal?.classList.contains('show')) renderItemDetail();
+
+  const shelvesModal = document.getElementById('shelvesModal');
+  if (shelvesModal?.classList.contains('show')) openShelvesModal();
+
+  const shelfDetailModal = document.getElementById('shelfDetailModal');
+  if (shelfDetailModal?.classList.contains('show')) renderShelfDetailModal();
+
+  const settingsModal = document.getElementById('settingsModal');
+  if (settingsModal?.classList.contains('show')) updateDeveloperSeasonUI();
+}
+
+function setSeason(seasonId, options = {}) {
+  const next = getSeasonDef(seasonId);
+  const previousId = getSeasonDef(G.currentSeason).id;
+
+  // Цена фиксируется только у единицы, таймер которой уже идёт.
+  lockCurrentTimedSalePrices(previousId);
+
+  G.currentSeason = next.id;
+  G.seasonStartedAt = Number.isFinite(options.startedAt) ? options.startedAt : Date.now();
+
+  refreshSeasonSensitiveUI();
+
+  if (options.announce !== false) {
+    const prefix = options.developer ? '🛠 Сезон установлен' : 'Новый сезон';
+    showToast(next.emoji + ' ' + prefix + ': ' + next.name, '#687487');
+    logEvent(next.emoji + ' Наступил сезон: ' + next.name + ' · цены обновлены');
+  }
+  return next;
+}
+
+function initializeSeasonSystem() {
+  if (!SEASONS.some(season => season.id === G.currentSeason)) G.currentSeason = 'winter';
+  if (!Number.isFinite(G.seasonStartedAt)) G.seasonStartedAt = Date.now();
+  lockCurrentTimedSalePrices(G.currentSeason);
+  updateDeveloperSeasonUI();
+}
+
+function updateSeasonCycle(now = Date.now()) {
+  if (!gameStarted) return;
+  if (now - lastSeasonCheckAt < 1000) return;
+  lastSeasonCheckAt = now;
+
+  if (!Number.isFinite(G.seasonStartedAt)) G.seasonStartedAt = now;
+  const elapsed = now - G.seasonStartedAt;
+  if (elapsed >= SEASON_DURATION_MS) {
+    const steps = Math.max(1, Math.floor(elapsed / SEASON_DURATION_MS));
+    const currentIndex = Math.max(0, SEASONS.findIndex(season => season.id === G.currentSeason));
+    const nextIndex = (currentIndex + steps) % SEASONS.length;
+    const carriedStart = G.seasonStartedAt + steps * SEASON_DURATION_MS;
+    setSeason(SEASONS[nextIndex].id, { startedAt:carriedStart, announce:true });
+  } else {
+    const settingsModal = document.getElementById('settingsModal');
+    if (settingsModal?.classList.contains('show')) updateDeveloperSeasonUI();
+  }
+}
+
 
 // ── РАЗБЛОКИРОВКА ТОВАРОВ И ВИТРИН ПО УРОВНЯМ ──
 // Прогрессия отдельная для каждого типа магазина.
@@ -2949,6 +3155,17 @@ const PRODUCT_UNLOCK_LEVELS = {
     watch: 9,
     suit: 10,
     jewelry: 10,
+    women_winter_boots: 3,
+    men_winter_boots: 3,
+    winter_hat: 3,
+    umbrella: 3,
+    rubber_boots: 3,
+    autumn_raincoat: 3,
+    windbreaker: 3,
+    thin_turtleneck: 3,
+    leather_jacket: 3,
+    swimsuit: 3,
+    flip_flops: 3,
   },
   electronics: {
     headphones: 1,
@@ -8036,7 +8253,7 @@ function sellOneUnitFromShelf(slotIdx, reason = 'timer') {
   if (now < item.nextSaleAt) return false;
 
   const isDiscounted = (item.discountedQty || 0) > 0;
-  const saleAmount = isDiscounted ? Math.floor(item.product.sell / 2) : item.product.sell;
+  const saleAmount = getShelfCurrentSaleAmount(item);
 
   item.qty -= 1;
   if (isDiscounted) item.discountedQty = Math.max(0, (item.discountedQty || 0) - 1);
@@ -8050,11 +8267,13 @@ function sellOneUnitFromShelf(slotIdx, reason = 'timer') {
     item.qty = 0;
     item.soldOut = true;
     item.nextSaleAt = null;
+    item.activeSalePrice = null;
     refreshShelfItemVisual(slotIdx);
     logEvent('🧺 ' + item.product.emoji + ' ' + item.product.name + ' распродан · нужно убрать витрину');
     showToast('🧹 Витрина ' + (slotIdx + 1) + ' распродана — нажми, чтобы убрать');
   } else {
     item.nextSaleAt = now + item.product.time * 1000;
+    item.activeSalePrice = getSeasonalSellPrice(item.product);
     refreshShelfItemVisual(slotIdx);
     logEvent('🛒 ' + item.product.emoji + ' ' + item.product.name + (isDiscounted ? ' продан со скидкой 50%' : ' продан') + ' · осталось ' + item.qty + ' шт');
   }
@@ -8965,7 +9184,7 @@ function getBuyCost(product, qty = 1) {
 }
 
 function getBuyRevenue(product, qty = 1) {
-  return product.sell * qty;
+  return getSeasonalSellPrice(product) * qty;
 }
 
 const SHELF_STOCK_CAPACITY = 10;
@@ -9642,12 +9861,12 @@ function renderProductList() {
       <div class="pr-info">
         <div class="pr-name">${p.name}</div>
         <div class="pr-sub">${unlocked
-          ? ((shelfReady ? (p.cat + ' · ' + productShelfHint(p)) : 'прилавок пока не добавлен') + ' · ⏱' + fmtTime(p.time) + ' / продажа')
+          ? ((shelfReady ? (p.cat + ' · ' + productShelfHint(p)) : 'прилавок пока не добавлен') + (p.season ? (' · ' + getSeasonDef(p.season).emoji + ' сезонный товар') : '') + ' · ⏱' + fmtTime(p.time) + ' / продажа')
           : ('Откроется на уровне ' + unlockLevel)}</div>
       </div>
       <div class="pr-right">
         <div class="pr-price">${unlocked ? ('💰' + fmt(p.cost) + ' / шт') : ('🔒 Ур.' + unlockLevel)}</div>
-        <div class="pr-profit">${unlocked ? ('+' + fmt(p.sell-p.cost)) : ''}</div>
+        <div class="pr-profit">${unlocked ? ('+' + fmt(getSeasonalSellPrice(p)-p.cost)) : ''}</div>
       </div>`;
     if (unlocked) {
       el.onclick = () => {
@@ -10138,7 +10357,7 @@ function processPassiveFloorSales(state, now = Date.now()) {
     while (item.qty > 0 && !item.soldOut && item.nextSaleAt && now >= item.nextSaleAt && safety < 8) {
       safety++;
       const isDiscounted = (item.discountedQty || 0) > 0;
-      const saleAmount = isDiscounted ? Math.floor(item.product.sell / 2) : item.product.sell;
+      const saleAmount = getShelfCurrentSaleAmount(item);
       item.qty -= 1;
       if (isDiscounted) item.discountedQty = Math.max(0, (item.discountedQty || 0) - 1);
       G.pendingRevenue += saleAmount;
@@ -10149,8 +10368,10 @@ function processPassiveFloorSales(state, now = Date.now()) {
         item.qty = 0;
         item.soldOut = true;
         item.nextSaleAt = null;
+        item.activeSalePrice = null;
       } else {
         item.nextSaleAt += item.product.time * 1000;
+        item.activeSalePrice = getSeasonalSellPrice(item.product);
         if (item.nextSaleAt < now - item.product.time * 1000) item.nextSaleAt = now + item.product.time * 1000;
       }
     }
@@ -10472,6 +10693,9 @@ function chooseShopType(type) {
   shopTypeChoiceLocked = true;
 
   G.shopType = type;
+  G.currentSeason = 'winter';
+  G.seasonStartedAt = Date.now();
+  initializeSeasonSystem();
   activeCat = type === 'electronics' ? 'tech' : 'clothes';
   rebuildStarterShelfForShopType();
   initializeShopFloorSystem();
@@ -10500,6 +10724,7 @@ function chooseShopType(type) {
 function initializeShopTypeScreen() {
   const screen = document.getElementById('shop-type-screen');
   if (G.shopType && SHOP_TYPES[G.shopType]) {
+    initializeSeasonSystem();
     rebuildStarterShelfForShopType();
     initializeShopFloorSystem();
     if (screen) screen.classList.add('hidden');
@@ -10902,7 +11127,7 @@ function openShelvesModal() {
         <div style="font-size:10px;color:#444">Пусто</div></div>`;
     } else {
       const wait = item.soldOut ? 0 : Math.max(0, Math.ceil((item.nextSaleAt - Date.now()) / 1000));
-      const shelfSalePrice = (item.discountedQty || 0) > 0 ? Math.floor(item.product.sell / 2) : item.product.sell;
+      const shelfSalePrice = getShelfCurrentSaleAmount(item);
       const pct = Math.max(0, Math.min(100, Math.floor((item.qty / Math.max(item.maxQty, PRODUCT_PACK_SIZE)) * 100)));
       div.innerHTML = `
         <div style="font-size:26px">${item.product.emoji}</div>
@@ -11698,7 +11923,12 @@ function placeItem(productId, slotIdx, qty = 1, fromStorage = false) {
     existing.discountedQty = (existing.discountedQty || 0) + (storageTake.discountedQty || 0);
     existing.maxQty = SHELF_STOCK_CAPACITY;
     existing.soldOut = false;
-    if (!existing.nextSaleAt) existing.nextSaleAt = Date.now() + p.time * 1000;
+    if (!existing.nextSaleAt) {
+      existing.nextSaleAt = Date.now() + p.time * 1000;
+      existing.activeSalePrice = getSeasonalSellPrice(p);
+    } else if (!Number.isFinite(Number(existing.activeSalePrice)) || Number(existing.activeSalePrice) <= 0) {
+      existing.activeSalePrice = getSeasonalSellPrice(p);
+    }
     refreshShelfItemVisual(slotIdx);
     showToast('📦 +' + qty + ' шт ' + p.name + ' → витрина ' + (slotIdx+1));
     logEvent('📦 Пополнение: ' + p.emoji + ' ' + p.name + ' +' + qty + ' шт');
@@ -11708,6 +11938,7 @@ function placeItem(productId, slotIdx, qty = 1, fromStorage = false) {
       qty,
       maxQty: SHELF_STOCK_CAPACITY,
       nextSaleAt: Date.now() + p.time * 1000,
+      activeSalePrice: getSeasonalSellPrice(p),
       soldOut: false,
       discountedQty: storageTake.discountedQty || 0
     };
@@ -11760,7 +11991,7 @@ function renderShelfDetailModal() {
   }
 
   const wait = Math.max(0, Math.ceil((item.nextSaleAt - Date.now()) / 1000));
-  const nextSalePrice = (item.discountedQty || 0) > 0 ? Math.floor(item.product.sell / 2) : item.product.sell;
+  const nextSalePrice = getShelfCurrentSaleAmount(item);
   const canMove = item.qty > 1;
   const maxMove = Math.max(0, item.qty - 1);
   shelfMoveQty = canMove ? Math.max(1, Math.min(shelfMoveQty, maxMove)) : 0;
@@ -12252,7 +12483,9 @@ function animate(now = performance.now()) {
     return;
   }
 
-  updatePassiveFloors(Date.now());
+  const gameNow = Date.now();
+  updateSeasonCycle(gameNow);
+  updatePassiveFloors(gameNow);
 
   // Количество покупателей зависит от рейтинга магазина.
   // До 10% — 1 покупатель, 10% — 2, 20% — 3 и далее +1 за каждые 10%.
