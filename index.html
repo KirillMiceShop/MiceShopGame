@@ -4034,37 +4034,38 @@ function rebuildExterior() {
   });
   groundMeshes.length = 0;
 
-  // Единый коэффициент роста: магазин и окружение растут равномерно.
-  const scale = getShopScale();
+  // Окружение находится у первого этажа. Когда открыт второй этаж,
+  // дорога и тротуары должны оставаться подстроенными под фактический
+  // размер первого этажа, а не перестраиваться по меньшему второму этажу.
+  const firstFloorStage = shopFloorStates?.[1]?.shopStage;
+  const exteriorShopHalf = (G.currentFloor || 1) === 2 && firstFloorStage
+    ? getShopHalfForStage(firstFloorStage)
+    : SHOP_HALF;
 
-  SIDEWALK_W = 2.2 * scale;
-  ROAD_W = 4.2 * scale;
-  SIDEWALK_CENTER = SHOP_HALF + SIDEWALK_W / 2;
-  SIDEWALK_OUTER = SHOP_HALF + SIDEWALK_W;
+  // Ширина тротуара и дороги всегда постоянна. При расширении магазина
+  // они только сдвигаются наружу, но не становятся толще.
+  SIDEWALK_W = 2.2;
+  ROAD_W = 4.2;
+  SIDEWALK_CENTER = exteriorShopHalf + SIDEWALK_W / 2;
+  SIDEWALK_OUTER = exteriorShopHalf + SIDEWALK_W;
   ROAD_CENTER = SIDEWALK_OUTER + ROAD_W / 2;
 
-  // Дальние продолжения дороги и травы, чтобы края не попадали в кадр.
-  // Верхний кусок уже нормальный.
-  // Нижние продолжения делаем ОЧЕНЬ длинными, чтобы снизу под кнопками
-  // всегда было продолжение мира: та же трава, та же брусчатка и тот же асфальт,
-  // без пустого обрыва поля.
-  const topRoadExtension = Math.max(80, 80 * scale);
-  // Камера снизу уже ограничена, поэтому бесконечно длинная дорога больше не нужна.
-  // Возвращаем прежнюю длину, чтобы не создавать десятки тысяч отдельных плиток.
-  const sideRoadExtension = Math.max(180, 180 * scale);
+  // Дальние продолжения дороги сохраняют прежнюю длину независимо от расширения.
+  const topRoadExtension = 80;
+  const sideRoadExtension = 180;
 
   // Всего 3 куска дороги:
   // 1) один длинный верхний,
   // 2) левый боковой вниз,
   // 3) правый боковой вниз.
-  const topRoadW = SHOP_HALF * 2 + SIDEWALK_W * 2 + ROAD_W * 2 + topRoadExtension * 2;
+  const topRoadW = exteriorShopHalf * 2 + SIDEWALK_W * 2 + ROAD_W * 2 + topRoadExtension * 2;
   const topRoadLeftSegX  = -(ROAD_CENTER + ROAD_W / 2 + topRoadExtension / 2);
   const topRoadRightSegX =  (ROAD_CENTER + ROAD_W / 2 + topRoadExtension / 2);
-  const topRoadMiddleW = SHOP_HALF * 2 + SIDEWALK_W * 2;
+  const topRoadMiddleW = exteriorShopHalf * 2 + SIDEWALK_W * 2;
 
   // Боковые дороги начинаются ровно от нижнего края верхней дороги — без креста сверху.
   const sideRoadTop = -ROAD_CENTER + ROAD_W / 2;
-  const sideRoadBottom = SHOP_HALF + SIDEWALK_W + sideRoadExtension;
+  const sideRoadBottom = exteriorShopHalf + SIDEWALK_W + sideRoadExtension;
   const sideRoadD = sideRoadBottom - sideRoadTop;
   const sideRoadZ = sideRoadTop + sideRoadD / 2;
 
@@ -4107,7 +4108,7 @@ function rebuildExterior() {
 
   // ── ПЕШЕХОДНЫЕ ПЕРЕХОДЫ ──
   // Только в отмеченных местах: по три перехода у каждого примыкания.
-  const crosswalkOffset = ROAD_W / 2 + 0.7 * scale;
+  const crosswalkOffset = ROAD_W / 2 + 0.7;
 
   // Левое примыкание.
   makeCrosswalk(-ROAD_CENTER - crosswalkOffset, -ROAD_CENTER, 'horizontal');
