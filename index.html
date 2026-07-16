@@ -10265,7 +10265,10 @@ function switchShopFloor() {
   } else {
     setShopFloorStateYOffset(currentState, 0);
     setShopFloorStateVisible(currentState, false);
-    setShopFloorCharactersVisible(currentState, true);
+    // После спуска сотрудники второго этажа должны оставаться скрытыми.
+    // Раньше их сразу включали обратно, поэтому поверх первого этажа
+    // отображались сотрудники сразу с двух этажей.
+    setShopFloorCharactersVisible(currentState, false);
   }
 
   const targetState = shopFloorStates[targetFloor];
@@ -10320,10 +10323,13 @@ function rebuildSecondFloorFacade() {
     });
   }
 
-  // Видимый нижний объём строится строго по контуру активного второго этажа.
-  // Благодаря этому наружные стены двух этажей не выступают и не уходят внутрь.
+  // Нижний объём повторяет реальный размер первого этажа.
+  // Если первый этаж расширен сильнее второго, его крыша и наружный контур
+  // остаются видимыми вокруг активного второго этажа.
+  const firstStage = shopFloorStates[1]?.shopStage || ((G.currentFloor || 1) === 1 ? G.shopStage : 1);
   const secondStage = shopFloorStates[2]?.shopStage || ((G.currentFloor || 1) === 2 ? G.shopStage : 1);
-  const half = getShopHalfForStage(secondStage);
+  const half = getShopHalfForStage(firstStage);
+  const secondHalf = getShopHalfForStage(secondStage);
   const baseY = -SHOP_FLOOR_HEIGHT;
   const wallH = SHOP_FLOOR_HEIGHT;
   const wallColor = EXTERIOR_WALL_COLOR;
@@ -10340,8 +10346,19 @@ function rebuildSecondFloorFacade() {
     return mesh;
   };
 
-  // Нижний объём заканчивается точно на y=0 — там же начинается второй этаж.
-  // Отдельной выступающей плиты между этажами больше нет, поэтому щель исчезает.
+  // Серая крыша первого этажа лежит немного ниже пола второго этажа.
+  // Пол второго этажа перекрывает центральную часть крыши, а расширенная часть
+  // первого этажа остаётся видимой по краям без мерцания поверхностей.
+  const roofHeight = 0.12;
+  const roofTopY = -0.025;
+  const roofMaterial = new THREE.MeshLambertMaterial({ color:0x73777f });
+  const roof = addBox(half * 2, roofHeight, half * 2, 0x73777f, 0, roofTopY - roofHeight / 2, 0, roofMaterial);
+  roof.castShadow = false;
+  roof.receiveShadow = true;
+  roof.userData.firstFloorRoof = true;
+  roof.userData.secondFloorFootprintHalf = secondHalf;
+
+  // Нижний объём заканчивается у основания крыши.
   const fullWallThickness = 0.30;
   const openSideThickness = 0.16;
   const wallCenterY = baseY + wallH / 2;
