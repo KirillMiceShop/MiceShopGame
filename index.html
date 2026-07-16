@@ -319,51 +319,63 @@
   }
   #hud-level-box,
   .money-pill {
-    background:rgba(10,10,30,0.78);
+    background:rgba(26,27,41,0.72);
     backdrop-filter:blur(8px);
-    border:1px solid rgba(255,255,255,0.10);
-    box-shadow:0 6px 22px rgba(0,0,0,0.22);
+    -webkit-backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,0.14);
+    box-shadow:0 6px 18px rgba(0,0,0,0.18);
   }
   #hud-level-box {
-    min-width:126px;
-    max-width:150px;
-    border-radius:16px;
-    padding:7px 10px 8px;
+    min-width:210px;
+    max-width:230px;
+    border-radius:18px;
+    padding:10px 12px 10px;
   }
   #levelLabel {
-    font-size:10px;
-    font-weight:800;
-    color:#d8d8e8;
-    text-align:center;
+    font-size:11px;
+    font-weight:900;
+    color:#f0f0f7;
+    text-align:left;
     white-space:nowrap;
   }
   .money-pill {
     display:flex;
     align-items:center;
-    justify-content:center;
-    min-width:110px;
-    padding:7px 12px;
-    border-radius:18px;
+    justify-content:flex-start;
+    gap:8px;
+    min-width:128px;
+    min-height:42px;
+    padding:8px 12px;
+    border-radius:16px;
     font-size:12px;
-    font-weight:800;
-    color:#f5c518;
+    font-weight:900;
+    text-align:left;
+    color:#f5c35d;
+  }
+  .money-pill .hud-pill-icon {
+    flex:0 0 auto;
+    width:20px;
     text-align:center;
-    background:rgba(245,197,24,0.13);
-    border-color:rgba(245,197,24,0.35);
+    font-size:16px;
+    line-height:1;
+    filter:drop-shadow(0 1px 0 rgba(0,0,0,.15));
+  }
+  .money-pill .hud-pill-value {
+    flex:1 1 auto;
+    line-height:1;
+    letter-spacing:.02em;
   }
   .crystal-pill {
-    background:rgba(111,196,255,0.14);
-    border-color:rgba(111,196,255,0.40);
-    color:#8fd7ff;
+    color:#9edfff;
   }
 
   /* XP BAR — внутри отдельной карточки уровня */
   #xp-bar-wrap {
-    margin-top:5px;
+    margin-top:6px;
   }
-  #xp-bar { height:3px; background:rgba(255,255,255,0.13); border-radius:6px; overflow:hidden; }
+  #xp-bar { height:4px; background:rgba(255,255,255,0.13); border-radius:6px; overflow:hidden; }
   #xp-fill { height:100%; background:linear-gradient(90deg,#e94560,#9c27b0); border-radius:6px; transition:width .5s; }
-  #xp-label { font-size:8px; color:#8e8ea7; margin-top:3px; text-align:right; }
+  #xp-label { font-size:9px; color:#c2c2d2; margin-top:4px; text-align:right; }
 
   /* ЛИФТ МЕЖДУ ЭТАЖАМИ */
   #lift-btn {
@@ -1570,14 +1582,14 @@
 
 <div id="hud-stats">
   <div id="hud-level-box">
-    <div id="levelLabel">Ур.1 — Новичок</div>
+    <div id="levelLabel">Уровень 1 — Новичок</div>
     <div id="xp-bar-wrap">
       <div id="xp-bar"><div id="xp-fill" style="width:0%"></div></div>
       <div id="xp-label">0 / 300 XP</div>
     </div>
   </div>
-  <div class="money-pill" id="moneyDisplay">💰 5 000</div>
-  <div class="money-pill crystal-pill" id="crystalDisplay">💎 20</div>
+  <div class="money-pill" id="moneyDisplay"><span class="hud-pill-icon">💰</span><span class="hud-pill-value">5 000</span></div>
+  <div class="money-pill crystal-pill" id="crystalDisplay"><span class="hud-pill-icon">💎</span><span class="hud-pill-value">20</span></div>
 </div>
 
 <!-- КНОПКА НАСТРОЕК -->
@@ -8171,6 +8183,10 @@ function fmt(n) {
   if (n >= 1000) return (n/1000).toFixed(1)+'К';
   return n.toLocaleString('ru');
 }
+function fmtFull(n) {
+  const value = Number.isFinite(Number(n)) ? Math.round(Number(n)) : 0;
+  return value.toLocaleString('ru-RU').replace(/,/g, ' ');
+}
 function fmtTime(s) {
   if (s<=0) return 'Готово!';
   if (s<60) return s+'с';
@@ -8564,14 +8580,20 @@ function applyWorkerStyles(type = null) {
 }
 
 function updateHUD() {
-  document.getElementById('moneyDisplay').textContent = '💰 '+fmt(G.money);
+  const moneyEl = document.getElementById('moneyDisplay');
+  if (moneyEl) {
+    const valueEl = moneyEl.querySelector('.hud-pill-value');
+    if (valueEl) valueEl.textContent = fmtFull(G.money);
+  }
   const crystalEl = document.getElementById('crystalDisplay');
-  if (crystalEl) crystalEl.textContent = '💎 ' + fmt(G.crystals || 0);
+  if (crystalEl) {
+    const valueEl = crystalEl.querySelector('.hud-pill-value');
+    if (valueEl) valueEl.textContent = fmtFull(G.crystals || 0);
+  }
 
   const safeLevel = Math.max(1, Math.min(MAX_LEVEL, G.level || 1));
   G.level = safeLevel;
-  const floorNo = G.currentFloor || 1;
-  document.getElementById('levelLabel').textContent = floorNo+' эт. · Ур.'+safeLevel+' — '+getLevelTitle(safeLevel);
+  document.getElementById('levelLabel').textContent = 'Уровень ' + safeLevel + ' — ' + getLevelTitle(safeLevel);
   updateLiftButton();
 
   const currentThreshold = LEVELS[safeLevel].xp;
@@ -8582,7 +8604,7 @@ function updateHUD() {
   document.getElementById('xp-fill').style.width = pct+'%';
   document.getElementById('xp-label').textContent = safeLevel >= MAX_LEVEL
     ? 'Максимальный уровень'
-    : fmt(xpInCurrentLevel)+' / '+fmt(xpNeeded)+' XP';
+    : fmtFull(xpInCurrentLevel)+' / '+fmtFull(xpNeeded)+' XP';
   updateRatingUI();
 }
 
