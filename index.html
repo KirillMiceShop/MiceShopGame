@@ -282,7 +282,8 @@
   }
   .developer-level-step:active,
   .developer-level-apply:active { transform:scale(.96); }
-  #developerLevelInput {
+  #developerLevelInput,
+  #developerMoneyInput {
     width:100%;
     min-width:0;
     padding:9px 8px;
@@ -295,13 +296,25 @@
     text-align:center;
     outline:none;
   }
+  .developer-money-controls {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:7px;
+    margin-top:12px;
+  }
+  .developer-money-controls .developer-level-apply {
+    width:auto;
+    margin-top:0;
+    white-space:nowrap;
+  }
   .developer-level-apply {
     width:100%;
     margin-top:8px;
     padding:10px 12px;
     font-size:13px;
   }
-  #developerLevelStatus {
+  #developerLevelStatus,
+  #developerMoneyStatus {
     margin-top:8px;
     font-size:11px;
     color:#888;
@@ -1152,6 +1165,7 @@
 
   .modal-box .setting-sub,
   .modal-box #developerLevelStatus,
+  .modal-box #developerMoneyStatus,
   .modal-box .worker-sub,
   .modal-box .quest-card-sub,
   .modal-box .quest-card-foot,
@@ -1193,6 +1207,7 @@
   .modal-box .developer-level-step,
   .modal-box .developer-level-apply,
   .modal-box #developerLevelInput,
+  .modal-box #developerMoneyInput,
   .modal-box .warehouse-auto-stock-btn {
     background:var(--menu-card)!important;
     border-color:var(--menu-border)!important;
@@ -1728,6 +1743,13 @@
       </div>
       <button class="developer-level-apply" type="button" onclick="applyDeveloperLevel()">Применить уровень</button>
       <div id="developerLevelStatus">Текущий уровень: 1</div>
+
+      <div class="setting-sub" style="margin-top:14px">Укажите нужное количество денег для проверки покупок.</div>
+      <div class="developer-money-controls">
+        <input id="developerMoneyInput" type="number" min="0" max="999999999999" step="1" inputmode="numeric" value="5000" aria-label="Количество денег">
+        <button class="developer-level-apply" type="button" onclick="applyDeveloperMoney()">Применить деньги</button>
+      </div>
+      <div id="developerMoneyStatus">Текущий баланс: 5 000</div>
     </div>
     <button type="button" class="modal-close" onclick="closeSettingsModal()" aria-label="Закрыть">✕</button>
   </div>
@@ -2671,6 +2693,36 @@ function adjustDeveloperLevel(change) {
   input.value = next;
 }
 
+function updateDeveloperMoneyUI() {
+  const input = document.getElementById('developerMoneyInput');
+  const status = document.getElementById('developerMoneyStatus');
+  const money = Math.max(0, Math.min(999999999999, Math.floor(Number(G.money) || 0)));
+  if (input) input.value = money;
+  if (status) status.textContent = 'Текущий баланс: ' + fmtFull(money);
+}
+
+function applyDeveloperMoney() {
+  const input = document.getElementById('developerMoneyInput');
+  if (!input) return;
+
+  const requested = Number(input.value);
+  if (!Number.isFinite(requested) || requested < 0) {
+    showToast('❌ Введите сумму от 0 до 999 999 999 999', '#e94560');
+    updateDeveloperMoneyUI();
+    return;
+  }
+
+  const money = Math.max(0, Math.min(999999999999, Math.floor(requested)));
+  G.money = money;
+  updateHUD();
+  updateDeveloperMoneyUI();
+
+  const shopModal = document.getElementById('shopModal');
+  if (shopModal && shopModal.classList.contains('show')) renderProductList();
+
+  showToast('💰 Баланс установлен: ' + fmtFull(money), '#687487');
+}
+
 function applyDeveloperLevel() {
   const input = document.getElementById('developerLevelInput');
   if (!input) return;
@@ -2709,6 +2761,7 @@ function openSettingsModal() {
   updateSfxToggleUI();
   updateInternalWallTransparencyToggleUI();
   updateDeveloperLevelUI();
+  updateDeveloperMoneyUI();
   document.getElementById('settingsModal').classList.add('show');
 }
 
