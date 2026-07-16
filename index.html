@@ -339,7 +339,7 @@
     white-space:nowrap;
   }
   .money-pill {
-    background:rgba(26,27,41,0.10);
+    background:rgba(26,27,41,0.18);
     display:flex;
     align-items:center;
     justify-content:flex-start;
@@ -1710,6 +1710,13 @@
       </div>
       <button id="sfxToggle" class="toggle-switch" onclick="toggleSfx()" aria-label="Звуковые эффекты"></button>
     </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-title">🪟 Прозрачность внутренних стен</div>
+        <div class="setting-sub">Покупаемые стены внутри магазина становятся стеклянными</div>
+      </div>
+      <button id="internalWallsTransparencyToggle" class="toggle-switch" onclick="toggleInternalWallTransparency()" aria-label="Прозрачность внутренних стен"></button>
+    </div>
 
     <div class="developer-settings-card">
       <div class="developer-settings-title">🛠 Для разработчика</div>
@@ -2448,6 +2455,7 @@ const CLICK_SOUND_VOLUME = 0.20; // примерно 70% от фоновой м�
 const MUSIC_FADE_MS = 1600;
 let musicEnabled = false;
 let sfxEnabled = true;
+let internalWallsTransparent = false;
 let musicUnlockBound = false;
 let musicFadeTimer = null;
 
@@ -2465,7 +2473,7 @@ function getClickSound() {
 
 function saveSettings() {
   try {
-    localStorage.setItem(SETTINGS_SAVE_KEY, JSON.stringify({ musicEnabled, sfxEnabled }));
+    localStorage.setItem(SETTINGS_SAVE_KEY, JSON.stringify({ musicEnabled, sfxEnabled, internalWallsTransparent }));
   } catch (e) {}
 }
 
@@ -2476,13 +2484,16 @@ function loadSettings() {
       const data = JSON.parse(raw);
       musicEnabled = !!data.musicEnabled;
       sfxEnabled = data.sfxEnabled !== false;
+      internalWallsTransparent = data.internalWallsTransparent === true;
     }
   } catch (e) {
     musicEnabled = false;
     sfxEnabled = true;
+    internalWallsTransparent = false;
   }
   updateMusicToggleUI();
   updateSfxToggleUI();
+  updateInternalWallTransparencyToggleUI();
   bindMusicUnlock();
 }
 
@@ -2498,6 +2509,15 @@ function updateSfxToggleUI() {
   if (!btn) return;
   btn.classList.toggle('on', sfxEnabled);
   btn.title = sfxEnabled ? 'Звуковые эффекты включены' : 'Звуковые эффекты выключены';
+}
+
+function updateInternalWallTransparencyToggleUI() {
+  const btn = document.getElementById('internalWallsTransparencyToggle');
+  if (!btn) return;
+  btn.classList.toggle('on', internalWallsTransparent);
+  btn.title = internalWallsTransparent
+    ? 'Прозрачность внутренних стен включена'
+    : 'Прозрачность внутренних стен выключена';
 }
 
 function stopMusicFade() {
@@ -2584,6 +2604,17 @@ function setSfxEnabled(value) {
 
 function toggleSfx() {
   setSfxEnabled(!sfxEnabled);
+}
+
+function setInternalWallsTransparent(value) {
+  internalWallsTransparent = !!value;
+  saveSettings();
+  updateInternalWallTransparencyToggleUI();
+  applyInternalWallTransparency();
+}
+
+function toggleInternalWallTransparency() {
+  setInternalWallsTransparent(!internalWallsTransparent);
 }
 
 function playClickSound() {
@@ -2676,6 +2707,7 @@ function applyDeveloperLevel() {
 function openSettingsModal() {
   updateMusicToggleUI();
   updateSfxToggleUI();
+  updateInternalWallTransparencyToggleUI();
   updateDeveloperLevelUI();
   document.getElementById('settingsModal').classList.add('show');
 }
@@ -4837,6 +4869,62 @@ function canPlaceInternalWall(axis, x, z, ignoreId = null) {
   return true;
 }
 
+function setInternalWallPartsTransparency(parts, transparent) {
+  (parts || []).forEach((part, index) => {
+    if (!part) return;
+
+    const role = part.userData.internalWallRole || (index === 0 ? 'main' : 'cap');
+    if (part.userData.internalWallOpaqueColor === undefined) {
+      const fallback = role === 'cap' ? FRAME : WALL;
+      part.userData.internalWallOpaqueColor = part.material?.color?.getHex?.() ?? fallback;
+    }
+
+    const previousMaterial = part.material;
+    if (transparent) {
+      const glassMaterial = WIN_GLASS.clone();
+      glassMaterial.transparent = true;
+      glassMaterial.opacity = WIN_GLASS.opacity;
+      glassMaterial.needsUpdate = true;
+      part.material = glassMaterial;
+      part.castShadow = false;
+      part.receiveShadow = false;
+      part.userData.internalWallGlass = true;
+    } else {
+      part.material = new THREE.MeshLambertMaterial({
+        color: part.userData.internalWallOpaqueColor
+      });
+      part.castShadow = true;
+      part.receiveShadow = true;
+      part.userData.internalWallGlass = false;
+    }
+
+    if (previousMaterial && previousMaterial !== WIN_GLASS && previousMaterial.dispose) {
+      previousMaterial.dispose();
+    }
+  });
+}
+
+function applyInternalWallTransparencyToWall(wall) {
+  if (!wall) return;
+  setInternalWallPartsTransparency(wall.parts || [], internalWallsTransparent);
+}
+
+function applyInternalWallTransparency() {
+  const seen = new Set();
+  const walls = [];
+  const addWalls = list => {
+    (list || []).forEach(wall => {
+      if (!wall || seen.has(wall)) return;
+      seen.add(wall);
+      walls.push(wall);
+    });
+  };
+
+  addWalls(internalWalls);
+  Object.values(shopFloorStates).forEach(state => addWalls(state?.internalWalls));
+  walls.forEach(applyInternalWallTransparencyToWall);
+}
+
 function makeInternalWallMesh(wall) {
   const dims = getInternalWallDims(wall.axis, 0);
   const group = new THREE.Group();
@@ -4847,6 +4935,9 @@ function makeInternalWallMesh(wall) {
   main.position.set(0, WALL_H / 2, 0);
   main.castShadow = true;
   main.receiveShadow = true;
+  main.userData.internalWallPart = true;
+  main.userData.internalWallRole = 'main';
+  main.userData.internalWallOpaqueColor = WALL;
   group.add(main);
 
   // Маленькая верхняя кромка, чтобы стена читалась как построенный кусок.
@@ -4857,6 +4948,9 @@ function makeInternalWallMesh(wall) {
   cap.position.set(0, WALL_H + 0.04, 0);
   cap.castShadow = true;
   cap.receiveShadow = true;
+  cap.userData.internalWallPart = true;
+  cap.userData.internalWallRole = 'cap';
+  cap.userData.internalWallOpaqueColor = FRAME;
   group.add(cap);
 
   scene.add(group);
@@ -4872,7 +4966,9 @@ function makeInternalWallMesh(wall) {
 
   wallMeshes.push(main, cap);
 
-  return { group, hitZone, parts: [main, cap] };
+  const parts = [main, cap];
+  if (internalWallsTransparent) setInternalWallPartsTransparency(parts, true);
+  return { group, hitZone, parts };
 }
 
 function addInternalWall(axis, x, z) {
@@ -6071,6 +6167,10 @@ function recolorWalls(color) {
     // У стационарной наружной стены меняется только внутренняя грань.
     // Коричневая наружная грань остаётся неизменной.
     if (mesh?.userData?.layeredExteriorWall) return;
+    if (mesh?.userData?.internalWallPart && internalWallsTransparent) {
+      mesh.userData.internalWallOpaqueColor = color;
+      return;
+    }
 
     const materials = Array.isArray(mesh?.material) ? mesh.material : [mesh?.material];
     materials.forEach(material => {
