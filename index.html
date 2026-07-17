@@ -3925,7 +3925,10 @@ function handleTap(clientX, clientY) {
   const hits = raycaster.intersectObjects(shelfClickTargets, false);
 
   if (hits.length > 0) {
-    const obj = hits[0].object;
+    const selectedHit = placingMode && pendingProduct
+      ? getShelfHitForPlacement(hits, pendingProduct)
+      : hits[0];
+    const obj = selectedHit.object;
     if (obj.userData.isCashier) { openCashModal(); return; }
     const idx = obj.userData.shelfIndex;
     if (idx !== undefined) {
@@ -9123,7 +9126,10 @@ function getShelfVariantById(id) {
 }
 
 function getShelfKindForIndex(idx) {
-  const variantId = (G.shelfVariants && G.shelfVariants[idx]) || 'shelf_brown';
+  // Источник истины — фактически построенная витрина. Это защищает совместимость
+  // после удаления витрин, если массив вариантов временно оказался смещён.
+  const builtVariantId = shelfMeshes?.[idx]?.variantId;
+  const variantId = builtVariantId || (G.shelfVariants && G.shelfVariants[idx]) || 'shelf_brown';
   return getShelfVariantById(variantId).shelfKind || 'classic_counter';
 }
 
@@ -9154,6 +9160,27 @@ function canShelfAcceptProduct(slotIdx, productOrId) {
   const kinds = getProductShelfKinds(productOrId);
   if (!kinds.length) return false;
   return kinds.includes(getShelfKindForIndex(slotIdx));
+}
+
+function getShelfHitForPlacement(hits, product) {
+  if (!Array.isArray(hits) || !hits.length) return null;
+  const seen = new Set();
+  const shelfHits = hits.filter(hit => {
+    const idx = hit?.object?.userData?.shelfIndex;
+    if (idx === undefined || idx === null || seen.has(idx)) return false;
+    seen.add(idx);
+    return true;
+  });
+
+  // При наложении невидимых зон выбираем ближайшую подходящую витрину,
+  // а не просто первый пересечённый объект. Это особенно важно для высоких
+  // обувных стеллажей и увеличенных витрин рядом друг с другом.
+  const compatible = shelfHits.find(hit => {
+    const idx = hit.object.userData.shelfIndex;
+    const item = G.slots?.[idx];
+    return canShelfAcceptProduct(idx, product) && (!item || item.product?.id === product?.id);
+  });
+  return compatible || shelfHits[0] || null;
 }
 
 // Максимум витрин
@@ -10143,7 +10170,17 @@ function addShelfMesh(i, x, z, bodyColor, topColor, variantId = 'shelf_brown') {
   stand.userData.shelfIndex = i;
   label.userData.shelfIndex = i;
   shelfClickTargets.push(stand, hitZone);
-  shelfMeshes.push({ group, base, stand, glass: null, topShelf, label, pos: new THREE.Vector3(x, 0, z) });
+  shelfMeshes.push({
+    group,
+    base,
+    stand,
+    glass: null,
+    topShelf,
+    label,
+    variantId: variant.id,
+    shelfKind: kind,
+    pos: new THREE.Vector3(x, 0, z)
+  });
   applyShelfRotation(i);
 }
 
@@ -11078,6 +11115,10 @@ function stopSellMode() {
 }
 
 function sellShelf(idx, silent = false) {
+  if (isShelfLockedForEditing(idx)) {
+    if (!silent) showShelfLockedToast(idx);
+    return false;
+  }
   if (SHELF_POSITIONS.length <= 1) { if (!silent) showToast('❌ Нельзя продать последнюю витрину'); return false; }
   const sellPrice = getEquipmentSellPrice(getEquipmentDef('shelf', G.shelfVariants[idx] || 'shelf_brown'));
   const sm = shelfMeshes[idx];
@@ -11097,9 +11138,23 @@ function sellShelf(idx, silent = false) {
   shelfMeshes.splice(idx, 1);
   SHELF_POSITIONS.splice(idx, 1);
   G.slots.splice(idx, 1);
+  G.shelfVariants.splice(idx, 1);
+  if (G.shelfRotations) G.shelfRotations.splice(idx, 1);
+
+  // Индексы визуальных товаров должны сдвигаться вместе с витринами.
+  // Иначе товар и тип витрины начинают относиться к разным слотам.
+  const reindexedItemMeshes = {};
+  Object.keys(shelfItemMeshes).forEach(key => {
+    const oldIdx = Number(key);
+    if (oldIdx < idx) reindexedItemMeshes[oldIdx] = shelfItemMeshes[oldIdx];
+    if (oldIdx > idx) reindexedItemMeshes[oldIdx - 1] = shelfItemMeshes[oldIdx];
+  });
+  Object.keys(shelfItemMeshes).forEach(key => delete shelfItemMeshes[key]);
+  Object.assign(shelfItemMeshes, reindexedItemMeshes);
+
   shelfMeshes.forEach((s, i) => {
-    s.stand.userData.shelfIndex = i;
-    if(s.label) s.label.userData.shelfIndex = i;
+    if (s.stand) s.stand.userData.shelfIndex = i;
+    if (s.label) s.label.userData.shelfIndex = i;
   });
   G.money += sellPrice;
   updateHUD();
@@ -11339,7 +11394,8 @@ function isEditorMoveLocked(sel = editorSelection) {
 
 function canEditorRotate(sel = editorSelection) {
   if (!sel) return false;
-  if (sel.type === 'shelf' || sel.type === 'cash' || sel.type === 'innerWall') return true;
+  if (sel.type === 'shelf') return !isShelfLockedForEditing(sel.index);
+  if (sel.type === 'cash' || sel.type === 'innerWall') return true;
   if (sel.type === 'decor') {
     const decor = decorations.find(d => d.id === sel.id);
     return !!decor && !isGlassElevatorDecor(decor) && getDecorDef(decor.type).place !== 'wall';
@@ -11353,7 +11409,7 @@ function canEditorSell(sel = editorSelection) {
     const decor = decorations.find(d => d.id === sel.id);
     if (isGlassElevatorDecor(decor)) return false;
   }
-  if (sel.type === 'shelf') return SHELF_POSITIONS.length > 1;
+  if (sel.type === 'shelf') return SHELF_POSITIONS.length > 1 && !isShelfLockedForEditing(sel.index);
   if (sel.type === 'door') return doors.length > 1;
   // В магазине всегда должна оставаться минимум одна касса.
   if (sel.type === 'cash') return cashRegisters.length > 1 && !isCashRegisterLockedForEditing();
@@ -11663,6 +11719,10 @@ function applyShelfRotation(idx) {
 }
 
 function rotateShelf(idx, silent = false) {
+  if (isShelfLockedForEditing(idx)) {
+    if (!silent) showShelfLockedToast(idx);
+    return false;
+  }
   if (!G.shelfRotations) G.shelfRotations = [];
   const current = getShelfRotation(idx);
   const next = normalizeRotation(current + Math.PI / 2);
