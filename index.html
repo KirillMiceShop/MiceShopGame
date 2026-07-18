@@ -334,7 +334,16 @@
     display:flex;
     flex-direction:column;
     align-items:flex-start;
-    gap:5px;
+  }
+  #hud-resources {
+    position:fixed;
+    top:calc(env(safe-area-inset-top, 0px) + 10px);
+    right:12px;
+    z-index:10;
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    gap:10px;
   }
   #hud-level-box,
   .money-pill {
@@ -358,17 +367,17 @@
     white-space:nowrap;
   }
   .money-pill {
-    background:rgba(26,27,41,0.18);
+    background:rgba(26,27,41,0.36);
     display:flex;
     align-items:center;
     justify-content:flex-start;
     width:auto;
     min-width:0;
-    min-height:30px;
-    gap:5px;
-    padding:5px 9px;
-    border-radius:13px;
-    font-size:10px;
+    min-height:60px;
+    gap:10px;
+    padding:10px 18px;
+    border-radius:26px;
+    font-size:20px;
     font-weight:900;
     text-align:left;
     color:#f5c35d;
@@ -376,9 +385,9 @@
   }
   .money-pill .hud-pill-icon {
     flex:0 0 auto;
-    width:15px;
+    width:30px;
     text-align:center;
-    font-size:13px;
+    font-size:26px;
     line-height:1;
     filter:drop-shadow(0 1px 0 rgba(0,0,0,.15));
   }
@@ -1612,6 +1621,8 @@
       <div id="xp-label">0 / 300 XP</div>
     </div>
   </div>
+</div>
+<div id="hud-resources" aria-label="Ресурсы магазина">
   <div class="money-pill" id="moneyDisplay"><span class="hud-pill-icon">💰</span><span class="hud-pill-value">5 000</span></div>
   <div class="money-pill crystal-pill" id="crystalDisplay"><span class="hud-pill-icon">💎</span><span class="hud-pill-value">20</span></div>
 </div>
