@@ -6436,26 +6436,127 @@ function getRandomDoor() {
   return doors[Math.floor(Math.random() * doors.length)];
 }
 
-function getDoorInsidePoint(door) {
-  if (door?.isElevatorPortal) {
-    const candidates = [
-      new THREE.Vector3(door.x + 1.65, 0.6, door.z),
-      new THREE.Vector3(door.x - 1.65, 0.6, door.z),
-      new THREE.Vector3(door.x, 0.6, door.z + 1.65),
-      new THREE.Vector3(door.x, 0.6, door.z - 1.65),
-    ].filter(point => isCustomerPointFree(point.x, point.z, 0.18));
-    return candidates[0] || new THREE.Vector3(door.x + 1.5, 0.6, door.z);
-  }
-  if (!door) return new THREE.Vector3(0, 0.6, -6.4);
-  if (door.axis === 'z') return new THREE.Vector3(door.pos, 0.6, WALL_BACK_Z + 1.0);
-  return new THREE.Vector3(WALL_LEFT_X + 1.0, 0.6, door.pos);
+const DOOR_TRAFFIC_LANE_OFFSET = 0.32;
+const DOOR_TRAFFIC_QUEUE_SPACING = 0.72;
+let nextDoorTrafficOrder = 1;
+
+function getDoorTrafficKey(door) {
+  if (!door) return 'none';
+  if (door.isElevatorPortal) return `elevator:${Math.round(door.x * 10)}:${Math.round(door.z * 10)}`;
+  return `door:${door.id ?? 'x'}:${door.axis}:${Math.round((door.pos || 0) * 10)}`;
 }
 
-function getDoorOutsidePoint(door) {
-  if (door?.isElevatorPortal) return new THREE.Vector3(door.x, 0.6, door.z);
-  if (!door) return new THREE.Vector3(0, 0.6, WALL_BACK_Z - 1.2);
-  if (door.axis === 'z') return new THREE.Vector3(door.pos, 0.6, WALL_BACK_Z - 1.25);
-  return new THREE.Vector3(WALL_LEFT_X - 1.25, 0.6, door.pos);
+function getDoorLaneOffset(direction = 'enter') {
+  // Входящие и выходящие используют разные стороны одного проёма.
+  return direction === 'exit' ? DOOR_TRAFFIC_LANE_OFFSET : -DOOR_TRAFFIC_LANE_OFFSET;
+}
+
+function getDoorInsidePoint(door, laneOffset = 0, depth = 1.0) {
+  if (door?.isElevatorPortal) {
+    const candidates = [
+      new THREE.Vector3(door.x + Math.max(1.5, depth), 0.6, door.z + laneOffset),
+      new THREE.Vector3(door.x - Math.max(1.5, depth), 0.6, door.z + laneOffset),
+      new THREE.Vector3(door.x + laneOffset, 0.6, door.z + Math.max(1.5, depth)),
+      new THREE.Vector3(door.x + laneOffset, 0.6, door.z - Math.max(1.5, depth)),
+    ].filter(point => isCustomerPointFree(point.x, point.z, 0.18));
+    return candidates[0] || new THREE.Vector3(door.x + Math.max(1.5, depth), 0.6, door.z + laneOffset);
+  }
+  if (!door) return new THREE.Vector3(laneOffset, 0.6, -6.4 + depth);
+  if (door.axis === 'z') return new THREE.Vector3(door.pos + laneOffset, 0.6, WALL_BACK_Z + depth);
+  return new THREE.Vector3(WALL_LEFT_X + depth, 0.6, door.pos + laneOffset);
+}
+
+function getDoorOutsidePoint(door, laneOffset = 0, depth = 1.25) {
+  if (door?.isElevatorPortal) return new THREE.Vector3(door.x + laneOffset, 0.6, door.z);
+  if (!door) return new THREE.Vector3(laneOffset, 0.6, WALL_BACK_Z - depth);
+  if (door.axis === 'z') return new THREE.Vector3(door.pos + laneOffset, 0.6, WALL_BACK_Z - depth);
+  return new THREE.Vector3(WALL_LEFT_X - depth, 0.6, door.pos + laneOffset);
+}
+
+function getDoorQueuePoint(door, direction = 'enter', queueIndex = 0) {
+  const laneOffset = getDoorLaneOffset(direction);
+  const queueDistance = 1.12 + Math.max(0, queueIndex) * DOOR_TRAFFIC_QUEUE_SPACING;
+  return direction === 'exit'
+    ? getDoorInsidePoint(door, laneOffset, queueDistance)
+    : getDoorOutsidePoint(door, laneOffset, queueDistance);
+}
+
+function getDoorCorridorTarget(door, direction = 'enter') {
+  const laneOffset = getDoorLaneOffset(direction);
+  return direction === 'exit'
+    ? getDoorOutsidePoint(door, laneOffset, 1.42)
+    : getDoorInsidePoint(door, laneOffset, 1.72);
+}
+
+function getDoorWorldCenter(door) {
+  if (door?.isElevatorPortal) return { x:door.x, z:door.z };
+  const world = getWindowWorldPosition(door?.axis || 'z', door?.pos || 0);
+  return { x:world.x, z:world.z };
+}
+
+function isSameDoorTrafficPortal(a, b) {
+  return getDoorTrafficKey(a) === getDoorTrafficKey(b);
+}
+
+function getCustomerDoorForTraffic(customer) {
+  return customer?.exitDoor || customer?.entryDoor || null;
+}
+
+function isCustomerInDoorCorridor(customer) {
+  return !!customer && ['entering_door','leaving_outside'].includes(customer.state);
+}
+
+function isCustomerWaitingAtDoor(customer, direction) {
+  if (!customer) return false;
+  return direction === 'exit'
+    ? ['leaving_wait','leaving_to_door'].includes(customer.state)
+    : ['entering_wait','entering_checkout'].includes(customer.state);
+}
+
+function getDoorQueueIndexForCustomer(customer, direction) {
+  const door = getCustomerDoorForTraffic(customer);
+  const order = customer?.doorTrafficOrder || 0;
+  return customers.filter(other => {
+    if (!other || other === customer || !isCustomerWaitingAtDoor(other, direction)) return false;
+    if (!isSameDoorTrafficPortal(getCustomerDoorForTraffic(other), door)) return false;
+    return (other.doorTrafficOrder || 0) < order;
+  }).length;
+}
+
+function canCustomerUseDoorCorridor(customer, direction) {
+  const door = getCustomerDoorForTraffic(customer);
+  if (!door) return true;
+  const key = getDoorTrafficKey(door);
+
+  // Внутри проёма одновременно находится только один покупатель.
+  const occupied = customers.some(other =>
+    other && other !== customer && isCustomerInDoorCorridor(other) &&
+    getDoorTrafficKey(getCustomerDoorForTraffic(other)) === key
+  );
+  if (occupied) return false;
+
+  // В каждой очереди первым проходит тот, кто подошёл раньше.
+  const earlierSameDirection = customers.some(other =>
+    other && other !== customer && isCustomerWaitingAtDoor(other, direction) &&
+    getDoorTrafficKey(getCustomerDoorForTraffic(other)) === key &&
+    (other.doorTrafficOrder || 0) < (customer.doorTrafficOrder || 0)
+  );
+  if (earlierSameDirection) return false;
+
+  // Выходящие всегда имеют приоритет. Входящий ждёт, если выходящий уже
+  // подошёл к проёму или находится не дальше пары шагов от него.
+  if (direction === 'enter') {
+    const center = getDoorWorldCenter(door);
+    const exitingNearby = customers.some(other => {
+      if (!other || other === customer) return false;
+      if (!['leaving_wait','leaving_to_door','leaving_outside'].includes(other.state)) return false;
+      if (getDoorTrafficKey(getCustomerDoorForTraffic(other)) !== key) return false;
+      return Math.hypot(other.group.position.x - center.x, other.group.position.z - center.z) < 2.6;
+    });
+    if (exitingNearby) return false;
+  }
+
+  return true;
 }
 
 function getDoorExitPoint(door) {
@@ -6951,15 +7052,13 @@ function requestVisualCheckout(product = null) {
   requestCashService(cr);
 
   let customer = customers.find(c =>
-    c && !['leaving_to_door','leaving_outside','checkout','checkout_wait','entering_checkout'].includes(c.state)
+    c && !['leaving_to_door','leaving_wait','leaving_outside','checkout','checkout_wait','entering_wait','entering_door','entering_checkout'].includes(c.state)
   );
 
-  if (!customer && customers.length < getCustomerCapacityFromRating()) {
+  if (!customer && getActiveCustomerCount() < getCustomerCapacityFromRating()) {
     customer = new Customer();
     customers.push(customer);
     customer.pendingCheckout = { crId: cr.id, productName: product ? product.name : 'товар' };
-    customer.state = 'entering_checkout';
-    customer.targetPos = getDoorInsidePoint(customer.entryDoor);
     return true;
   }
 
@@ -7356,9 +7455,10 @@ function getAgentPriority(agent) {
   const state = agent.ref.state || 'wandering';
   if (state === 'checkout_wait') return 105;
   if (state === 'browsing' || state === 'wandering_pause') return 92;
-  if (state === 'leaving_to_door' || state === 'leaving_outside') return 82;
+  if (state === 'leaving_wait' || state === 'leaving_to_door' || state === 'leaving_outside') return 82;
+  if (state === 'entering_door') return 80;
   if (state === 'checkout' || state === 'entering_checkout') return 74;
-  if (state === 'entering') return 66;
+  if (state === 'entering' || state === 'entering_wait') return 66;
   if (state === 'walking') return 52;
   return 46;
 }
@@ -7389,6 +7489,10 @@ function stopNavigationMotion(group) {
 
 function shouldAgentYieldTo(selfAgent, otherAgent) {
   if (!selfAgent || !otherAgent) return false;
+  const selfInDoorCorridor = !!selfAgent.group?.userData?.doorCorridorActive;
+  const otherInDoorCorridor = !!otherAgent.group?.userData?.doorCorridorActive;
+  if (selfInDoorCorridor && !otherInDoorCorridor) return false;
+  if (!selfInDoorCorridor && otherInDoorCorridor) return true;
   const selfAnchored = isCharacterAnchored(selfAgent);
   const otherAnchored = isCharacterAnchored(otherAgent);
   if (selfAnchored && !otherAnchored) return false;
@@ -7647,6 +7751,9 @@ function resolveCharacterOverlaps() {
     for (const b of nearby) {
       // Каждую пару обрабатываем только один раз.
       if (!b || b.gridIndex <= i) continue;
+      // В дверном коридоре персонаж должен идти строго через проём, без
+      // бокового выталкивания в стену.
+      if (a.group?.userData?.doorCorridorActive || b.group?.userData?.doorCorridorActive) continue;
       let dx = b.group.position.x - a.group.position.x;
       let dz = b.group.position.z - a.group.position.z;
       let dist = Math.hypot(dx, dz);
@@ -8171,7 +8278,8 @@ function moveGroupAvoidingShelves(group, target, speed, padding = 0.16 * CHARACT
 }
 
 function moveGroupDirect(group, target, speed) {
-  if (processCharacterYield(group, speed, 0.10 * CHARACTER_SIZE_MULT)) return true;
+  const corridorActive = !!group?.userData?.doorCorridorActive;
+  if (!corridorActive && processCharacterYield(group, speed, 0.10 * CHARACTER_SIZE_MULT)) return true;
   const dx = target.x - group.position.x;
   const dz = target.z - group.position.z;
   const dist = Math.hypot(dx, dz);
@@ -8180,7 +8288,7 @@ function moveGroupDirect(group, target, speed) {
     return false;
   }
 
-  const conflict = findPredictedCharacterConflict(group, dx, dz);
+  const conflict = corridorActive ? null : findPredictedCharacterConflict(group, dx, dz);
   if (conflict) {
     if (shouldAgentYieldTo(conflict.selfAgent, conflict.otherAgent)) {
       beginCharacterYield(group, dx, dz, 0.10 * CHARACTER_SIZE_MULT);
@@ -8197,7 +8305,7 @@ function moveGroupDirect(group, target, speed) {
   const oldZ = group.position.z;
   const nx = oldX + (dx / dist) * step;
   const nz = oldZ + (dz / dist) * step;
-  if (!isCharacterPointFree(group, nx, nz, CHARACTER_MIN_DISTANCE * 0.82)) {
+  if (!corridorActive && !isCharacterPointFree(group, nx, nz, CHARACTER_MIN_DISTANCE * 0.82)) {
     stopNavigationMotion(group);
     return false;
   }
@@ -8343,14 +8451,22 @@ class Customer {
     this.group.scale.setScalar(CHARACTER_SIZE_MULT);
 
     this.entryDoor = getRandomDoor();
-    const spawnPoint = getDoorOutsidePoint(this.entryDoor);
+    this.doorTrafficOrder = nextDoorTrafficOrder++;
+    const existingEntryQueue = customers.filter(other =>
+      other && ['entering_wait','entering_door','entering_checkout'].includes(other.state) &&
+      isSameDoorTrafficPortal(other.entryDoor, this.entryDoor)
+    ).length;
+    const spawnPoint = getDoorQueuePoint(this.entryDoor, 'enter', existingEntryQueue);
     this.group.position.set(spawnPoint.x, spawnPoint.y, spawnPoint.z);
+    this.group.userData.doorCorridorActive = false;
     scene.add(this.group);
 
-    this.state = 'entering'; // entering -> walking/wandering -> browsing -> leaving
-    this.targetPos = getDoorInsidePoint(this.entryDoor);
+    this.state = 'entering_wait'; // очередь -> дверной коридор -> магазин
+    this.targetPos = spawnPoint.clone();
     this.targetShelf = null;
     this.stuckTimer = 0;
+    this.lastProgressAt = Date.now();
+    this.doorRescueCount = 0;
     // Покупатели ходят спокойнее работников и имеют небольшую разницу темпа.
     this.speed = 0.021 + Math.random() * 0.007;
     this.waitTimer = 0;
@@ -8397,10 +8513,16 @@ class Customer {
       return;
     }
 
-    // Сначала покупатель идёт к двери внутри магазина с обычным обходом препятствий.
-    // Только после достижения дверного проёма он пересекает порог напрямую.
-    this.targetPos = getDoorInsidePoint(this.exitDoor);
-    this.state = 'leaving_to_door';
+    this.doorTrafficOrder = nextDoorTrafficOrder++;
+    const queueIndex = customers.filter(other =>
+      other && other !== this && ['leaving_wait','leaving_to_door','leaving_outside'].includes(other.state) &&
+      isSameDoorTrafficPortal(other.exitDoor, this.exitDoor)
+    ).length;
+    // Выходящие выстраиваются внутри магазина на отдельной полосе.
+    this.targetPos = getDoorQueuePoint(this.exitDoor, 'exit', queueIndex);
+    this.state = 'leaving_wait';
+    this.group.userData.doorCorridorActive = false;
+    this.lastProgressAt = Date.now();
     clearGroupNavigation(this.group);
   }
 
@@ -8430,8 +8552,8 @@ class Customer {
       const oldZ = this.group.position.z;
       const isOutsideWalkArea = !isInsideShopWalkArea(this.group.position.x, this.group.position.z);
       const usesElevatorPortal = !!(this.entryDoor?.isElevatorPortal || this.exitDoor?.isElevatorPortal);
-      const crossesDoorDirectly = this.state === 'leaving_outside' ||
-        ((this.state === 'entering' || this.state === 'entering_checkout') && (isOutsideWalkArea || usesElevatorPortal));
+      const crossesDoorDirectly = this.state === 'leaving_outside' || this.state === 'entering_door' ||
+        ((this.state === 'entering_checkout') && (isOutsideWalkArea || usesElevatorPortal));
       const calmWalkMultiplier = this.state === 'wandering' ? 0.72 : (this.state === 'walking' ? 0.90 : 1);
       const frameSpeed = getNavigationStep(this.speed * calmWalkMultiplier);
       const moved = crossesDoorDirectly
@@ -8439,9 +8561,49 @@ class Customer {
         : moveGroupAvoidingShelves(this.group, this.targetPos, frameSpeed);
 
       const realMove = Math.sqrt((this.group.position.x - oldX) ** 2 + (this.group.position.z - oldZ) ** 2);
+      if (realMove > frameSpeed * 0.18) this.lastProgressAt = Date.now();
       this.stuckTimer = isGroupYielding(this.group)
         ? 0
         : ((!moved || realMove < frameSpeed * 0.25) ? this.stuckTimer + getFrameTimeUnits() : 0);
+
+      // Последняя защита от вечной пробки: через 9 секунд без движения
+      // покупатель освобождается из дверной зоны. При повторном застревании
+      // он корректно удаляется и больше не занимает лимит посетителей.
+      if (Date.now() - (this.lastProgressAt || Date.now()) > 9000 &&
+          ['entering_wait','entering_door','entering_checkout','leaving_wait','leaving_to_door','leaving_outside'].includes(this.state)) {
+        this.doorRescueCount = (this.doorRescueCount || 0) + 1;
+        clearGroupNavigation(this.group);
+        this.group.userData.doorCorridorActive = false;
+
+        if (this.doorRescueCount > 1) {
+          scene.remove(this.group);
+          this.state = 'removed';
+          return true;
+        }
+
+        if (['entering_wait','entering_door','entering_checkout'].includes(this.state)) {
+          const base = getDoorInsidePoint(this.entryDoor, 0, 2.05);
+          const safe = findNearestFreeWalkPoint(base.x, base.z, 0.16 * CHARACTER_SIZE_MULT, null, 3.5) || base;
+          this.group.position.set(safe.x, 0.6, safe.z);
+          this.lastProgressAt = Date.now();
+          if (this.pendingCheckout) {
+            const cash = cashRegisters.find(c => c.id === this.pendingCheckout.crId) || getDutyCashRegister();
+            const productName = this.pendingCheckout.productName || 'товар';
+            this.pendingCheckout = null;
+            this.goToCheckout(cash, { name:productName });
+          } else {
+            this.chooseTarget();
+          }
+        } else {
+          const outside = getDoorOutsidePoint(this.exitDoor, getDoorLaneOffset('exit'), 1.7);
+          this.group.position.set(outside.x, 0.6, outside.z);
+          this.targetPos = getDoorOutsidePoint(this.exitDoor, getDoorLaneOffset('exit'), 2.5);
+          this.state = 'leaving_outside';
+          this.group.userData.doorCorridorActive = true;
+          this.lastProgressAt = Date.now();
+        }
+        return false;
+      }
 
       // Сначала просто сбрасываем устаревший маршрут. Цель меняем только если
       // персонаж действительно долго не может сдвинуться, чтобы убрать подёргивания.
@@ -8457,9 +8619,14 @@ class Customer {
         } else if (this.state === 'checkout' || this.state === 'checkout_wait') {
           const cash = cashRegisters.find(c => c.id === this.checkoutCashRegisterId) || getDutyCashRegister();
           if (cash) this.targetPos = getCashCustomerPoint(cash, this.group, getCheckoutQueueIndex(cash, this)); else this.goToExit();
-        } else if (this.state === 'leaving_to_door' && this.exitDoor) {
-          this.targetPos = getDoorInsidePoint(this.exitDoor);
+        } else if ((this.state === 'leaving_wait' || this.state === 'leaving_to_door') && this.exitDoor) {
+          this.targetPos = getDoorQueuePoint(this.exitDoor, 'exit', getDoorQueueIndexForCustomer(this, 'exit'));
           clearGroupNavigation(this.group);
+        } else if ((this.state === 'entering_wait' || this.state === 'entering_checkout') && this.entryDoor) {
+          this.targetPos = getDoorQueuePoint(this.entryDoor, 'enter', getDoorQueueIndexForCustomer(this, 'enter'));
+          clearGroupNavigation(this.group);
+        } else if (this.state === 'entering_door' && this.entryDoor) {
+          this.targetPos = getDoorCorridorTarget(this.entryDoor, 'enter');
         } else if (this.state !== 'leaving_outside') {
           this.goToExit();
         }
@@ -8479,12 +8646,24 @@ class Customer {
 
     stopNavigationMotion(this.group);
 
-    if (this.state === 'entering') {
-      this.chooseTarget();
-    } else if (this.state === 'entering_checkout') {
-      const cash = cashRegisters.find(c => c.id === this.pendingCheckout?.crId) || getDutyCashRegister();
-      this.goToCheckout(cash, { name: this.pendingCheckout?.productName || 'товар' });
-      this.pendingCheckout = null;
+    if (this.state === 'entering_wait' || this.state === 'entering_checkout') {
+      if (!canCustomerUseDoorCorridor(this, 'enter')) return false;
+      this.state = 'entering_door';
+      this.group.userData.doorCorridorActive = true;
+      this.targetPos = getDoorCorridorTarget(this.entryDoor, 'enter');
+      this.lastProgressAt = Date.now();
+      clearGroupNavigation(this.group);
+    } else if (this.state === 'entering_door') {
+      this.group.userData.doorCorridorActive = false;
+      this.lastProgressAt = Date.now();
+      if (this.pendingCheckout) {
+        const cash = cashRegisters.find(c => c.id === this.pendingCheckout.crId) || getDutyCashRegister();
+        const productName = this.pendingCheckout.productName || 'товар';
+        this.pendingCheckout = null;
+        this.goToCheckout(cash, { name:productName });
+      } else {
+        this.chooseTarget();
+      }
     } else if (this.state === 'walking' && this.targetShelf !== null) {
       this.state = 'browsing';
       this.waitTimer = 70 + Math.floor(Math.random() * 90);
@@ -8537,11 +8716,15 @@ class Customer {
         }
         this.goToExit();
       }
-    } else if (this.state === 'leaving_to_door') {
-      this.targetPos = getDoorOutsidePoint(this.exitDoor);
+    } else if (this.state === 'leaving_wait' || this.state === 'leaving_to_door') {
+      if (!canCustomerUseDoorCorridor(this, 'exit')) return false;
+      this.targetPos = getDoorCorridorTarget(this.exitDoor, 'exit');
       this.state = 'leaving_outside';
+      this.group.userData.doorCorridorActive = true;
+      this.lastProgressAt = Date.now();
       clearGroupNavigation(this.group);
     } else if (this.state === 'leaving_outside' || this.state === 'removed') {
+      this.group.userData.doorCorridorActive = false;
       scene.remove(this.group);
       return true;
     } else {
@@ -8557,6 +8740,10 @@ let customerSpawnTimer = 0;
 let lastCustomerSpawnAt = 0;
 const CUSTOMER_SPAWN_INTERVAL_MS = 90000;
 const CUSTOMER_MAX_CAP = 11;
+
+function getActiveCustomerCount() {
+  return customers.filter(customer => customer && customer.state !== 'removed').length;
+}
 
 function getCustomerCapacityFromRating() {
   const rating = getStoreRatingDetails ? getStoreRatingDetails().rating : 0;
@@ -12553,7 +12740,7 @@ function animate(now = performance.now()) {
   const customerCapacity = getCustomerCapacityFromRating();
   const spawnInterval = getCustomerSpawnIntervalMs();
   if (lastCustomerSpawnAt === 0) lastCustomerSpawnAt = nowForCustomers - spawnInterval + 3000;
-  if (nowForCustomers - lastCustomerSpawnAt >= spawnInterval && customers.length < customerCapacity) {
+  if (nowForCustomers - lastCustomerSpawnAt >= spawnInterval && getActiveCustomerCount() < customerCapacity) {
     if (getRandomDoor()) {
       try { customers.push(new Customer()); } catch(e) { console.warn('Customer spawn error:', e); }
     }
