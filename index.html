@@ -196,9 +196,7 @@
 
   /* НАСТРОЙКИ */
   #settings-btn {
-    position:fixed;
-    top:calc(env(safe-area-inset-top, 0px) + 72px);
-    left:18px;
+    position:static;
     z-index:11;
     width:48px;
     height:38px;
@@ -334,6 +332,19 @@
     display:flex;
     flex-direction:column;
     align-items:flex-start;
+    gap:8px;
+  }
+  #left-hud-actions {
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:8px;
+    margin-left:6px;
+  }
+  #quest-hud-row {
+    display:flex;
+    align-items:center;
+    gap:10px;
   }
   #hud-resources {
     position:fixed;
@@ -343,7 +354,7 @@
     display:flex;
     flex-direction:column;
     align-items:flex-end;
-    gap:5px;
+    gap:7px;
   }
   #hud-level-box,
   .money-pill {
@@ -373,11 +384,11 @@
     justify-content:flex-start;
     width:auto;
     min-width:0;
-    min-height:30px;
-    gap:5px;
-    padding:5px 9px;
-    border-radius:13px;
-    font-size:10px;
+    min-height:39px;
+    gap:7px;
+    padding:7px 12px;
+    border-radius:17px;
+    font-size:13px;
     font-weight:900;
     text-align:left;
     color:#f5c35d;
@@ -385,9 +396,9 @@
   }
   .money-pill .hud-pill-icon {
     flex:0 0 auto;
-    width:15px;
+    width:20px;
     text-align:center;
-    font-size:13px;
+    font-size:17px;
     line-height:1;
     filter:drop-shadow(0 1px 0 rgba(0,0,0,.15));
   }
@@ -838,9 +849,7 @@
   /* ОБУЧЕНИЕ И КВЕСТЫ */
   #event-log { top:164px; }
   #quest-btn {
-    position:fixed;
-    top:calc(env(safe-area-inset-top, 0px) + 118px);
-    left:18px;
+    position:static;
     z-index:12;
     width:48px;
     height:38px;
@@ -859,9 +868,7 @@
   #quest-btn:active { transform:scale(.94); }
 
   #quest-tracker {
-    position:fixed;
-    top:calc(env(safe-area-inset-top, 0px) + 118px);
-    left:76px;
+    position:static;
     z-index:11;
     width:min(235px, calc(100vw - 250px));
     min-width:128px;
@@ -1621,23 +1628,26 @@
       <div id="xp-label">0 / 300 XP</div>
     </div>
   </div>
+  <div id="left-hud-actions">
+    <!-- КНОПКА НАСТРОЕК -->
+    <button id="settings-btn" onclick="openSettingsModal()">⚙️</button>
+
+    <!-- КВЕСТЫ -->
+    <div id="quest-hud-row">
+      <button id="quest-btn" onclick="openQuestsModal()" aria-label="Квесты">📋</button>
+      <div id="quest-tracker" onclick="openQuestsModal()">
+        <div id="quest-tracker-icon">🎯</div>
+        <div id="quest-tracker-copy">
+          <div id="quest-tracker-title">Первый квест</div>
+          <div id="quest-tracker-progress">0 / 1</div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 <div id="hud-resources" aria-label="Ресурсы магазина">
   <div class="money-pill" id="moneyDisplay"><span class="hud-pill-icon">💰</span><span class="hud-pill-value">5 000</span></div>
   <div class="money-pill crystal-pill" id="crystalDisplay"><span class="hud-pill-icon">💎</span><span class="hud-pill-value">20</span></div>
-</div>
-
-<!-- КНОПКА НАСТРОЕК -->
-<button id="settings-btn" onclick="openSettingsModal()">⚙️</button>
-
-<!-- КВЕСТЫ -->
-<button id="quest-btn" onclick="openQuestsModal()" aria-label="Квесты">📋</button>
-<div id="quest-tracker" onclick="openQuestsModal()">
-  <div id="quest-tracker-icon">🎯</div>
-  <div id="quest-tracker-copy">
-    <div id="quest-tracker-title">Первый квест</div>
-    <div id="quest-tracker-progress">0 / 1</div>
-  </div>
 </div>
 
 <!-- 3D CANVAS -->
