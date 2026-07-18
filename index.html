@@ -284,6 +284,7 @@
   .developer-level-apply:active { transform:scale(.96); }
   #developerLevelInput,
   #developerMoneyInput,
+  #developerRatingInput,
   #developerSeasonSelect {
     width:100%;
     min-width:0;
@@ -319,6 +320,7 @@
   }
   #developerLevelStatus,
   #developerMoneyStatus,
+  #developerRatingStatus,
   #developerSeasonStatus {
     margin-top:8px;
     font-size:11px;
@@ -1171,6 +1173,7 @@
   .modal-box .setting-sub,
   .modal-box #developerLevelStatus,
   .modal-box #developerMoneyStatus,
+  .modal-box #developerRatingStatus,
   .modal-box .worker-sub,
   .modal-box .quest-card-sub,
   .modal-box .quest-card-foot,
@@ -1213,6 +1216,7 @@
   .modal-box .developer-level-apply,
   .modal-box #developerLevelInput,
   .modal-box #developerMoneyInput,
+  .modal-box #developerRatingInput,
   .modal-box #developerSeasonSelect,
   .modal-box .warehouse-auto-stock-btn {
     background:var(--menu-card)!important;
@@ -1757,6 +1761,13 @@
       </div>
       <div id="developerMoneyStatus">Текущий баланс: 5 000</div>
 
+      <div class="setting-sub" style="margin-top:14px">Установите рейтинг магазина от 0 до 100.</div>
+      <div class="developer-money-controls">
+        <input id="developerRatingInput" type="number" min="0" max="100" step="1" inputmode="numeric" value="0" aria-label="Рейтинг магазина">
+        <button class="developer-level-apply" type="button" onclick="applyDeveloperRating()">Применить рейтинг</button>
+      </div>
+      <div id="developerRatingStatus">Текущий рейтинг: 0%</div>
+
       <div class="setting-sub" style="margin-top:14px">Переключите сезон для проверки сезонных цен.</div>
       <div class="developer-money-controls">
         <select id="developerSeasonSelect" aria-label="Сезон">
@@ -1921,6 +1932,7 @@ const G = {
   menuStyle: 'standard',
   ratingHistory: [],
   ratingServiceDelta: 0, // бонус/штраф за визуальное обслуживание покупателей
+  developerRatingOverride: null, // точный рейтинг, заданный через режим разработчика
   shelfRotations: Array(1).fill(0), // поворот витрин
   pendingSlot: null,
 };
@@ -2743,6 +2755,32 @@ function applyDeveloperMoney() {
   showToast('💰 Баланс установлен: ' + fmtFull(money), '#687487');
 }
 
+function updateDeveloperRatingUI() {
+  const input = document.getElementById('developerRatingInput');
+  const status = document.getElementById('developerRatingStatus');
+  const current = getStoreRatingDetails().rating;
+  if (input) input.value = current;
+  if (status) status.textContent = 'Текущий рейтинг: ' + current + '%';
+}
+
+function applyDeveloperRating() {
+  const input = document.getElementById('developerRatingInput');
+  if (!input) return;
+
+  const requested = Number(input.value);
+  if (!Number.isFinite(requested)) {
+    showToast('❌ Введите рейтинг от 0 до 100', '#e94560');
+    updateDeveloperRatingUI();
+    return;
+  }
+
+  const rating = Math.max(0, Math.min(100, Math.round(requested)));
+  G.developerRatingOverride = rating;
+  updateRatingUI();
+  updateDeveloperRatingUI();
+  showToast('⭐ Рейтинг установлен: ' + rating + '%', '#687487');
+}
+
 function updateDeveloperSeasonUI() {
   const select = document.getElementById('developerSeasonSelect');
   const status = document.getElementById('developerSeasonStatus');
@@ -2802,6 +2840,7 @@ function openSettingsModal() {
   updateInternalWallTransparencyToggleUI();
   updateDeveloperLevelUI();
   updateDeveloperMoneyUI();
+  updateDeveloperRatingUI();
   updateDeveloperSeasonUI();
   document.getElementById('settingsModal').classList.add('show');
 }
@@ -3577,9 +3616,12 @@ canvas.addEventListener('touchmove', e=>{
       // Тянем кассу за пальцем
       const pt=getFloorPoint(t.clientX, t.clientY);
       if(pt){
-        const MARGIN=1.4;
-        const clampX=Math.max(-SHOP_HALF+MARGIN,Math.min(SHOP_HALF-MARGIN,pt.x));
-        const clampZ=Math.max(-SHOP_HALF+MARGIN,Math.min(SHOP_HALF-MARGIN,pt.z));
+        const cr = cashRegisters[dragCashierIdx];
+        const fp = getCashFootprint(cr, 0.35);
+        const marginX = fp.w / 2 + 0.15;
+        const marginZ = fp.d / 2 + 0.15;
+        const clampX = clampPlacementCoord(pt.x, -SHOP_HALF + marginX, SHOP_HALF - marginX);
+        const clampZ = clampPlacementCoord(pt.z, -SHOP_HALF + marginZ, SHOP_HALF - marginZ);
         if(canPlaceCashRegister(dragCashierIdx, clampX, clampZ)){
           setCashRegisterPosition(dragCashierIdx, clampX, clampZ);
         } else {
@@ -3658,13 +3700,19 @@ canvas.addEventListener('touchend', e=>{
     const decor = decorations.find(d => d.id === dragDecorId);
     if (decor) {
       const def = getDecorDef(decor.type);
-      const ok = def.place === 'wall'
+      let ok = def.place === 'wall'
         ? canPlaceWallDecor(def, decor.axis, decor.pos, decor.id)
         : canPlaceFloorDecor(def, decor.x, decor.z, decor.id, decor.rotation || 0);
+      let routeStatus = null;
+      if (ok && def.place === 'floor' && !def.rug) {
+        routeStatus = getShopRouteConnectivityStatus();
+        ok = routeStatus.ok;
+      }
       if (!ok && dragDecorStartPos) {
         if (def.place === 'wall') moveWallDecorTo(decor.id, dragDecorStartPos.axis, dragDecorStartPos.pos);
         else moveFloorDecorTo(decor.id, dragDecorStartPos.x, dragDecorStartPos.z);
-        if (!editorObjectMoveMode && !moveModeSilent) showToast('❌ Место занято — декор возвращён', '#e94560ee');
+        if (routeStatus && !routeStatus.ok) showRouteConnectivityBlockedToast(routeStatus);
+        else if (!editorObjectMoveMode && !moveModeSilent) showToast('❌ Место занято — декор возвращён', '#e94560ee');
       } else {
         if (!editorObjectMoveMode && !moveModeSilent) showToast('✅ Декорация перемещена');
       }
@@ -3673,27 +3721,38 @@ canvas.addEventListener('touchend', e=>{
     dragDecorStartPos=null;
   } else if(moveMode && dragInternalWallId!==null){
     const wall=internalWalls.find(w => w.id === dragInternalWallId);
-    if(wall && !canPlaceInternalWall(wall.axis, wall.x, wall.z, wall.id) && dragInternalWallStartPos){
+    const wallPlaceInvalid = wall && !canPlaceInternalWall(wall.axis, wall.x, wall.z, wall.id);
+    const wallRouteStatus = wall && !wallPlaceInvalid ? getShopRouteConnectivityStatus() : null;
+    if(wall && (wallPlaceInvalid || (wallRouteStatus && !wallRouteStatus.ok)) && dragInternalWallStartPos){
       setInternalWallPosition(wall.id, dragInternalWallStartPos.x, dragInternalWallStartPos.z);
-      if (!editorObjectMoveMode && !moveModeSilent) showToast('❌ Место занято — стена возвращена', '#e94560ee');
+      if (wallRouteStatus && !wallRouteStatus.ok) showRouteConnectivityBlockedToast(wallRouteStatus);
+      else if (!editorObjectMoveMode && !moveModeSilent) showToast('❌ Место занято — стена возвращена', '#e94560ee');
     } else {
       if (!editorObjectMoveMode && !moveModeSilent) showToast('✅ Стена перемещена');
     }
     dragInternalWallId=null;
     dragInternalWallStartPos=null;
   } else if(moveMode && dragCashierIdx!==null){
-    sellers.forEach(s => { if (s.role !== 'cleaning') { s.roleKey = ''; s.target = chooseSellerFloorTarget(); } });
-    if (!editorObjectMoveMode && !moveModeSilent) showToast('✅ Касса перемещена');
+    const cashRouteStatus = getShopRouteConnectivityStatus();
+    if (!cashRouteStatus.ok && dragCashierStartPos) {
+      setCashRegisterPosition(dragCashierIdx, dragCashierStartPos[0], dragCashierStartPos[1]);
+      showRouteConnectivityBlockedToast(cashRouteStatus);
+    } else {
+      sellers.forEach(s => { if (s.role !== 'cleaning') { s.roleKey = ''; s.target = chooseSellerFloorTarget(); } });
+      if (!editorObjectMoveMode && !moveModeSilent) showToast('✅ Касса перемещена');
+    }
     dragCashierIdx=null;
     dragCashierStartPos=null;
   } else if(moveMode && dragShelfIdx!==null){
     // Проверяем финальную позицию на коллизию с учётом разворота.
     const [nx,,nz]=SHELF_POSITIONS[dragShelfIdx];
     const collision = !canPlaceShelfAt(dragShelfIdx, nx, nz);
-    if(collision && dragStartPos){
+    const shelfRouteStatus = !collision ? getShopRouteConnectivityStatus() : null;
+    if((collision || (shelfRouteStatus && !shelfRouteStatus.ok)) && dragStartPos){
       const [sx,sz]=dragStartPos;
       moveShelfTo(dragShelfIdx, sx, sz, false);
-      if (!editorObjectMoveMode && !moveModeSilent) showToast('❌ Место занято — витрина возвращена','#e94560ee');
+      if (shelfRouteStatus && !shelfRouteStatus.ok) showRouteConnectivityBlockedToast(shelfRouteStatus);
+      else if (!editorObjectMoveMode && !moveModeSilent) showToast('❌ Место занято — витрина возвращена','#e94560ee');
     }
     // Сбрасываем подсветку обратно к жёлтой
     shelfMeshes.forEach(sm=>{
@@ -4423,6 +4482,10 @@ const MAX_DOORS = 2;
 const INTERNAL_WALL_PRICE = 300;
 const INTERNAL_WALL_LEN = WINDOW_W; // один кусок = размер окна
 const INTERNAL_WALL_THICK = 0.25;
+// Общая сетка размещения напольных объектов. Витрины, кассы, декор и
+// внутренние стены двигаются с одинаковым шагом, чтобы не создавать
+// случайные узкие щели и почти совпадающие позиции.
+const PLACEMENT_GRID_STEP = 0.5;
 let internalWalls = [];
 let internalWallClickTargets = [];
 let nextInternalWallId = 0;
@@ -4896,11 +4959,21 @@ function updateWindowHoleFast(win, oldAxis, oldPos) {
 }
 
 
+function snapPlacementCoord(v) {
+  return Math.round(v / PLACEMENT_GRID_STEP) * PLACEMENT_GRID_STEP;
+}
+
+function clampPlacementCoord(v, min, max) {
+  // Сначала находим крайние допустимые линии общей сетки, затем выбираем
+  // ближайшую из них. Благодаря этому объект не съезжает с сетки у стены.
+  const gridMin = Math.ceil((min - 0.0001) / PLACEMENT_GRID_STEP) * PLACEMENT_GRID_STEP;
+  const gridMax = Math.floor((max + 0.0001) / PLACEMENT_GRID_STEP) * PLACEMENT_GRID_STEP;
+  if (gridMin > gridMax) return Math.max(min, Math.min(max, snapPlacementCoord(v)));
+  return Math.max(gridMin, Math.min(gridMax, snapPlacementCoord(v)));
+}
+
 function snapInternalWallCoord(v) {
-  // Мелкая сетка даёт Sims-like ощущение: стены можно поставить вплотную
-  // торцом к торцу и боком к боку, но не наложить друг на друга.
-  const step = INTERNAL_WALL_THICK;
-  return Math.round(v / step) * step;
+  return snapPlacementCoord(v);
 }
 
 function getInternalWallDims(axis, extra = 0) {
@@ -4930,6 +5003,69 @@ function rectFromCenter(x, z, w, d, extra = 0) {
     minZ: z - d / 2 - extra,
     maxZ: z + d / 2 + extra,
   };
+}
+
+// Свободный коридор перед наружной дверью.
+// Он должен оставаться пустым, чтобы входящие и выходящие покупатели
+// могли пройти через проём и разойтись внутри магазина.
+const DOOR_CLEARANCE_DEPTH = 2.35;
+const DOOR_CLEARANCE_SIDE_MARGIN = 0.45;
+const DOOR_CLEARANCE_WALL_OVERLAP = 0.10;
+
+function getDoorInteriorClearanceRect(doorLike) {
+  if (!doorLike) return null;
+  const width = Math.max(0.8, doorLike.width || WINDOW_W);
+  const halfSpan = width / 2 + DOOR_CLEARANCE_SIDE_MARGIN;
+
+  if (doorLike.axis === 'z') {
+    return {
+      minX: doorLike.pos - halfSpan,
+      maxX: doorLike.pos + halfSpan,
+      minZ: WALL_BACK_Z - DOOR_CLEARANCE_WALL_OVERLAP,
+      maxZ: WALL_BACK_Z + DOOR_CLEARANCE_DEPTH,
+    };
+  }
+
+  return {
+    minX: WALL_LEFT_X - DOOR_CLEARANCE_WALL_OVERLAP,
+    maxX: WALL_LEFT_X + DOOR_CLEARANCE_DEPTH,
+    minZ: doorLike.pos - halfSpan,
+    maxZ: doorLike.pos + halfSpan,
+  };
+}
+
+function rectOverlapsDoorClearance(rect, ignoreDoorId = null) {
+  if (!rect) return false;
+  return doors.some(door => {
+    if (!door || door.id === ignoreDoorId) return false;
+    const clearance = getDoorInteriorClearanceRect(door);
+    return clearance ? rectsOverlap(rect, clearance) : false;
+  });
+}
+
+function isDoorClearanceBlockedByPlacedObjects(axis, pos, width) {
+  const clearance = getDoorInteriorClearanceRect({ axis, pos, width });
+  if (!clearance) return false;
+
+  for (let i = 0; i < SHELF_POSITIONS.length; i++) {
+    if (rectsOverlap(clearance, getShelfRect(i, 0.10))) return true;
+  }
+
+  for (const cr of cashRegisters) {
+    if (rectsOverlap(clearance, getCashRect(cr, 0.10))) return true;
+  }
+
+  for (const wall of internalWalls) {
+    if (rectsOverlap(clearance, internalWallRect(wall, 0.10))) return true;
+  }
+
+  for (const decor of decorations) {
+    const def = getDecorDef(decor.type);
+    if (!def || def.rug || def.place !== 'floor') continue;
+    if (rectsOverlap(clearance, decorRect(def, decor.x, decor.z, 0.10, decor.rotation || 0))) return true;
+  }
+
+  return false;
 }
 
 function isQuarterTurn(rotation = 0) {
@@ -5074,6 +5210,9 @@ function canPlaceShelfAt(idx, x, z, rotationOverride = null) {
   const exactRect = rectFromCenter(x, z, rawFp.w, rawFp.d, 0);
   const equipmentRect = rectFromCenter(x, z, rawFp.w + 0.55, rawFp.d + 0.55, 0);
 
+  // Витрина не может занимать дверной проём или свободный коридор перед дверью.
+  if (rectOverlapsDoorClearance(equipmentRect)) return false;
+
   // Настенные стеллажи можно ставить вплотную к наружной стене только если на этой части стены
   // нет двери, окна или настенного декора.
   if (isWallShelf && shoeCubbyTouchesBlockedOuterWall(exactRect)) return false;
@@ -5126,6 +5265,9 @@ function canPlaceInternalWall(axis, x, z, ignoreId = null) {
   if (newRect.maxX > rightInside + 0.001) return false;
   if (newRect.minZ < backInside - 0.001) return false;
   if (newRect.maxZ > frontInside + 0.001) return false;
+
+  // Самодельная стена не может перекрыть дверной проём и подход к нему.
+  if (rectOverlapsDoorClearance(newRect)) return false;
 
   // Стена к стене: можно вплотную, можно торцом, можно боком.
   // Запрещаем только реальное пересечение/наложение площади.
@@ -5407,6 +5549,13 @@ function placeInternalWallFromTap(clientX, clientY) {
     return;
   }
 
+  const routeStatus = getShopRouteConnectivityStatus();
+  if (!routeStatus.ok) {
+    removeInternalWallById(id);
+    showRouteConnectivityBlockedToast(routeStatus);
+    return;
+  }
+
   if (fromStorage) {
     removeEquipmentFromStorage(pendingInternalWallStorageKey, 1);
     pendingInternalWallStorageKey = null;
@@ -5425,7 +5574,7 @@ function getDecorDef(type) {
 }
 
 function snapDecorCoord(v) {
-  return Math.round(v / 0.25) * 0.25;
+  return snapPlacementCoord(v);
 }
 
 function decorRect(def, x, z, extra = 0, rotation = 0) {
@@ -5449,9 +5598,13 @@ function canPlaceFloorDecor(def, x, z, ignoreId = null, rotation = 0) {
   if (x < -SHOP_HALF + marginX || x > SHOP_HALF - marginX || z < -SHOP_HALF + marginZ || z > SHOP_HALF - marginZ) return false;
 
   // Ковры специально можно класть под витрины, кассы, лампы и другие объекты.
+  // Они не имеют коллизии и поэтому не блокируют дверной коридор.
   if (def.rug) return true;
 
   const r = decorRect(def, x, z, 0.15, rotation);
+
+  // Напольный декор не может занимать дверной проём или подход к нему.
+  if (rectOverlapsDoorClearance(r)) return false;
 
   for (let i = 0; i < SHELF_POSITIONS.length; i++) {
     if (rectsOverlap(r, getShelfRect(i, 0.25))) return false;
@@ -5741,11 +5894,11 @@ function moveWallDecorTo(id, axis, pos) {
   return true;
 }
 
-function removeDecorById(id) {
+function removeDecorById(id, force = false) {
   const idx = decorations.findIndex(d => d.id === id);
   if (idx < 0) return null;
   const decor = decorations[idx];
-  if (isGlassElevatorDecor(decor)) {
+  if (isGlassElevatorDecor(decor) && !force) {
     showToast('🛗 Лифт нельзя убрать или продать');
     return null;
   }
@@ -5820,6 +5973,15 @@ function placeDecorFromTap(clientX, clientY) {
     if (!canPlaceFloorDecor(def, x, z)) { showToast('❌ Тут нельзя поставить объект', '#e94560ee'); return; }
     const id = addDecor(def.id, { x, z });
     placedDecor = decorations.find(item => item.id === id) || null;
+  }
+
+  if (placedDecor && def.place === 'floor' && !def.rug) {
+    const routeStatus = getShopRouteConnectivityStatus();
+    if (!routeStatus.ok) {
+      removeDecorById(placedDecor.id, true);
+      showRouteConnectivityBlockedToast(routeStatus);
+      return;
+    }
   }
 
   if (fromStorage) {
@@ -6385,6 +6547,7 @@ function previewDoorMove(id, target) {
   if (!door || !target) return false;
   const next = { axis: target.axis || door.axis, pos: clampOpeningPos(target.pos, door.width) };
   if (isDoorCollision(id, next.axis, next.pos, door.width)) return false;
+  if (isDoorClearanceBlockedByPlacedObjects(next.axis, next.pos, door.width)) return false;
   const axisChanged = door.axis !== next.axis;
   const oldAxis = door.axis, oldPos = door.pos;
   door.axis = next.axis;
@@ -6404,6 +6567,12 @@ function moveDoorTo(id, target) {
     applyWindowHoles();
     return false;
   }
+  if (isDoorClearanceBlockedByPlacedObjects(next.axis, next.pos, door.width)) {
+    showToast('❌ Перед дверью должна оставаться свободная зона', '#e94560ee');
+    rebuildDoorVisual(door);
+    applyWindowHoles();
+    return false;
+  }
   door.axis = next.axis;
   door.pos = next.pos;
   rebuildDoorVisual(door);
@@ -6417,7 +6586,10 @@ function findFreeDoorPlace(type='single') {
   for (const axis of axes) {
     for (let rawPos = WALL_MIN; rawPos <= WALL_MAX + 0.001; rawPos += PANEL_SIZE) {
       const pos = clampOpeningPos(rawPos, variant.width);
-      if (!isDoorCollision(null, axis, pos, variant.width)) return { axis, pos };
+      if (!isDoorCollision(null, axis, pos, variant.width) &&
+          !isDoorClearanceBlockedByPlacedObjects(axis, pos, variant.width)) {
+        return { axis, pos };
+      }
     }
   }
   return null;
@@ -6764,6 +6936,10 @@ function addCashRegister(variant, x = null, z = null) {
     x = idx === 0 ? -side : side;
     z = SHOP_HALF - 2.0;
   }
+  const previewCash = { rotation:0, x, z };
+  const fp = getCashFootprint(previewCash, 0.35);
+  x = clampPlacementCoord(x, -SHOP_HALF + fp.w / 2 + 0.15, SHOP_HALF - fp.w / 2 - 0.15);
+  z = clampPlacementCoord(z, -SHOP_HALF + fp.d / 2 + 0.15, SHOP_HALF - fp.d / 2 - 0.15);
 
   const visual = makeCashRegisterModel(x, z, variant, idx);
   const cr = {
@@ -6785,6 +6961,9 @@ function setCashRegisterPosition(idx, x, z) {
   const cr = cashRegisters[idx];
   if (!cr) return;
 
+  const fp = getCashFootprint(cr, 0.35);
+  x = clampPlacementCoord(x, -SHOP_HALF + fp.w / 2 + 0.15, SHOP_HALF - fp.w / 2 - 0.15);
+  z = clampPlacementCoord(z, -SHOP_HALF + fp.d / 2 + 0.15, SHOP_HALF - fp.d / 2 - 0.15);
   cr.x = x;
   cr.z = z;
   cr.group.position.set(x, 0, z);
@@ -6801,6 +6980,9 @@ function canPlaceCashRegister(idx, x, z, rotationOverride = null) {
   if (x < -SHOP_HALF + marginX || x > SHOP_HALF - marginX || z < -SHOP_HALF + marginZ || z > SHOP_HALF - marginZ) return false;
 
   const r = rectFromCenter(x, z, fp.w, fp.d, 0);
+
+  // Касса не может занимать дверной проём или свободную зону перед ним.
+  if (rectOverlapsDoorClearance(r)) return false;
 
   for (let i = 0; i < SHELF_POSITIONS.length; i++) {
     if (rectsOverlap(r, getShelfRect(i, 0.3))) return false;
@@ -6840,6 +7022,14 @@ function buyCashRegister(variant) {
   const x = idx === 0 ? -side : side;
   const z = SHOP_HALF - 2.0;
   addCashRegister(variant, x, z);
+  const routeStatus = getShopRouteConnectivityStatus();
+  if (!routeStatus.ok) {
+    removeCashRegisterForStorage(idx, true);
+    G.money += variant.price;
+    updateHUD();
+    showRouteConnectivityBlockedToast(routeStatus);
+    return;
+  }
 
   closeShopModal();
   enterEditorMode();
@@ -6913,9 +7103,9 @@ function createSeller(color, x, z, name, staffType = 'seller') {
     role: 'floor',
     target: null,
     wait: 0,
-    // Работники двигаются быстрее покупателей. Скорость хранится как
-    // базовый шаг для 60 FPS и ниже умножается на реальное время кадра.
-    speed: staffType === 'cleaner' ? 0.052 : (staffType === 'cashier' ? 0.048 : 0.050),
+    // Все работники двигаются с тем же спокойным темпом, что и покупатели.
+    // Небольшая случайная разница не даёт им идти строго одной колонной.
+    speed: 0.021 + Math.random() * 0.007,
     legAngle: 0,
     legDir: 1,
     roleKey: '',
@@ -7921,6 +8111,197 @@ function buildStaticNavigationSnapshot(padding = 0.16) {
 function isStaticNavigationPointFree(x, z, snapshot) {
   if (!isInsideShopWalkArea(x, z)) return false;
   return !snapshot.rects.some(r => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ);
+}
+
+// Проверка связности магазина после установки или перемещения оборудования.
+// Используется только при завершении действия, поэтому не нагружает обычное движение персонажей.
+function buildShopConnectivityGrid(padding = 0.20) {
+  const snapshot = buildStaticNavigationSnapshot(padding);
+  const step = 0.50;
+  const minIndex = Math.ceil((-SHOP_HALF + 0.82) / step);
+  const maxIndex = Math.floor(( SHOP_HALF - 0.82) / step);
+  const nodes = new Map();
+  const key = (ix, iz) => `${ix}:${iz}`;
+
+  for (let ix = minIndex; ix <= maxIndex; ix++) {
+    const x = ix * step;
+    for (let iz = minIndex; iz <= maxIndex; iz++) {
+      const z = iz * step;
+      if (!isStaticNavigationPointFree(x, z, snapshot)) continue;
+      nodes.set(key(ix, iz), { ix, iz, x, z });
+    }
+  }
+
+  return { snapshot, step, minIndex, maxIndex, nodes, key };
+}
+
+function findNearestConnectivityNodeKey(grid, x, z, maxDistance = 1.10) {
+  const centerX = Math.round(x / grid.step);
+  const centerZ = Math.round(z / grid.step);
+  const maxCells = Math.max(1, Math.ceil(maxDistance / grid.step));
+  let bestKey = null;
+  let bestDistance = Infinity;
+
+  for (let radius = 0; radius <= maxCells; radius++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dz = -radius; dz <= radius; dz++) {
+        if (radius > 0 && Math.abs(dx) !== radius && Math.abs(dz) !== radius) continue;
+        const nodeKey = grid.key(centerX + dx, centerZ + dz);
+        const node = grid.nodes.get(nodeKey);
+        if (!node) continue;
+        const distance = Math.hypot(node.x - x, node.z - z);
+        if (distance <= maxDistance && distance < bestDistance) {
+          bestDistance = distance;
+          bestKey = nodeKey;
+        }
+      }
+    }
+    if (bestKey) return bestKey;
+  }
+
+  return null;
+}
+
+function floodConnectivityGrid(grid, startKey) {
+  const reachable = new Set();
+  if (!startKey || !grid.nodes.has(startKey)) return reachable;
+  const queue = [startKey];
+  reachable.add(startKey);
+  const directions = [
+    [1,0],[-1,0],[0,1],[0,-1],
+    [1,1],[1,-1],[-1,1],[-1,-1]
+  ];
+
+  for (let head = 0; head < queue.length; head++) {
+    const currentKey = queue[head];
+    const current = grid.nodes.get(currentKey);
+    if (!current) continue;
+
+    for (const [dx, dz] of directions) {
+      const nextKey = grid.key(current.ix + dx, current.iz + dz);
+      if (reachable.has(nextKey) || !grid.nodes.has(nextKey)) continue;
+
+      // Запрещаем диагональное срезание угла между двумя препятствиями.
+      if (dx !== 0 && dz !== 0) {
+        if (!grid.nodes.has(grid.key(current.ix + dx, current.iz))) continue;
+        if (!grid.nodes.has(grid.key(current.ix, current.iz + dz))) continue;
+      }
+
+      reachable.add(nextKey);
+      queue.push(nextKey);
+    }
+  }
+
+  return reachable;
+}
+
+function getConnectivityEntrancePoints() {
+  if ((G.currentFloor || 1) === 2) {
+    const elevator = getElevatorPortal();
+    return elevator ? [getDoorInsidePoint(elevator, 0, 2.05)] : [];
+  }
+  return doors.map(door => getDoorInsidePoint(door, 0, 1.85));
+}
+
+function getShelfConnectivityPoints(idx) {
+  const pos = SHELF_POSITIONS[idx];
+  if (!pos) return [];
+  const fp = getShelfFootprint(idx, 0);
+  const gapX = fp.w / 2 + 0.75 * CHARACTER_SIZE_MULT;
+  const gapZ = fp.d / 2 + 0.75 * CHARACTER_SIZE_MULT;
+  const x = pos[0], z = pos[2];
+  return [
+    {x, z:z + gapZ}, {x, z:z - gapZ},
+    {x:x + gapX, z}, {x:x - gapX, z},
+    {x:x + gapX, z:z + gapZ}, {x:x - gapX, z:z + gapZ},
+    {x:x + gapX, z:z - gapZ}, {x:x - gapX, z:z - gapZ},
+  ];
+}
+
+function getCashConnectivityPoints(cr) {
+  if (!cr) return [];
+  const dist = 1.35 * CASH_REGISTER_SIZE_MULT;
+  return [
+    {x:cr.x + dist, z:cr.z}, {x:cr.x - dist, z:cr.z},
+    {x:cr.x, z:cr.z + dist}, {x:cr.x, z:cr.z - dist},
+    {x:cr.x + dist, z:cr.z + dist}, {x:cr.x - dist, z:cr.z + dist},
+    {x:cr.x + dist, z:cr.z - dist}, {x:cr.x - dist, z:cr.z - dist},
+  ];
+}
+
+function getElevatorConnectivityPoints(decor) {
+  if (!decor) return [];
+  const def = getDecorDef(decor.type);
+  const fp = getDecorFootprint(def, decor.rotation || 0, 0);
+  const gapX = fp.w / 2 + 0.85;
+  const gapZ = fp.d / 2 + 0.85;
+  return [
+    {x:decor.x + gapX, z:decor.z}, {x:decor.x - gapX, z:decor.z},
+    {x:decor.x, z:decor.z + gapZ}, {x:decor.x, z:decor.z - gapZ},
+  ];
+}
+
+function hasReachableConnectivityPoint(points, grid, reachable) {
+  for (const point of points) {
+    if (!isStaticNavigationPointFree(point.x, point.z, grid.snapshot)) continue;
+    const nodeKey = findNearestConnectivityNodeKey(grid, point.x, point.z, 0.85);
+    if (nodeKey && reachable.has(nodeKey)) return true;
+  }
+  return false;
+}
+
+function getShopRouteConnectivityStatus() {
+  const entrances = getConnectivityEntrancePoints();
+  // Во время ранней инициализации дверь ещё может не быть создана.
+  if (!entrances.length) return { ok:true, reason:'' };
+
+  const grid = buildShopConnectivityGrid(0.20);
+  if (!grid.nodes.size) return { ok:false, reason:'interior' };
+
+  const entranceKeys = entrances.map(point => findNearestConnectivityNodeKey(grid, point.x, point.z, 1.35));
+  if (entranceKeys.some(key => !key)) return { ok:false, reason:'door' };
+
+  const reachable = floodConnectivityGrid(grid, entranceKeys[0]);
+  if (entranceKeys.some(key => !reachable.has(key))) return { ok:false, reason:'door' };
+
+  for (let i = 0; i < SHELF_POSITIONS.length; i++) {
+    if (!hasReachableConnectivityPoint(getShelfConnectivityPoints(i), grid, reachable)) {
+      return { ok:false, reason:'shelf', index:i };
+    }
+  }
+
+  for (let i = 0; i < cashRegisters.length; i++) {
+    if (!hasReachableConnectivityPoint(getCashConnectivityPoints(cashRegisters[i]), grid, reachable)) {
+      return { ok:false, reason:'cash', index:i };
+    }
+  }
+
+  for (const decor of decorations) {
+    if (!isGlassElevatorDecor(decor)) continue;
+    if (!hasReachableConnectivityPoint(getElevatorConnectivityPoints(decor), grid, reachable)) {
+      return { ok:false, reason:'elevator' };
+    }
+  }
+
+  return { ok:true, reason:'' };
+}
+
+function showRouteConnectivityBlockedToast(status = null) {
+  const reason = status?.reason || '';
+  const messages = {
+    door: '❌ Предмет перекрывает проход от двери',
+    shelf: '❌ Предмет перекрывает путь к витрине',
+    cash: '❌ Предмет перекрывает путь к кассе',
+    elevator: '❌ Предмет перекрывает путь к лифту',
+    interior: '❌ В магазине не осталось свободного маршрута',
+  };
+  showToast(messages[reason] || '❌ Предмет разрывает маршрут по магазину', '#e94560ee');
+}
+
+function hasValidShopRouteConnectivity(showMessage = false) {
+  const status = getShopRouteConnectivityStatus();
+  if (!status.ok && showMessage) showRouteConnectivityBlockedToast(status);
+  return status.ok;
 }
 
 function hasClearWalkLine(x1, z1, x2, z2, padding = 0.16, snapshot = null) {
@@ -8948,7 +9329,13 @@ function getStoreRatingDetails() {
 
   const serviceScore = G.ratingServiceDelta || 0;
   const raw = decorScore + shelfScore + dirtyPenalty + workerScore + serviceScore;
-  const rating = clampRating(raw);
+  const calculatedRating = clampRating(raw);
+  const hasDeveloperOverride = G.developerRatingOverride !== null
+    && G.developerRatingOverride !== undefined
+    && Number.isFinite(Number(G.developerRatingOverride));
+  const rating = hasDeveloperOverride
+    ? clampRating(Number(G.developerRatingOverride))
+    : calculatedRating;
 
   return {
     rating,
@@ -10192,8 +10579,8 @@ function getAutoShelfPosition(idx) {
   const xStart = -usable + spacingX / 2;
   const zStart = -usable + spacingZ / 2;
 
-  const x = Math.max(-usable, Math.min(usable, xStart + col * spacingX));
-  const z = Math.max(-usable, Math.min(usable, zStart + row * spacingZ));
+  const x = clampPlacementCoord(xStart + col * spacingX, -usable, usable);
+  const z = clampPlacementCoord(zStart + row * spacingZ, -usable, usable);
   return { x, z };
 }
 
@@ -10217,6 +10604,14 @@ function buyShelf(sv) {
   if (!G.shelfRotations) G.shelfRotations = [];
   G.shelfRotations.push(0);
   addShelfMesh(idx, nx, nz, sv.color, sv.topColor, sv.id);
+  const routeStatus = getShopRouteConnectivityStatus();
+  if (!routeStatus.ok) {
+    removeShelfForStorage(idx);
+    G.money += sv.price;
+    updateHUD();
+    showRouteConnectivityBlockedToast(routeStatus);
+    return;
+  }
   closeShopModal();
   enterEditorMode();
   showToast('✅ ' + sv.name + ' куплена!');
@@ -11071,10 +11466,10 @@ function removeShelfForStorage(idx) {
   return variantId;
 }
 
-function removeCashRegisterForStorage(idx) {
+function removeCashRegisterForStorage(idx, force = false) {
   const cr = cashRegisters[idx];
   if (!cr) return null;
-  if (isCashRegisterLockedForEditing()) {
+  if (!force && isCashRegisterLockedForEditing()) {
     showCashRegisterLockedToast();
     return null;
   }
@@ -11924,6 +12319,13 @@ function rotateShelf(idx, silent = false) {
   }
   G.shelfRotations[idx] = next;
   applyShelfRotation(idx);
+  const routeStatus = getShopRouteConnectivityStatus();
+  if (!routeStatus.ok) {
+    G.shelfRotations[idx] = current;
+    applyShelfRotation(idx);
+    if (!silent) showRouteConnectivityBlockedToast(routeStatus);
+    return false;
+  }
   if (!silent) showToast('🔄 Витрина развернута');
   return true;
 }
@@ -11940,9 +12342,18 @@ function rotateCashRegister(idx, silent = false) {
     if (!silent) showToast('❌ Рядом стоит покупатель или продавец', '#e94560ee');
     return false;
   }
+  const current = cr.rotation || 0;
   cr.rotation = next;
   if (cr.group) cr.group.rotation.y = cr.rotation;
   if (cr.hitZone) cr.hitZone.rotation.y = cr.rotation;
+  const routeStatus = getShopRouteConnectivityStatus();
+  if (!routeStatus.ok) {
+    cr.rotation = current;
+    if (cr.group) cr.group.rotation.y = cr.rotation;
+    if (cr.hitZone) cr.hitZone.rotation.y = cr.rotation;
+    if (!silent) showRouteConnectivityBlockedToast(routeStatus);
+    return false;
+  }
   sellers.forEach(s => { if (s.role !== 'cleaning') { s.roleKey = ''; s.target = chooseSellerFloorTarget(); } });
   if (!silent) showToast('🔄 Касса развернута');
   return true;
@@ -11965,9 +12376,20 @@ function rotateDecor(id, silent = false) {
     if (!silent) showToast('❌ Рядом стоит покупатель или продавец', '#e94560ee');
     return false;
   }
+  const current = decor.rotation || 0;
   decor.rotation = next;
   if (decor.group) decor.group.rotation.y = decor.rotation;
   if (decor.hitZone) decor.hitZone.rotation.y = decor.rotation;
+  if (!def.rug) {
+    const routeStatus = getShopRouteConnectivityStatus();
+    if (!routeStatus.ok) {
+      decor.rotation = current;
+      if (decor.group) decor.group.rotation.y = decor.rotation;
+      if (decor.hitZone) decor.hitZone.rotation.y = decor.rotation;
+      if (!silent) showRouteConnectivityBlockedToast(routeStatus);
+      return false;
+    }
+  }
   if (!silent) showToast('🔄 Декорация развернута');
   return true;
 }
@@ -12000,8 +12422,8 @@ function moveShelfTo(shelfIdx, newX, newZ, showMessage = true) {
   const marginX = isWallShelf ? rawFp.w / 2 : rawFp.w / 2 + 0.45;
   const marginZ = isWallShelf ? rawFp.d / 2 : rawFp.d / 2 + 0.45;
   const bounds = getShopInnerBounds();
-  newX = Math.max(bounds.minX + marginX, Math.min(bounds.maxX - marginX, newX));
-  newZ = Math.max(bounds.minZ + marginZ, Math.min(bounds.maxZ - marginZ, newZ));
+  newX = clampPlacementCoord(newX, bounds.minX + marginX, bounds.maxX - marginX);
+  newZ = clampPlacementCoord(newZ, bounds.minZ + marginZ, bounds.maxZ - marginZ);
 
   if (!canPlaceShelfAt(shelfIdx, newX, newZ)) {
     if (showMessage) showToast('❌ Место занято или на стене есть дверь/окно/декор!', '#e94560ee');
@@ -12579,6 +13001,12 @@ function placeEquipmentFromStorage(key) {
     if (!G.shelfRotations) G.shelfRotations = [];
     G.shelfRotations.push(0);
     addShelfMesh(idx, nx, nz, def.color, def.topColor, def.type);
+    const routeStatus = getShopRouteConnectivityStatus();
+    if (!routeStatus.ok) {
+      removeShelfForStorage(idx);
+      showRouteConnectivityBlockedToast(routeStatus);
+      return;
+    }
     placed = true;
   }
 
@@ -12590,6 +13018,12 @@ function placeEquipmentFromStorage(key) {
     const x = idx === 0 ? -side : side;
     const z = SHOP_HALF - 2.0;
     addCashRegister(def, x, z);
+    const routeStatus = getShopRouteConnectivityStatus();
+    if (!routeStatus.ok) {
+      removeCashRegisterForStorage(idx, true);
+      showRouteConnectivityBlockedToast(routeStatus);
+      return;
+    }
     placed = true;
   }
 
