@@ -11,24 +11,14 @@
   #canvas-wrap { position:fixed; inset:0; }
   canvas { display:block; width:100%!important; height:100%!important; }
 
-  /* HUD — отдельные карточки без верхней общей панели */
-  #hud-name {
-    position:fixed;
-    top:calc(env(safe-area-inset-top, 0px) + 10px);
-    left:12px;
-    z-index:10;
-    background:rgba(10,10,30,0.78);
-    backdrop-filter:blur(8px);
-    border:1px solid rgba(255,255,255,0.10);
-    border-radius:16px;
-    padding:9px 14px;
-    box-shadow:0 6px 22px rgba(0,0,0,0.22);
-  }
-  #hud-name {
+  /* HUD — название магазина объединено с карточкой уровня */
+  #hud-level-box {
+    position:relative;
     cursor:pointer;
-    --ratingDeg: 0deg;
+    --ratingDeg:0deg;
+    transition:transform .12s ease;
   }
-  #hud-name::before {
+  #hud-level-box::before {
     content:'';
     position:absolute;
     inset:-3px;
@@ -41,8 +31,17 @@
     pointer-events:none;
     opacity:.95;
   }
-  #hud-name .title { font-size:17px; font-weight:800; color:#f5c518; letter-spacing:.1px; position:relative; z-index:1; }
-  #hud-name:active { transform:scale(0.97); }
+  #hud-level-box > * { position:relative; z-index:1; }
+  #hud-level-box:active { transform:scale(0.97); }
+  .hud-shop-title {
+    margin-bottom:2px;
+    font-size:9px;
+    line-height:1.1;
+    font-weight:900;
+    color:#f5c518;
+    letter-spacing:.08em;
+    white-space:nowrap;
+  }
 
   .rating-main {
     background:rgba(255,255,255,0.05);
@@ -198,7 +197,7 @@
   /* НАСТРОЙКИ */
   #settings-btn {
     position:fixed;
-    top:calc(env(safe-area-inset-top, 0px) + 68px);
+    top:calc(env(safe-area-inset-top, 0px) + 145px);
     left:18px;
     z-index:11;
     width:48px;
@@ -330,11 +329,11 @@
   #hud-stats {
     position:fixed;
     top:calc(env(safe-area-inset-top, 0px) + 10px);
-    right:12px;
+    left:12px;
     z-index:10;
     display:flex;
     flex-direction:column;
-    align-items:flex-end;
+    align-items:flex-start;
     gap:5px;
   }
   #hud-level-box,
@@ -683,7 +682,7 @@
 
   /* EVENT LOG */
   #event-log {
-    position:fixed; left:10px; top:116px;
+    position:fixed; left:10px; top:241px;
     width:160px; z-index:10; pointer-events:none;
   }
   .log-entry {
@@ -828,10 +827,10 @@
 
 
   /* ОБУЧЕНИЕ И КВЕСТЫ */
-  #event-log { top:164px; }
+  #event-log { top:241px; }
   #quest-btn {
     position:fixed;
-    top:calc(env(safe-area-inset-top, 0px) + 116px);
+    top:calc(env(safe-area-inset-top, 0px) + 193px);
     left:18px;
     z-index:12;
     width:48px;
@@ -852,7 +851,7 @@
 
   #quest-tracker {
     position:fixed;
-    top:calc(env(safe-area-inset-top, 0px) + 116px);
+    top:calc(env(safe-area-inset-top, 0px) + 193px);
     left:76px;
     z-index:11;
     width:min(235px, calc(100vw - 250px));
@@ -971,7 +970,7 @@
 
   @media (max-width:520px) {
     #quest-tracker { width:calc(100vw - 250px); }
-    #event-log { top:164px; }
+    #event-log { top:241px; }
   }
 
 
@@ -1604,12 +1603,9 @@
 </div>
 
 <!-- HUD -->
-<div id="hud-name" onclick="openRatingModal()">
-  <div class="title">🐭 MiceShop</div>
-</div>
-
 <div id="hud-stats">
-  <div id="hud-level-box">
+  <div id="hud-level-box" onclick="openRatingModal()" role="button" aria-label="Открыть рейтинг магазина">
+    <div class="hud-shop-title">🐭 MiceShop</div>
     <div id="levelLabel">Уровень 1 — Новичок</div>
     <div id="xp-bar-wrap">
       <div id="xp-bar"><div id="xp-fill" style="width:0%"></div></div>
@@ -2859,7 +2855,7 @@ function bindClickSoundEffects() {
     if (!target) return;
 
     const uiHit = target.closest && target.closest(
-      'button, .bot-btn, .cat-tab, .subcat-tab, .prod-row, .prod-card, .menu-style-option, .modal-close, .btn-buy, .btn-back, #settings-btn, #hud-name, #move-cancel span, .edit-popup-btn, .toggle-switch'
+      'button, .bot-btn, .cat-tab, .subcat-tab, .prod-row, .prod-card, .menu-style-option, .modal-close, .btn-buy, .btn-back, #settings-btn, #hud-level-box, #move-cancel span, .edit-popup-btn, .toggle-switch'
     );
 
     const canvasHit = target.tagName === 'CANVAS';
@@ -9351,8 +9347,8 @@ function getStoreRatingDetails() {
 function updateRatingUI() {
   const d = getStoreRatingDetails();
   recordRatingHistory(d.rating);
-  const nameBox = document.getElementById('hud-name');
-  if (nameBox) nameBox.style.setProperty('--ratingDeg', (d.rating * 3.6) + 'deg');
+  const levelBox = document.getElementById('hud-level-box');
+  if (levelBox) levelBox.style.setProperty('--ratingDeg', (d.rating * 3.6) + 'deg');
 
   const pct = document.getElementById('ratingPercentText');
   const fill = document.getElementById('ratingModalFill');
