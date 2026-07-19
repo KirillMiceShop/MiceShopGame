@@ -4517,6 +4517,8 @@ let pendingInternalWallStorageKey = null; // если ставим стену с
 const DECOR_PRICE = 150;
 const DECOR_VARIANTS = [
   { id:'glass_elevator', name:'Стеклянный лифт', emoji:'🛗', place:'floor', width:2.0, depth:2.0, scale:1, price:LIFT_BUILD_COST, special:true, desc:'Лифт между первым и вторым этажом' },
+  { id:'fitting_room', name:'Примерочная', emoji:'🚪', place:'floor', width:1.80, depth:1.80, scale:1, price:250, facility:true, shopType:'clothing', ratingBonus:5, unlockLevel:3, secondUnlockLevel:10, desc:'Кабина для примерки одежды · +5% к рейтингу магазина' },
+  { id:'tech_check_zone', name:'Зона проверки техники', emoji:'🧪', place:'floor', width:1.80, depth:1.20, scale:1, price:250, facility:true, shopType:'electronics', ratingBonus:5, unlockLevel:3, secondUnlockLevel:10, desc:'Стол для проверки работоспособности техники · +5% к рейтингу магазина' },
   { id:'wall_lamp',   name:'Настенная лампа', emoji:'💡', place:'wall',  width:0.65, height:0.80, depth:0.16, desc:'Лампа на стену' },
   { id:'floor_lamp',  name:'Напольная лампа', emoji:'🪔', place:'floor', width:0.70, depth:0.70, desc:'Лампа на полу' },
   { id:'painting_wide',   name:'Широкая картина', emoji:'🖼️', place:'wall',  width:1.80, height:0.85, depth:0.12, desc:'Широкая картина на стену' },
@@ -4529,6 +4531,48 @@ const DECOR_VARIANTS = [
   { id:'plant_tall',  name:'Высокое дерево в горшке', emoji:'🌳', place:'floor', width:0.75, depth:0.75, desc:'Высокое растение' },
   { id:'plant_short', name:'Низкое дерево в горшке',  emoji:'🪴', place:'floor', width:0.65, depth:0.65, desc:'Низкое растение' },
 ];
+function getStoreFacilityDef(shopType = G.shopType) {
+  return DECOR_VARIANTS.find(def => def.facility && def.shopType === shopType) || null;
+}
+
+function getStoreFacilityLimit(level = G.level || 1) {
+  if (level < 3) return 0;
+  return level >= 10 ? 2 : 1;
+}
+
+function countOwnedStoreFacility(type) {
+  const installed = Array.isArray(decorations) ? decorations.filter(item => item.type === type).length : 0;
+  const stored = Number(G.equipmentStorage?.[equipmentKey('decor', type)]?.count || 0);
+  return installed + stored;
+}
+
+function validateStoreFacilityPlacement(def, fromStorage = false) {
+  if (!def?.facility) return true;
+  if (G.shopType !== def.shopType) {
+    const requiredShop = def.shopType === 'electronics' ? 'магазине электроники' : 'магазине одежды';
+    showToast('❌ Этот объект можно поставить только в ' + requiredShop, '#e94560ee');
+    return false;
+  }
+  if ((G.level || 1) < (def.unlockLevel || 3)) {
+    showToast('🔒 Объект откроется на уровне ' + (def.unlockLevel || 3), '#e94560ee');
+    return false;
+  }
+  if (!fromStorage && countOwnedStoreFacility(def.id) >= getStoreFacilityLimit()) {
+    const text = (G.level || 1) < (def.secondUnlockLevel || 10)
+      ? ('Второй объект откроется на уровне ' + (def.secondUnlockLevel || 10))
+      : 'Достигнут лимит: 2 объекта';
+    showToast('❌ ' + text, '#e94560ee');
+    return false;
+  }
+  return true;
+}
+
+function startStoreFacilityPlacement(type) {
+  const def = getDecorDef(type);
+  if (!validateStoreFacilityPlacement(def, false)) return;
+  startDecorPlacement(type);
+}
+
 let decorations = [];
 let decorClickTargets = [];
 let nextDecorId = 0;
@@ -5748,6 +5792,33 @@ function makeDecorMesh(decor) {
       const panel = addMesh(.34, .55, .10, darkMat, px + .08, 1.15, .25);
       const display = new THREE.Mesh(new THREE.PlaneGeometry(.20,.12), new THREE.MeshBasicMaterial({ color:0x6fd8ff }));
       display.position.set(0, .08, .056); panel.add(display);
+    } else if (def.id === 'fitting_room') {
+      const W = def.width || 1.8;
+      const D = def.depth || 1.8;
+      const H = 2.20;
+      add(group, W, 0.08, D, 0xd9c6a7, 0, 0.04, 0);
+      add(group, W, H, 0.10, 0xe8dfd0, 0, H / 2, -D / 2 + 0.05);
+      add(group, 0.10, H, D, 0xe8dfd0, -W / 2 + 0.05, H / 2, 0);
+      add(group, 0.10, H, D, 0xe8dfd0, W / 2 - 0.05, H / 2, 0);
+      add(group, W, 0.10, 0.10, 0x8e6b45, 0, H - 0.05, D / 2 - 0.05);
+      add(group, W * 0.48, H * 0.86, 0.045, 0xb76578, -W * 0.25, H * 0.44, D / 2 - 0.03);
+      add(group, W * 0.48, H * 0.86, 0.045, 0xc8778a, W * 0.25, H * 0.44, D / 2 - 0.03);
+      add(group, W * 0.54, H * 0.58, 0.035, 0xb9d7e8, 0, H * 0.54, -D / 2 + 0.11);
+      add(group, W * 0.60, 0.30, 0.36, 0x8f6b48, 0, 0.23, -D * 0.22);
+    } else if (def.id === 'tech_check_zone') {
+      const W = def.width || 1.8;
+      const D = def.depth || 1.2;
+      add(group, W, 0.10, D, 0x4d5965, 0, 0.05, 0);
+      add(group, W, 0.16, D * 0.82, 0xcfd6dc, 0, 0.88, 0);
+      add(group, 0.12, 0.82, 0.12, 0x5d6872, -W / 2 + 0.18, 0.44, -D / 2 + 0.16);
+      add(group, 0.12, 0.82, 0.12, 0x5d6872, W / 2 - 0.18, 0.44, -D / 2 + 0.16);
+      add(group, 0.12, 0.82, 0.12, 0x5d6872, -W / 2 + 0.18, 0.44, D / 2 - 0.16);
+      add(group, 0.12, 0.82, 0.12, 0x5d6872, W / 2 - 0.18, 0.44, D / 2 - 0.16);
+      add(group, 0.70, 0.48, 0.08, 0x283641, 0, 1.24, -D * 0.18);
+      add(group, 0.58, 0.35, 0.045, 0x66c8f0, 0, 1.24, -D * 0.13);
+      add(group, 0.28, 0.12, 0.38, 0x2f3338, -W * 0.28, 1.02, D * 0.16);
+      add(group, 0.34, 0.08, 0.24, 0x8fa8b8, W * 0.25, 1.00, D * 0.16);
+      add(group, 0.05, 0.32, 0.05, 0xe1b84b, W * 0.42, 1.08, -D * 0.10);
     } else if (def.rug) {
       add(group, def.width, 0.025, def.depth, def.color || 0xd9822b, 0, 0.018, 0);
       add(group, def.width * 0.82, 0.028, def.depth * 0.72, (def.color || 0xd9822b) + 0x101010, 0, 0.03, 0);
@@ -5936,7 +6007,8 @@ function startDecorPlacement(type, storageKey = null) {
   const def = getDecorDef(type);
   const fromStorage = !!storageKey;
   const purchasePrice = def.price ?? DECOR_PRICE;
-  if (!fromStorage && G.money < purchasePrice) { showToast('❌ Нужно ' + fmt(purchasePrice) + '₽'); return; }
+  if (!validateStoreFacilityPlacement(def, fromStorage)) return false;
+  if (!fromStorage && G.money < purchasePrice) { showToast('❌ Нужно ' + fmt(purchasePrice) + '₽'); return false; }
   pendingDecorId = def.id;
   pendingDecorStorageKey = storageKey;
   decorPlaceMode = true;
@@ -5954,9 +6026,10 @@ function startDecorPlacement(type, storageKey = null) {
   const ph = document.getElementById('place-hint');
   if (bb) bb.style.display = 'none';
   if (ph) {
-    ph.textContent = def.id === 'glass_elevator' ? '🛗 Нажмите на свободное место — поставить стеклянный лифт' : (def.place === 'wall' ? '👆 Нажми на стену — повесить декор' : '👆 Нажми на пол — поставить декор');
-    ph.style.display = def.id === 'glass_elevator' ? 'block' : 'none';
+    ph.textContent = def.id === 'glass_elevator' ? '🛗 Нажмите на свободное место — поставить стеклянный лифт' : (def.place === 'wall' ? '👆 Нажми на стену — повесить декор' : '👆 Нажми на пол — поставить объект');
+    ph.style.display = (def.id === 'glass_elevator' || def.facility) ? 'block' : 'none';
   }
+  return true;
 }
 
 function stopDecorPlaceMode() {
@@ -5974,6 +6047,10 @@ function placeDecorFromTap(clientX, clientY) {
   if (!def) return;
   const fromStorage = !!pendingDecorStorageKey;
   const purchasePrice = def.price ?? DECOR_PRICE;
+  if (!validateStoreFacilityPlacement(def, fromStorage)) {
+    stopDecorPlaceMode();
+    return;
+  }
   if (!fromStorage && G.money < purchasePrice) {
     showToast('❌ Нужно ' + fmt(purchasePrice) + '₽');
     stopDecorPlaceMode();
@@ -6006,6 +6083,7 @@ function placeDecorFromTap(clientX, clientY) {
 
   if (fromStorage) {
     removeEquipmentFromStorage(pendingDecorStorageKey, 1);
+    updateHUD();
     renderWarehouseModal();
   } else {
     G.money -= purchasePrice;
@@ -9365,8 +9443,12 @@ function clampRating(n) {
 }
 
 function getStoreRatingDetails() {
-  const decorCount = (typeof decorations !== 'undefined' && Array.isArray(decorations)) ? decorations.length : 0;
+  const allDecor = (typeof decorations !== 'undefined' && Array.isArray(decorations)) ? decorations : [];
+  const facilityDecor = allDecor.filter(item => getDecorDef(item.type).facility);
+  const decorCount = allDecor.length - facilityDecor.length;
   const decorScore = decorCount * 2;
+  const facilityCount = facilityDecor.length;
+  const facilityScore = facilityDecor.reduce((sum, item) => sum + (getDecorDef(item.type).ratingBonus || 5), 0);
 
   let stockedShelves = 0;
   let dirtyShelves = 0;
@@ -9384,7 +9466,7 @@ function getStoreRatingDetails() {
   const workerScore = (extraCashiers + extraSellers) * 10;
 
   const serviceScore = G.ratingServiceDelta || 0;
-  const raw = decorScore + shelfScore + dirtyPenalty + workerScore + serviceScore;
+  const raw = decorScore + facilityScore + shelfScore + dirtyPenalty + workerScore + serviceScore;
   const calculatedRating = clampRating(raw);
   const hasDeveloperOverride = G.developerRatingOverride !== null
     && G.developerRatingOverride !== undefined
@@ -9396,6 +9478,7 @@ function getStoreRatingDetails() {
   return {
     rating,
     decorCount, decorScore,
+    facilityCount, facilityScore,
     stockedShelves, shelfScore,
     dirtyShelves, dirtyPenalty,
     extraWorkers: extraCashiers + extraSellers,
@@ -9483,6 +9566,7 @@ function renderRatingStatsModal() {
   if (breakdown) {
     breakdown.innerHTML = `
       <div><span>Декорации: ${d.decorCount} × 2%</span><b>+${d.decorScore}%</b></div>
+      <div><span>Примерочные / проверка техники: ${d.facilityCount} × 5%</span><b>+${d.facilityScore}%</b></div>
       <div><span>Заполненные витрины: ${d.stockedShelves} × 5%</span><b>+${d.shelfScore}%</b></div>
       <div><span>Неубранные витрины: ${d.dirtyShelves} × −10%</span><b>${d.dirtyPenalty}%</b></div>
       <div><span>Доп. кассиры/продавцы: ${d.extraWorkers} × 10%</span><b>+${d.workerScore}%</b></div>
@@ -9673,6 +9757,7 @@ const SHOP_SUBCATEGORIES = {
   ],
   store: [
     { id:'all', name:'Все категории' },
+    { id:'facilities', name:'🚪 Примерочные' },
     { id:'expansion', name:'🏗 Расширение' },
     { id:'shelves', name:'🪟 Витрины' },
     { id:'staff', name:'👥 Персонал' },
@@ -9694,7 +9779,11 @@ const activeSubcatByCategory = {
 };
 
 function getShopSubcategories(categoryId = activeCat) {
-  const list = SHOP_SUBCATEGORIES[categoryId] || [{ id:'all', name:'Все категории' }];
+  let list = SHOP_SUBCATEGORIES[categoryId] || [{ id:'all', name:'Все категории' }];
+  if (categoryId === 'store') {
+    const facilityName = G.shopType === 'electronics' ? '🧪 Проверка техники' : '🚪 Примерочные';
+    list = list.map(item => item.id === 'facilities' ? { ...item, name:facilityName } : item);
+  }
   if (categoryId === 'design' && (G.currentFloor || 1) === 2) {
     return list.filter(item => item.id !== 'doors');
   }
@@ -10086,7 +10175,7 @@ function getEquipmentDef(kind, type) {
   }
   if (kind === 'decor') {
     const v = DECOR_VARIANTS.find(x => x.id === type) || DECOR_VARIANTS[0];
-    return { kind, type: v.id, name: v.name, emoji: v.emoji || '🛋️', price: v.price ?? DECOR_PRICE, place: v.place, special: !!v.special };
+    return { kind, type: v.id, name: v.name, emoji: v.emoji || '🛋️', price: v.price ?? DECOR_PRICE, place: v.place, special: !!v.special, facility:!!v.facility, shopType:v.shopType || null, ratingBonus:v.ratingBonus || 0 };
   }
   if (kind === 'innerWall') {
     const axis = type === 'z' ? 'z' : 'x';
@@ -10304,7 +10393,7 @@ function renderProductList() {
     }
 
     if (showSubcat('decor')) {
-      DECOR_VARIANTS.filter(dv => !dv.special).forEach(dv => {
+      DECOR_VARIANTS.filter(dv => !dv.special && !dv.facility).forEach(dv => {
         const can = G.money >= DECOR_PRICE;
         const el = document.createElement('div');
         el.className = 'prod-row' + (can ? '' : ' cant');
@@ -10364,6 +10453,41 @@ function renderProductList() {
   }
 
   if (activeCat === 'store') {
+    if (showSubcat('facilities')) {
+      const facility = getStoreFacilityDef();
+      if (facility) {
+        const level = G.level || 1;
+        const unlockLevel = facility.unlockLevel || 3;
+        const secondUnlockLevel = facility.secondUnlockLevel || 10;
+        const limit = getStoreFacilityLimit(level);
+        const owned = countOwnedStoreFacility(facility.id);
+        const unlocked = level >= unlockLevel;
+        const limitReached = owned >= limit;
+        const canBuy = unlocked && !limitReached && G.money >= facility.price;
+        let statusText = facility.desc;
+        if (!unlocked) statusText = 'Откроется на уровне ' + unlockLevel;
+        else if (limitReached && level < secondUnlockLevel) statusText = 'Первая установлена · вторая откроется на уровне ' + secondUnlockLevel;
+        else if (limitReached) statusText = 'Достигнут лимит: 2 объекта';
+        else if (level >= secondUnlockLevel) statusText = facility.desc + ' · доступно до 2 объектов';
+        else statusText = facility.desc + ' · сейчас доступен 1 объект';
+
+        const el = document.createElement('div');
+        el.className = 'prod-row' + (canBuy ? '' : ' cant');
+        el.innerHTML = `
+          <div class="pr-emoji">${unlocked ? facility.emoji : '🔒'}</div>
+          <div class="pr-info">
+            <div class="pr-name">${facility.name}</div>
+            <div class="pr-sub">${statusText}</div>
+          </div>
+          <div class="pr-right">
+            <div class="pr-price">${unlocked ? ('💰' + fmt(facility.price)) : ('🔒 Ур.' + unlockLevel)}</div>
+            <div class="pr-profit" style="color:#aaa">${owned}/${limit || 1}</div>
+          </div>`;
+        if (unlocked && !limitReached) el.onclick = () => startStoreFacilityPlacement(facility.id);
+        list.appendChild(el);
+      }
+    }
+
     if (showSubcat('expansion')) {
       const completedExpansions = getCompletedShopExpansions();
       const expansionMaxed = G.shopStage >= SHOP_STAGE_MAX;
@@ -11560,6 +11684,7 @@ function storeEquipmentFromTap(clientX, clientY) {
     const type = decor.type;
     if (removeDecorById(id)) {
       addEquipmentToStorage('decor', type, 1);
+      updateHUD();
       showToast('📦 Декорация убрана на склад');
       warehouseTab = 'objects';
     }
@@ -12152,7 +12277,10 @@ function editorActionStore() {
 
   if (sel.type === 'decor') {
     const decor = decorations.find(d => d.id === sel.id);
-    if (decor && removeDecorById(sel.id)) addEquipmentToStorage('decor', decor.type, 1);
+    if (decor && removeDecorById(sel.id)) {
+      addEquipmentToStorage('decor', decor.type, 1);
+      updateHUD();
+    }
   } else if (sel.type === 'innerWall') {
     const wall = internalWalls.find(w => w.id === sel.id);
     if (wall && removeInternalWallById(sel.id)) addEquipmentToStorage('innerWall', wall.axis, 1);
@@ -13102,7 +13230,8 @@ function placeEquipmentFromStorage(key) {
       showToast('🛗 Стеклянный лифт устанавливается только на первом этаже');
       return;
     }
-    closeWarehouseModal();
+    const def = getDecorDef(item.type);
+    if (!validateStoreFacilityPlacement(def, true)) return;
     if (item.type === 'glass_elevator') enterEditorMode();
     startDecorPlacement(item.type, key);
     return;
