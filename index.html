@@ -2139,10 +2139,29 @@ function renderQuestsModal() {
   list.appendChild(card);
 }
 
+// Каждый HUD открывается как при первом входе: без сохранённой прокрутки.
+function resetModalViewState(modalId) {
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+
+  const resetScroll = () => {
+    modal.scrollTop = 0;
+    modal.scrollLeft = 0;
+    modal.querySelectorAll('*').forEach(element => {
+      if ('scrollTop' in element) element.scrollTop = 0;
+      if ('scrollLeft' in element) element.scrollLeft = 0;
+    });
+  };
+
+  resetScroll();
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(resetScroll);
+}
+
 function openQuestsModal() {
   initQuestSystem();
   renderQuestsModal();
   document.getElementById('questsModal')?.classList.add('show');
+  resetModalViewState('questsModal');
 }
 
 function closeQuestsModal() {
@@ -2863,6 +2882,7 @@ function openSettingsModal() {
   updateDeveloperRatingUI();
   updateDeveloperSeasonUI();
   document.getElementById('settingsModal').classList.add('show');
+  resetModalViewState('settingsModal');
 }
 
 function closeSettingsModal() {
@@ -9424,6 +9444,7 @@ function openMenuStyleModal() {
   closeWorkersModal();
   const modal = document.getElementById('menuStyleModal');
   if (modal) modal.classList.add('show');
+  resetModalViewState('menuStyleModal');
 }
 
 function closeMenuStyleModal() {
@@ -9503,9 +9524,13 @@ function updateRatingUI() {
 
 function openRatingModal() {
   closeMenuStyleModal();
+  closeRatingStatsModal();
+  closeWorkersModal();
+  closeWorkerStyleModal();
   updateRatingUI();
   const m = document.getElementById('ratingModal');
   if (m) m.classList.add('show');
+  resetModalViewState('ratingModal');
 }
 
 function closeRatingModal() {
@@ -9584,6 +9609,7 @@ function openRatingStatsModal() {
   closeWorkersModal();
   const m = document.getElementById('ratingStatsModal');
   if (m) m.classList.add('show');
+  resetModalViewState('ratingStatsModal');
 }
 function closeRatingStatsModal() {
   const m = document.getElementById('ratingStatsModal');
@@ -9627,6 +9653,7 @@ function openWorkersModal() {
   closeRatingStatsModal();
   const m = document.getElementById('workersModal');
   if (m) m.classList.add('show');
+  resetModalViewState('workersModal');
 }
 function closeWorkersModal() {
   const m = document.getElementById('workersModal');
@@ -9650,6 +9677,7 @@ function openWorkerStyleModal(type) {
   closeWorkersModal();
   const m = document.getElementById('workerStyleModal');
   if (m) m.classList.add('show');
+  resetModalViewState('workerStyleModal');
 }
 function closeWorkerStyleModal() {
   const m = document.getElementById('workerStyleModal');
@@ -10209,10 +10237,21 @@ function getEquipmentSellPrice(item) {
 
 
 function openShopModal() {
+  // Магазин всегда начинается с первой основной категории и «Все категории».
+  const available = getAvailableCategories();
+  activeCat = available.length ? available[0].id : (G.shopType === 'electronics' ? 'tech' : 'clothes');
+  Object.keys(activeSubcatByCategory).forEach(categoryId => {
+    activeSubcatByCategory[categoryId] = 'all';
+  });
+  activeProductId = null;
+  buyQty = 1;
+  closeItemModal();
+
   renderCatTabs();
   renderSubcatTabs();
   renderProductList();
   document.getElementById('shopModal').classList.add('show');
+  resetModalViewState('shopModal');
   notifyGameEvent('shop_opened', 1);
   updateTutorialSpotlight();
 }
@@ -10664,6 +10703,7 @@ function showItemDetail(p) {
   buyQty = 1;
   renderItemDetail();
   document.getElementById('itemModal').classList.add('show');
+  resetModalViewState('itemModal');
   notifyGameEvent('product_viewed', 1, { productId:p.id });
   updateTutorialSpotlight();
 }
@@ -11965,6 +12005,7 @@ function openShelvesModal() {
   });
 
   document.getElementById('shelvesModal').classList.add('show');
+  resetModalViewState('shelvesModal');
 }
 
 // ── РЕДАКТОР ОБЪЕКТОВ ──
@@ -12825,9 +12866,10 @@ function openShelfDetailModal(slotIdx) {
   const item = G.slots[slotIdx];
   if (!item) return;
   shelfMoveSlotIdx = slotIdx;
-  shelfMoveQty = Math.max(1, Math.min(item.qty - 1, shelfMoveQty || 1));
+  shelfMoveQty = item.qty > 1 ? 1 : 0;
   renderShelfDetailModal();
   document.getElementById('shelfDetailModal').classList.add('show');
+  resetModalViewState('shelfDetailModal');
 }
 
 function renderShelfDetailModal() {
@@ -12941,17 +12983,16 @@ function finishShelfCleanup(slotIdx) {
 }
 
 function openWarehouseModal() {
-  if (warehouseTab === 'products') {
-    const tutorialStep = tutorialActive ? TUTORIAL_STEPS[tutorialStepIndex] : null;
-    const hasDeliveries = (G.deliveries || []).some(d => d.readyAt > Date.now());
-    if (tutorialStep?.id === 'delivery') warehouseProductTab = 'transit';
-    else if (tutorialStep?.id === 'stock') {
-      // Сохраняем текущую вкладку, чтобы обучение подсветило «На складе» отдельным действием.
-      warehouseProductTab = warehouseProductTab === 'stock' ? 'stock' : 'transit';
-    } else warehouseProductTab = hasDeliveries ? 'transit' : 'stock';
-  }
+  // Склад всегда открывается с первой страницы: «Товары» → «В пути».
+  warehouseTab = 'products';
+  warehouseProductTab = 'transit';
+  Object.keys(warehousePlaceQty).forEach(productId => {
+    warehousePlaceQty[productId] = 1;
+  });
+
   renderWarehouseModal();
   document.getElementById('warehouseModal').classList.add('show');
+  resetModalViewState('warehouseModal');
   updateTutorialSpotlight();
 }
 function closeWarehouseModal() {
@@ -13284,6 +13325,7 @@ function openCashModal() {
     </div>
     <button class="btn-buy" onclick="collectAllRevenue()">Забрать всё</button>`;
   document.getElementById('cashModal').classList.add('show');
+  resetModalViewState('cashModal');
 }
 
 function collectAllRevenue() {
