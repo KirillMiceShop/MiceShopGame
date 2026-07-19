@@ -702,6 +702,7 @@
 
   /* EVENT LOG */
   #event-log {
+    display:none !important;
     position:fixed; left:10px; top:241px;
     width:160px; z-index:10; pointer-events:none;
   }
@@ -4032,7 +4033,7 @@ function handleTap(clientX, clientY) {
         highlightShelf(idx);
         const item = G.slots[idx];
         if (!item) {
-          showToast('💡 Открой магазин чтобы добавить товар');
+          showToast('❌ Витрина пустая. Открой магазин или склад, выбери товар и выставь его на витрину.', '#e94560ee');
         } else if (item.soldOut || item.qty <= 0) {
           startShelfCleanup(idx);
         } else {
@@ -8772,6 +8773,7 @@ function sellOneUnitFromShelf(slotIdx, reason = 'timer') {
   G.pendingItems.push({ name: item.product.name, emoji: item.product.emoji, amount: saleAmount });
   G.totalSold++;
   addXP(item.product.xp);
+  showToast('🛍 Товар продан: ' + item.product.name + ' ×1 · ' + fmtFull(saleAmount) + '₽');
   // Продажа по таймеру не управляет покупателями. Покупатели — только визуальная жизнь магазина.
 
   if (item.qty <= 0) {
@@ -9161,13 +9163,9 @@ function getCustomerSpawnIntervalMs() {
 //  EVENT LOG
 // ══════════════════════════════════════
 function logEvent(msg) {
-  const log = document.getElementById('event-log');
-  const entry = document.createElement('div');
-  entry.className = 'log-entry';
-  entry.textContent = msg;
-  log.insertBefore(entry, log.firstChild);
-  if (log.children.length > 5) log.removeChild(log.lastChild);
-  setTimeout(() => entry.remove(), 5000);
+  // Обычный журнал событий отключён: он дублировал игровые действия
+  // и перегружал левую часть экрана. Важные ошибки показывает showToast().
+  return;
 }
 
 // ══════════════════════════════════════
@@ -9188,12 +9186,51 @@ function fmtTime(s) {
   if (s<60) return s+'с';
   return Math.floor(s/60)+'м'+(s%60>0?' '+s%60+'с':'');
 }
+let toastHideTimer = null;
+function getToastDisplayType(msg, color = '') {
+  const text = String(msg || '').trim();
+  const lower = text.toLowerCase();
+  const rawColor = String(color || '').toLowerCase();
+  if (!text) return null;
+
+  // Из обычных игровых событий оставляем только три нужных уведомления.
+  if (
+    text.startsWith('📦 Товар выставлен:') ||
+    text.startsWith('📦 Доставка приехала:') ||
+    text.startsWith('🛍 Товар продан:')
+  ) return 'event';
+
+  // Ошибки и необходимые действия по-прежнему показываются красным.
+  if (rawColor.includes('e94560')) return 'warning';
+  if (text.startsWith('❌') || text.startsWith('⚠') || text.startsWith('🔒')) return 'warning';
+
+  if ([
+    'недостаточно', 'не хватает', 'нельзя', 'нужно ', 'нет прибыли',
+    'нет денег', 'нет такого количества', 'нет места', 'не получилось',
+    'место занято', 'слишком близко', 'сначала ', 'максимум', 'лимит',
+    'не добавлен', 'размещение отменено', 'перед дверью',
+    'откроется на уровне', 'достигнут лимит', 'витрина пустая'
+  ].some(fragment => lower.includes(fragment))) return 'warning';
+
+  return null;
+}
+function shouldShowBlockingToast(msg, color = '') {
+  return getToastDisplayType(msg, color) !== null;
+}
 function showToast(msg, color='#00c896') {
+  const displayType = getToastDisplayType(msg, color);
+  if (!displayType) return;
   const t = document.getElementById('toast');
+  if (!t) return;
   t.textContent = msg;
-  t.style.background = color+'ee';
+  t.style.background = displayType === 'warning' ? '#e94560ee' : color;
+  t.style.color = '#fff';
   t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 2200);
+  if (toastHideTimer) clearTimeout(toastHideTimer);
+  toastHideTimer = setTimeout(() => {
+    t.classList.remove('show');
+    toastHideTimer = null;
+  }, 2200);
 }
 function addXP(amount) {
   G.xp += Math.max(0, amount || 0);
@@ -12618,7 +12655,7 @@ function placeItem(productId, slotIdx, qty = 1, fromStorage = false) {
       existing.activeSalePrice = getSeasonalSellPrice(p);
     }
     refreshShelfItemVisual(slotIdx);
-    showToast('📦 +' + qty + ' шт ' + p.name + ' → витрина ' + (slotIdx+1));
+    showToast('📦 Товар выставлен: ' + p.name + ' ×' + qty + ' → витрина ' + (slotIdx+1));
     logEvent('📦 Пополнение: ' + p.emoji + ' ' + p.name + ' +' + qty + ' шт');
   } else {
     G.slots[slotIdx] = {
@@ -12631,7 +12668,7 @@ function placeItem(productId, slotIdx, qty = 1, fromStorage = false) {
       discountedQty: storageTake.discountedQty || 0
     };
     createItemMesh(p, slotIdx);
-    showToast('📦 ' + p.name + ' ×' + qty + ' → витрина ' + (slotIdx+1) + '!');
+    showToast('📦 Товар выставлен: ' + p.name + ' ×' + qty + ' → витрина ' + (slotIdx+1));
     logEvent('📦 ' + p.emoji + ' ' + p.name + ' ×' + qty + ' → витрина ' + (slotIdx+1));
   }
 
@@ -13087,7 +13124,7 @@ function placeEquipmentFromStorage(key) {
 
 function openCashModal() {
   if (G.pendingRevenue <= 0) {
-    showToast('💡 Пока нет прибыли для сбора');
+    showToast('❌ Пока нет прибыли для сбора', '#e94560ee');
     return;
   }
   const box = document.getElementById('cashModalBox');
