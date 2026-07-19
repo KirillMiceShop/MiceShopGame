@@ -3943,9 +3943,9 @@ function handleTap(clientX, clientY) {
         if (removed) {
           const def = getEquipmentDef('innerWall', removed.axis);
           const price = getEquipmentSellPrice(def);
-          G.money += price;
+          G.crystals += price;
           updateHUD();
-          showToast('🗑 Внутренняя стена продана за ' + fmt(price) + '₽ · режим продажи активен');
+          showToast('🗑 Внутренняя стена продана за ' + price + '💎 · режим продажи активен');
         }
         return;
       }
@@ -4499,7 +4499,7 @@ const MAX_DOORS = 2;
 
 // ── ВНУТРЕННИЕ СТЕНЫ ──
 // Наружные стены не трогаем. Эти стены — отдельные куски внутри магазина.
-const INTERNAL_WALL_PRICE = 300;
+const INTERNAL_WALL_CRYSTAL_PRICE = 1;
 const INTERNAL_WALL_LEN = WINDOW_W; // один кусок = размер окна
 const INTERNAL_WALL_THICK = 0.25;
 // Общая сетка размещения напольных объектов. Витрины, кассы, декор и
@@ -5562,8 +5562,8 @@ function startInternalWallBuild(axis = 'x', storageKey = null) {
   if (bb) bb.style.display = 'none';
   if (mh) {
     mh.textContent = pendingInternalWallAxis === 'x'
-      ? '🧱 Стена ↔: нажимай по полу, каждый кусок 300₽'
-      : '🧱 Стена ↕: нажимай по полу, каждый кусок 300₽';
+      ? '🧱 Стена ↔: нажимай по полу, каждый кусок 1💎'
+      : '🧱 Стена ↕: нажимай по полу, каждый кусок 1💎';
     mh.style.display = 'none';
   }
   if (mc) mc.style.display = 'block';
@@ -5588,8 +5588,8 @@ function placeInternalWallFromTap(clientX, clientY) {
   const z = snapInternalWallCoord(pt.z);
 
   const fromStorage = !!pendingInternalWallStorageKey;
-  if (!fromStorage && G.money < INTERNAL_WALL_PRICE) {
-    showToast('❌ Нужно 300₽ за кусок стены', '#e94560ee');
+  if (!fromStorage && G.crystals < INTERNAL_WALL_CRYSTAL_PRICE) {
+    showToast('❌ Нужен 1💎 за кусок стены', '#e94560ee');
     return;
   }
 
@@ -5625,9 +5625,9 @@ function placeInternalWallFromTap(clientX, clientY) {
     pendingInternalWallStorageKey = null;
     updateHUD();
   } else {
-    G.money -= INTERNAL_WALL_PRICE;
+    G.crystals -= INTERNAL_WALL_CRYSTAL_PRICE;
     updateHUD();
-    showToast('🧱 Стена поставлена за 300₽');
+    showToast('🧱 Стена поставлена за 1💎');
   }
 }
 
@@ -10179,7 +10179,7 @@ function getEquipmentDef(kind, type) {
   }
   if (kind === 'innerWall') {
     const axis = type === 'z' ? 'z' : 'x';
-    return { kind, type: axis, name: axis === 'x' ? 'Внутренняя стена ↔' : 'Внутренняя стена ↕', emoji: '🧱', price: INTERNAL_WALL_PRICE };
+    return { kind, type: axis, name: axis === 'x' ? 'Внутренняя стена ↔' : 'Внутренняя стена ↕', emoji: '🧱', price: INTERNAL_WALL_CRYSTAL_PRICE, currency: 'crystals' };
   }
   return { kind, type, name: 'Оборудование', emoji: '⚙️', price: 0 };
 }
@@ -10380,13 +10380,13 @@ function renderProductList() {
         { axis:'x', name:'Внутренняя стена ↔', desc:'Кусок стены по горизонтали, размер как окно' },
         { axis:'z', name:'Внутренняя стена ↕', desc:'Кусок стены по вертикали, без диагоналей' },
       ].forEach(wallOpt => {
-        const can = G.money >= INTERNAL_WALL_PRICE;
+        const can = G.crystals >= INTERNAL_WALL_CRYSTAL_PRICE;
         const el = document.createElement('div');
         el.className = 'prod-row' + (can ? '' : ' cant');
         el.innerHTML = `
           <div class="pr-emoji">🧱</div>
           <div class="pr-info"><div class="pr-name">${wallOpt.name}</div><div class="pr-sub">${wallOpt.desc}</div></div>
-          <div class="pr-right"><div class="pr-price">💰${INTERNAL_WALL_PRICE}</div></div>`;
+          <div class="pr-right"><div class="pr-price">💎${INTERNAL_WALL_CRYSTAL_PRICE}</div></div>`;
         el.onclick = () => startInternalWallBuild(wallOpt.axis);
         list.appendChild(el);
       });
@@ -12324,8 +12324,13 @@ function editorActionSell() {
   } else if (sel.type === 'innerWall') {
     const wall = internalWalls.find(w => w.id === sel.id);
     if (wall) {
-      price = getEquipmentSellPrice(getEquipmentDef('innerWall', wall.axis));
+      const crystalRefund = getEquipmentSellPrice(getEquipmentDef('innerWall', wall.axis));
       removeInternalWallById(sel.id);
+      G.crystals += crystalRefund;
+      updateHUD();
+      editorSelection = null;
+      hideEditorActions();
+      return;
     }
   } else if (sel.type === 'door') {
     const door = doors.find(d => d.id === sel.id);
@@ -13138,11 +13143,14 @@ function renderEquipmentWarehouse(list) {
     const row = document.createElement('div');
     row.className = 'prod-row';
     const isLift = item.kind === 'decor' && item.type === 'glass_elevator';
+    const usesCrystals = item.currency === 'crystals';
+    const purchaseLabel = usesCrystals ? ('💎' + (item.price || 0)) : ('💰' + fmt(item.price || 0));
+    const sellLabel = usesCrystals ? ('💎' + sellPrice) : ('💰' + fmt(sellPrice));
     row.innerHTML = `
       <div class="pr-emoji">${item.emoji || '⚙️'}</div>
       <div class="pr-info">
         <div class="pr-name">${item.name} ×${item.count}</div>
-        <div class="pr-sub">${isLift ? 'Специальный объект второго этажа · продаже не подлежит' : ('Закупка: 💰' + fmt(item.price || 0) + ' · продажа со склада: 💰' + fmt(sellPrice))}</div>
+        <div class="pr-sub">${isLift ? 'Специальный объект второго этажа · продаже не подлежит' : ('Закупка: ' + purchaseLabel + ' · продажа со склада: ' + sellLabel)}</div>
       </div>
       <div class="pr-right" style="display:flex;flex-direction:column;gap:6px">
         <button class="btn-buy" style="padding:8px 10px;font-size:12px" onclick="placeEquipmentFromStorage('${key}')">Поставить</button>
@@ -13161,10 +13169,11 @@ function sellEquipmentFromStorage(key) {
   }
   const sellPrice = getEquipmentSellPrice(item);
   removeEquipmentFromStorage(key, 1);
-  G.money += sellPrice;
+  if (item.currency === 'crystals') G.crystals += sellPrice;
+  else G.money += sellPrice;
   updateHUD();
   renderWarehouseModal();
-  showToast('💰 ' + item.name + ' продано со склада за ' + fmt(sellPrice) + '₽');
+  showToast((item.currency === 'crystals' ? '💎 ' + item.name + ' продано со склада за ' + sellPrice + '💎' : '💰 ' + item.name + ' продано со склада за ' + fmt(sellPrice) + '₽'));
 }
 
 function placeEquipmentFromStorage(key) {
