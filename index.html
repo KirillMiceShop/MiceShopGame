@@ -346,6 +346,43 @@
     align-items:center;
     gap:10px;
   }
+  #salary-notifications {
+    width:min(230px, calc(100vw - 30px));
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:6px;
+    pointer-events:none;
+  }
+  .salary-notification {
+    max-width:100%;
+    padding:8px 11px;
+    border-radius:12px;
+    background:rgba(20,20,40,0.92);
+    border:1px solid rgba(255,255,255,0.14);
+    border-left:3px solid #f5c518;
+    box-shadow:0 6px 18px rgba(0,0,0,0.24);
+    color:#fff;
+    font-size:11px;
+    line-height:1.3;
+    font-weight:800;
+    opacity:0;
+    transform:translateX(-10px);
+    transition:opacity .18s ease, transform .18s ease;
+    backdrop-filter:blur(8px);
+    -webkit-backdrop-filter:blur(8px);
+  }
+  .salary-notification.show {
+    opacity:1;
+    transform:translateX(0);
+  }
+  .salary-notification.debt {
+    border-left-color:#e94560;
+  }
+  @media (orientation:landscape) and (max-height:600px) {
+    #salary-notifications { width:min(210px, calc(100vw - 24px)); }
+    .salary-notification { padding:6px 9px; font-size:9px; }
+  }
   #hud-resources {
     position:fixed;
     top:calc(env(safe-area-inset-top, 0px) + 10px);
@@ -1628,6 +1665,9 @@
     <div id="quest-hud-row">
       <button id="quest-btn" onclick="openQuestsModal()" aria-label="Квесты">📋</button>
     </div>
+
+    <!-- УВЕДОМЛЕНИЯ О ЗАРПЛАТЕ РАБОТНИКОВ -->
+    <div id="salary-notifications" aria-live="polite"></div>
   </div>
 </div>
 <div id="hud-resources" aria-label="Ресурсы магазина">
@@ -1937,6 +1977,9 @@ const G = {
   developerRatingOverride: null, // точный рейтинг, заданный через режим разработчика
   shelfRotations: Array(1).fill(0), // поворот витрин
   pendingSlot: null,
+  workerSalaryDebt: 0, // накопленная, но ещё не списанная зарплата
+  workerSalaryLastAccrualAt: null, // время последнего расчётного периода
+  workerSalaryHires: [], // купленные работники и их индивидуальные зарплаты
 };
 
 // Перемещаемый декор внутри магазина увеличен в 1,5 раза.
@@ -7253,8 +7296,13 @@ function buyWorker(type) {
   const limit = WORKER_LIMITS[type] || 0;
   if (getStaffCount(type) >= limit) { showToast('❌ Лимит сотрудников этого типа'); return; }
   if (G.money < WORKER_PRICE) { showToast('❌ Нужно ' + fmt(WORKER_PRICE) + '₽'); return; }
+
+  // Зарплата фиксируется в момент покупки. Первый купленный работник получает 200₽,
+  // следующий 400₽, затем 800₽ и так далее независимо от типа и этажа.
+  const workerSalary = getNextPurchasedWorkerSalary();
   G.money -= WORKER_PRICE;
   G.staff[type] = getStaffCount(type) + 1;
+  registerPurchasedWorkerSalary(type, workerSalary);
   createWorkerByType(type);
   applyWorkerStyles(type);
   updateHUD();
@@ -9966,6 +10014,144 @@ const WORKER_PRICE = 400;
 const WORKER_LIMITS = { cashier: 2, seller: 2, cleaner: 1, guard: 0 };
 const WORKER_UNLOCK_LEVELS = { cleaner: 5, seller: 8, cashier: 11, guard: MAX_LEVEL + 1 };
 const EXTRA_CASH_REGISTER_UNLOCK_LEVEL = 10;
+
+// ── ЗАРПЛАТЫ РАБОТНИКОВ ──
+// Два стартовых работника каждого этажа получают по 100₽.
+// Первый купленный работник получает 200₽, а каждый следующий — в 2 раза больше.
+const WORKER_SALARY_INTERVAL_MS = 10 * 60 * 1000;
+const WORKER_BASE_SALARY = 100;
+const WORKER_BASELINE_COUNTS = { cashier:1, seller:1, cleaner:0, guard:0 };
+let salaryNotificationCounter = 0;
+
+function getSalaryStaffSnapshots() {
+  const floors = new Map();
+  if (typeof shopFloorStates !== 'undefined') {
+    Object.values(shopFloorStates).forEach(state => {
+      if (state?.staff) floors.set(Number(state.floorNumber) || 1, state.staff);
+    });
+  }
+  floors.set(Number(G.currentFloor) || 1, G.staff || {});
+  return [...floors.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([floorNumber, staff]) => ({ floorNumber, staff }));
+}
+
+function getNextPurchasedWorkerSalary() {
+  ensureWorkerSalaryHireRecords();
+  const hireIndex = G.workerSalaryHires.length + 1;
+  return WORKER_BASE_SALARY * Math.pow(2, hireIndex);
+}
+
+function registerPurchasedWorkerSalary(type, salary = getNextPurchasedWorkerSalary()) {
+  if (!Array.isArray(G.workerSalaryHires)) G.workerSalaryHires = [];
+  G.workerSalaryHires.push({
+    floorNumber: Number(G.currentFloor) || 1,
+    type,
+    salary: Math.max(WORKER_BASE_SALARY, Math.round(Number(salary) || WORKER_BASE_SALARY)),
+  });
+}
+
+function ensureWorkerSalaryHireRecords() {
+  if (!Array.isArray(G.workerSalaryHires)) G.workerSalaryHires = [];
+
+  // Совместимость с состоянием, где дополнительные работники уже существуют,
+  // но ещё не имеют записей зарплаты из новой системы.
+  const roleOrder = ['cleaner', 'seller', 'cashier', 'guard'];
+  getSalaryStaffSnapshots().forEach(({ floorNumber, staff }) => {
+    roleOrder.forEach(type => {
+      const total = Math.max(0, Number(staff?.[type]) || 0);
+      const baseline = WORKER_BASELINE_COUNTS[type] || 0;
+      const expectedPurchased = Math.max(0, total - baseline);
+      const recorded = G.workerSalaryHires.filter(hire =>
+        Number(hire.floorNumber) === floorNumber && hire.type === type
+      ).length;
+      for (let i = recorded; i < expectedPurchased; i++) {
+        const hireIndex = G.workerSalaryHires.length + 1;
+        G.workerSalaryHires.push({
+          floorNumber,
+          type,
+          salary: WORKER_BASE_SALARY * Math.pow(2, hireIndex),
+        });
+      }
+    });
+  });
+}
+
+function getCurrentWorkerPayroll() {
+  ensureWorkerSalaryHireRecords();
+  const totalWorkers = getSalaryStaffSnapshots().reduce((sum, { staff }) => {
+    return sum + Object.values(staff || {}).reduce((staffSum, count) => staffSum + Math.max(0, Number(count) || 0), 0);
+  }, 0);
+  const purchasedWorkers = G.workerSalaryHires.length;
+  const starterWorkers = Math.max(0, totalWorkers - purchasedWorkers);
+  const purchasedPayroll = G.workerSalaryHires.reduce((sum, hire) => sum + Math.max(0, Number(hire.salary) || 0), 0);
+  return starterWorkers * WORKER_BASE_SALARY + purchasedPayroll;
+}
+
+function showSalaryNotification(text, kind = 'paid') {
+  const container = document.getElementById('salary-notifications');
+  if (!container) return;
+
+  const notification = document.createElement('div');
+  notification.className = 'salary-notification' + (kind === 'debt' ? ' debt' : '');
+  notification.dataset.salaryNotificationId = String(++salaryNotificationCounter);
+  notification.textContent = text;
+  container.appendChild(notification);
+
+  while (container.children.length > 3) container.firstElementChild?.remove();
+  requestAnimationFrame(() => notification.classList.add('show'));
+  setTimeout(() => {
+    notification.classList.remove('show');
+    setTimeout(() => notification.remove(), 220);
+  }, 5200);
+}
+
+function initializeWorkerSalarySystem(now = Date.now()) {
+  ensureWorkerSalaryHireRecords();
+  if (!Number.isFinite(Number(G.workerSalaryDebt)) || G.workerSalaryDebt < 0) G.workerSalaryDebt = 0;
+  if (G.workerSalaryLastAccrualAt === null
+      || G.workerSalaryLastAccrualAt === undefined
+      || !Number.isFinite(Number(G.workerSalaryLastAccrualAt))) {
+    G.workerSalaryLastAccrualAt = now;
+  }
+}
+
+function tryPayWorkerSalaryDebt() {
+  const debt = Math.max(0, Math.round(Number(G.workerSalaryDebt) || 0));
+  if (debt <= 0 || G.money < debt) return false;
+
+  G.money -= debt;
+  G.workerSalaryDebt = 0;
+  updateHUD();
+  showSalaryNotification('💼 Списание зарплаты — ' + fmtFull(debt) + '₽');
+  return true;
+}
+
+function updateWorkerSalarySystem(now = Date.now()) {
+  if (!gameStarted) return;
+  initializeWorkerSalarySystem(now);
+
+  const elapsed = now - Number(G.workerSalaryLastAccrualAt);
+  if (elapsed >= WORKER_SALARY_INTERVAL_MS) {
+    const periods = Math.max(1, Math.floor(elapsed / WORKER_SALARY_INTERVAL_MS));
+    const payroll = getCurrentWorkerPayroll();
+    const accrued = payroll * periods;
+    G.workerSalaryLastAccrualAt += periods * WORKER_SALARY_INTERVAL_MS;
+
+    if (accrued > 0) {
+      G.workerSalaryDebt = Math.max(0, Number(G.workerSalaryDebt) || 0) + accrued;
+      if (!tryPayWorkerSalaryDebt()) {
+        showSalaryNotification(
+          '💼 Зарплата начислена — ' + fmtFull(accrued) + '₽ · долг ' + fmtFull(G.workerSalaryDebt) + '₽',
+          'debt'
+        );
+      }
+    }
+  } else if ((Number(G.workerSalaryDebt) || 0) > 0) {
+    // Долг списывается целиком сразу после появления достаточной суммы.
+    tryPayWorkerSalaryDebt();
+  }
+}
 
 function getWorkerUnlockLevel(type) {
   return WORKER_UNLOCK_LEVELS[type] || MAX_LEVEL + 1;
@@ -13403,6 +13589,7 @@ function animate(now = performance.now()) {
   const gameNow = Date.now();
   updateSeasonCycle(gameNow);
   updatePassiveFloors(gameNow);
+  updateWorkerSalarySystem(gameNow);
 
   // Количество покупателей зависит от рейтинга магазина.
   // До 10% — 1 покупатель, 10% — 2, 20% — 3 и далее +1 за каждые 10%.
