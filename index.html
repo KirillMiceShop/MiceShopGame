@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- BUILD: tutorial-starter-equipment-v2 -->
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
@@ -1971,7 +1972,7 @@ const G = {
   liftBuilt: false,
   liftPosition: null,
   totalEarned: 0, totalSold: 0,
-  slots: Array(1).fill(null), // each: {product, qty, maxQty, nextSaleAt, soldOut}
+  slots: [], // новый магазин начинает обучение без установленных витрин
   storage: {}, // productId -> qty
   storageBatches: {}, // productId -> партии {qty, storedAt, displayed, multiplier}
   autoStocking: false, // автоматическая раскладка товаров продавцами выключена при старте
@@ -1983,7 +1984,7 @@ const G = {
   ratingHistory: [],
   ratingServiceDelta: 0, // бонус/штраф за визуальное обслуживание покупателей
   developerRatingOverride: null, // точный рейтинг, заданный через режим разработчика
-  shelfRotations: Array(1).fill(0), // поворот витрин
+  shelfRotations: [], // повороты появятся после покупки первой витрины
   pendingSlot: null,
   workerSalaryDebt: 0, // накопленная, но ещё не списанная зарплата
   workerSalaryLastAccrualAt: null, // время последнего расчётного периода
@@ -2223,10 +2224,117 @@ document.getElementById('questsModal')?.addEventListener('click', e => {
   if (e.target === document.getElementById('questsModal')) closeQuestsModal();
 });
 
+// Новый магазин начинает обучение без витрины и кассы.
+// Во время обучения стартовое оборудование покупается бесплатно,
+// а при пропуске обучения недостающие объекты создаются автоматически.
+let tutorialStarterStorePrepared = false;
+
+function getTutorialStarterShelfVariant() {
+  return getShelfVariantById(getDefaultShelfVariantId());
+}
+
+function isTutorialFreeStarterShelfPurchase(variant) {
+  const step = TUTORIAL_STEPS[tutorialStepIndex];
+  return !!(tutorialActive
+    && step?.id === 'buy_shelf'
+    && SHELF_POSITIONS.length === 0
+    && variant?.id === getDefaultShelfVariantId());
+}
+
+function isTutorialFreeStarterCashPurchase(variant) {
+  const step = TUTORIAL_STEPS[tutorialStepIndex];
+  return !!(tutorialActive
+    && step?.id === 'buy_cash'
+    && cashRegisters.length === 0
+    && variant?.id === CASH_REGISTER_VARIANTS[0]?.id);
+}
+
+function getTutorialStorePurchaseTarget(kind) {
+  const shopOpen = document.getElementById('shopModal')?.classList.contains('show');
+  if (!shopOpen) return document.getElementById('shop-main-btn');
+
+  if (activeCat !== 'store') {
+    return document.querySelector('#cat-tabs [data-category-id="store"]');
+  }
+
+  const subcategoryId = kind === 'cash' ? 'cash' : 'shelves';
+  if (getActiveShopSubcategory() !== subcategoryId) {
+    return document.querySelector(`#subcat-tabs [data-subcategory-id="${subcategoryId}"]`);
+  }
+
+  if (kind === 'cash') {
+    return document.querySelector(`#products-list [data-cash-variant-id="${CASH_REGISTER_VARIANTS[0]?.id || 'cash_classic'}"]`);
+  }
+  return document.querySelector(`#products-list [data-shelf-variant-id="${getDefaultShelfVariantId()}"]`);
+}
+
+function getTutorialProductTarget() {
+  const shopOpen = document.getElementById('shopModal')?.classList.contains('show');
+  if (!shopOpen) return document.getElementById('shop-main-btn');
+
+  const productCategoryId = G.shopType === 'electronics' ? 'tech' : 'clothes';
+  if (activeCat !== productCategoryId) {
+    return document.querySelector(`#cat-tabs [data-category-id="${productCategoryId}"]`);
+  }
+  return document.querySelector('#products-list .prod-row:not(.cant)');
+}
+
+function prepareInitialStoreForTutorial() {
+  if (tutorialStarterStorePrepared) return;
+
+  while (cashRegisters.length > 0) {
+    removeCashRegisterForStorage(cashRegisters.length - 1, true);
+  }
+  while (SHELF_POSITIONS.length > 0) {
+    const removed = removeShelfForStorage(SHELF_POSITIONS.length - 1);
+    if (!removed) break;
+  }
+
+  G.pendingSlot = null;
+  tutorialStarterStorePrepared = true;
+}
+
+function ensureTutorialStarterEquipment() {
+  if (SHELF_POSITIONS.length === 0) {
+    const variant = getTutorialStarterShelfVariant();
+    const idx = 0;
+    const x = 0;
+    const z = -1.0;
+    SHELF_POSITIONS.push([x, 0, z]);
+    G.slots.push(null);
+    G.shelfVariants.push(variant.id);
+    G.shelfRotations.push(0);
+    addShelfMesh(idx, x, z, variant.color, variant.topColor, variant.id);
+  }
+
+  if (cashRegisters.length === 0) {
+    addCashRegister(CASH_REGISTER_VARIANTS[0], -1.8, 2.0);
+  }
+
+  updateHUD();
+}
+
+function tutorialStepAlreadySatisfied(step) {
+  if (step?.id === 'buy_shelf') return SHELF_POSITIONS.length > 0;
+  if (step?.id === 'buy_cash') return cashRegisters.length > 0;
+  return false;
+}
+
+function advancePastSatisfiedTutorialSteps() {
+  let guard = 0;
+  while (tutorialActive && guard++ < TUTORIAL_STEPS.length) {
+    const step = TUTORIAL_STEPS[tutorialStepIndex];
+    if (!tutorialStepAlreadySatisfied(step)) break;
+    tutorialStepIndex = Math.min(TUTORIAL_STEPS.length - 1, tutorialStepIndex + 1);
+  }
+}
+
 const TUTORIAL_STEPS = [
-  { id:'welcome', title:'Добро пожаловать в MiceShop!', text:'За несколько шагов вы закажете товар, выставите его на витрину и совершите первую продажу.', manual:true, button:'Начать' },
-  { id:'shop', title:'Откройте магазин', text:'Нажмите кнопку «Магазин». Там находятся товары и оборудование.', event:'shop_opened', target:() => document.getElementById('shop-main-btn') },
-  { id:'product', title:'Выберите первый товар', text:'На 1 уровне доступен один стартовый товар. Нажмите на его карточку.', event:'product_viewed', target:() => document.querySelector('#products-list .prod-row:not(.cant)') },
+  { id:'welcome', title:'Добро пожаловать в MiceShop!', text:'Начнём с пустого магазина: бесплатно купим стартовую витрину и кассу, затем закажем товар и совершим первую продажу.', manual:true, button:'Начать' },
+  { id:'shop', title:'Откройте магазин', text:'Нажмите кнопку «Магазин». Сначала установим бесплатное стартовое оборудование.', event:'shop_opened', target:() => document.getElementById('shop-main-btn') },
+  { id:'buy_shelf', title:'Купите стартовую витрину', text:'Перейдите в «Для магазина» → «Витрины» и купите отмеченную стартовую витрину. В обучении она бесплатна.', event:'starter_shelf_bought', target:() => getTutorialStorePurchaseTarget('shelf') },
+  { id:'buy_cash', title:'Купите стартовую кассу', text:'Снова откройте магазин, перейдите в «Для магазина» → «Кассы» и купите стартовую кассу бесплатно.', event:'starter_cash_bought', target:() => getTutorialStorePurchaseTarget('cash') },
+  { id:'product', title:'Выберите первый товар', text:'Откройте магазин и выберите первый доступный товар.', event:'product_viewed', target:() => getTutorialProductTarget() },
   { id:'order', title:'Закажите товар', text:'Оставьте количество 1 и нажмите кнопку покупки. Товар отправится на склад.', event:'product_ordered', target:() => document.querySelector('#itemModalBox .btn-buy') },
   { id:'delivery', title:'Дождитесь доставки', text:'Откройте склад и следите за таймером во вкладке «В пути». При желании доставку можно ускорить за 1💎 — это необязательно.', event:'delivery_arrived', target:() => {
       const warehouseOpen = document.getElementById('warehouseModal')?.classList.contains('show');
@@ -2414,11 +2522,12 @@ function startTutorial() {
 
 function restartTutorial() {
   closeQuestsModal();
-  skipTutorial(true);
+  skipTutorial(true, false);
   setTimeout(startTutorial, 120);
 }
 
-function skipTutorial(silent = false) {
+function skipTutorial(silent = false, provideStarterEquipment = true) {
+  if (provideStarterEquipment) ensureTutorialStarterEquipment();
   tutorialActive = false;
   G.autoStocking = tutorialPreviousAutoStocking;
   if (tutorialPositionTimer) clearInterval(tutorialPositionTimer);
@@ -2429,7 +2538,7 @@ function skipTutorial(silent = false) {
   if (card) card.style.display = 'none';
   if (spot) spot.style.display = 'none';
   if (dim) dim.style.display = 'none';
-  if (!silent) showToast('🎓 Обучение можно повторить в меню квестов');
+  if (!silent) showToast('🎓 Обучение пропущено · стартовая витрина и касса установлены');
 }
 
 function finishTutorial() {
@@ -2440,7 +2549,7 @@ function finishTutorial() {
     updateHUD();
     showToast('🎓 Обучение завершено · 💰250 · 💎1', '#f5c518');
   }
-  skipTutorial(true);
+  skipTutorial(true, false);
 }
 
 function tutorialNext() {
@@ -2467,6 +2576,7 @@ function tutorialNotify(eventName, data = {}) {
 
 function renderTutorialStep() {
   if (!tutorialActive) return;
+  advancePastSatisfiedTutorialSteps();
   const step = TUTORIAL_STEPS[tutorialStepIndex];
   if (!step) return;
   const card = document.getElementById('tutorial-card');
@@ -2480,7 +2590,23 @@ function renderTutorialStep() {
   const visibleStep = Math.max(0, Math.min(actionCount, tutorialStepIndex));
   label.textContent = step.id === 'welcome' ? 'Короткое обучение' : step.id === 'complete' ? 'Готово' : 'Шаг ' + visibleStep + ' из ' + actionCount;
   title.textContent = step.title;
-  if (step.id === 'delivery' && document.getElementById('warehouseModal')?.classList.contains('show') && warehouseTab === 'products' && warehouseProductTab === 'transit') {
+  if ((step.id === 'buy_shelf' || step.id === 'buy_cash') && !document.getElementById('shopModal')?.classList.contains('show')) {
+    body.textContent = 'Откройте «Магазин», чтобы продолжить установку бесплатного стартового оборудования.';
+  } else if ((step.id === 'buy_shelf' || step.id === 'buy_cash') && activeCat !== 'store') {
+    body.textContent = 'Перейдите в основной раздел «Для магазина».';
+  } else if (step.id === 'buy_shelf' && getActiveShopSubcategory() !== 'shelves') {
+    body.textContent = 'Откройте подраздел «Витрины».';
+  } else if (step.id === 'buy_shelf') {
+    body.textContent = 'Нажмите на отмеченную стартовую витрину. Для обучения её цена — бесплатно.';
+  } else if (step.id === 'buy_cash' && getActiveShopSubcategory() !== 'cash') {
+    body.textContent = 'Откройте подраздел «Кассы».';
+  } else if (step.id === 'buy_cash') {
+    body.textContent = 'Нажмите на отмеченную стартовую кассу. Для обучения её цена — бесплатно.';
+  } else if (step.id === 'product' && !document.getElementById('shopModal')?.classList.contains('show')) {
+    body.textContent = 'Откройте «Магазин» и выберите первый доступный товар.';
+  } else if (step.id === 'product' && activeCat !== (G.shopType === 'electronics' ? 'tech' : 'clothes')) {
+    body.textContent = 'Перейдите в раздел товаров вашего магазина.';
+  } else if (step.id === 'delivery' && document.getElementById('warehouseModal')?.classList.contains('show') && warehouseTab === 'products' && warehouseProductTab === 'transit') {
     body.textContent = 'Дождитесь окончания таймера. При желании можно нажать ⚡ 1💎 и ускорить доставку — это необязательно.';
   } else if (step.id === 'delivery' && document.getElementById('warehouseModal')?.classList.contains('show')) {
     body.textContent = 'Перейдите во вкладку «В пути», чтобы увидеть таймер доставки.';
@@ -6971,9 +7097,9 @@ function updateDoor() {
 
 // ── ВИТРИНЫ (полки) ──
 // Позиции 6 витрин в магазине
-let SHELF_POSITIONS = [
-  [0, 0, -1.0], // стартовая витрина
-];
+// Новый магазин начинается пустым. Стартовая витрина создаётся только
+// после бесплатной покупки в обучении либо при пропуске обучения.
+let SHELF_POSITIONS = [];
 
 // Все витрины увеличены в 1,5 раза, чтобы их пропорции лучше соответствовали
 // дверям, окнам и размеру персонажей. Размер самого магазина не меняется.
@@ -7176,33 +7302,38 @@ function canPlaceCashRegister(idx, x, z, rotationOverride = null) {
 }
 
 function buyCashRegister(variant) {
-  if ((G.level || 1) < EXTRA_CASH_REGISTER_UNLOCK_LEVEL) {
+  const tutorialFree = isTutorialFreeStarterCashPurchase(variant);
+  if (!tutorialFree && (G.level || 1) < EXTRA_CASH_REGISTER_UNLOCK_LEVEL) {
     showToast('🔒 Дополнительная касса откроется на уровне ' + EXTRA_CASH_REGISTER_UNLOCK_LEVEL);
     return;
   }
-  if (G.money < variant.price) { showToast('❌ Недостаточно денег'); return; }
+  const price = tutorialFree ? 0 : variant.price;
+  if (G.money < price) { showToast('❌ Недостаточно денег'); return; }
   if (cashRegisters.length >= MAX_CASH_REGISTERS) { showToast('❌ Можно поставить максимум 2 кассы'); return; }
 
-  G.money -= variant.price;
+  G.money -= price;
   updateHUD();
 
   const idx = cashRegisters.length;
   const side = Math.min(2.0, SHOP_HALF - 1.6);
-  const x = idx === 0 ? -side : side;
-  const z = SHOP_HALF - 2.0;
+  const x = tutorialFree && idx === 0 ? -1.8 : (idx === 0 ? -side : side);
+  const z = tutorialFree && idx === 0 ? 2.0 : SHOP_HALF - 2.0;
   addCashRegister(variant, x, z);
   const routeStatus = getShopRouteConnectivityStatus();
   if (!routeStatus.ok) {
     removeCashRegisterForStorage(idx, true);
-    G.money += variant.price;
+    G.money += price;
     updateHUD();
     showRouteConnectivityBlockedToast(routeStatus);
     return;
   }
 
+  if (tutorialFree) notifyGameEvent('starter_cash_bought', 1, { variantId:variant.id });
   closeShopModal();
-  enterEditorMode();
-  showToast('✅ Касса куплена');
+  // Бесплатная касса завершает этап оборудования. Редактор здесь не включаем,
+  // иначе он скрывает кнопку «Магазин» перед шагом выбора первого товара.
+  if (!tutorialFree) enterEditorMode();
+  showToast(tutorialFree ? '✅ Стартовая касса установлена бесплатно' : '✅ Касса куплена');
 }
 function buyDoor(variant) {
   if ((G.currentFloor || 1) === 2) {
@@ -7225,8 +7356,8 @@ function buyDoor(variant) {
 }
 
 
-// Стартовая касса
-addCashRegister(CASH_REGISTER_VARIANTS[0], -1.8, 2.0);
+// Стартовая касса заранее не создаётся. Она появляется после бесплатной
+// покупки в обучении либо автоматически при пропуске обучения.
 
 // ── ПРОДАВЦЫ ──
 // Два продавца: один дежурит у кассы, второй ходит возле витрин. Каждые 3 минуты они меняются.
@@ -9915,6 +10046,7 @@ function renderSubcatTabs() {
   available.forEach(sub => {
     const t = document.createElement('div');
     t.className = 'subcat-tab' + (sub.id === current ? ' active' : '');
+    t.dataset.subcategoryId = sub.id;
     t.textContent = sub.name;
     t.onclick = () => {
       activeSubcatByCategory[activeCat] = sub.id;
@@ -10013,8 +10145,8 @@ function getShelfHitForPlacement(hits, product) {
 // Максимум витрин
 const MAX_SHELVES = 12;
 // Храним цвета купленных витрин
-G.shelfVariants = Array(1).fill(getDefaultShelfVariantId());
-G.shelfRotations = Array(1).fill(0);
+G.shelfVariants = [];
+G.shelfRotations = [];
 
 let activeCat = G.shopType === 'electronics' ? 'tech' : 'clothes';
 let pendingProduct = null; // товар ожидающий размещения
@@ -10494,6 +10626,7 @@ function renderCatTabs() {
   available.forEach(c => {
     const t = document.createElement('div');
     t.className = 'cat-tab' + (c.id === activeCat ? ' active' : '');
+    t.dataset.categoryId = c.id;
     t.textContent = c.name;
     t.onclick = () => {
       activeCat = c.id;
@@ -10806,18 +10939,20 @@ function renderProductList() {
       const currentCount = SHELF_POSITIONS.length;
       SHELF_VARIANTS.filter(isShelfVariantAllowedForShop).forEach(sv => {
         const unlockLevel = getShelfUnlockLevel(sv);
-        const unlocked = isShelfVariantUnlocked(sv);
-        const can = unlocked && G.money >= sv.price;
+        const tutorialFree = isTutorialFreeStarterShelfPurchase(sv);
+        const unlocked = tutorialFree || isShelfVariantUnlocked(sv);
+        const can = unlocked && (tutorialFree || G.money >= sv.price);
         const el = document.createElement('div');
+        el.dataset.shelfVariantId = sv.id;
         el.className = 'prod-row' + (can ? '' : ' cant');
         el.innerHTML = `
           <div class="pr-emoji" style="width:36px;height:36px;background:#${sv.color.toString(16).padStart(6,'0')};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${unlocked ? sv.emoji : '🔒'}</div>
           <div class="pr-info">
             <div class="pr-name">${sv.name}</div>
-            <div class="pr-sub">${unlocked ? ((sv.desc || 'Новая витрина') + ' · установлено ' + currentCount + '/' + MAX_SHELVES) : ('Откроется на уровне ' + unlockLevel)}</div>
+            <div class="pr-sub">${tutorialFree ? 'Стартовая витрина для обучения · установлено 0/' + MAX_SHELVES : (unlocked ? ((sv.desc || 'Новая витрина') + ' · установлено ' + currentCount + '/' + MAX_SHELVES) : ('Откроется на уровне ' + unlockLevel))}</div>
           </div>
           <div class="pr-right">
-            <div class="pr-price">${unlocked ? ('💰' + fmt(sv.price)) : ('🔒 Ур.' + unlockLevel)}</div>
+            <div class="pr-price">${tutorialFree ? 'Бесплатно' : (unlocked ? ('💰' + fmt(sv.price)) : ('🔒 Ур.' + unlockLevel))}</div>
             <div class="pr-profit" style="color:#aaa">${unlocked ? (currentCount + '/' + MAX_SHELVES) : ''}</div>
           </div>`;
         if (unlocked) el.onclick = () => buyShelf(sv);
@@ -10858,19 +10993,21 @@ function renderProductList() {
 
     if (showSubcat('cash')) {
       CASH_REGISTER_VARIANTS.forEach(cv => {
-        const unlocked = (G.level || 1) >= EXTRA_CASH_REGISTER_UNLOCK_LEVEL;
+        const tutorialFree = isTutorialFreeStarterCashPurchase(cv);
+        const unlocked = tutorialFree || (G.level || 1) >= EXTRA_CASH_REGISTER_UNLOCK_LEVEL;
         const limitReached = cashRegisters.length >= MAX_CASH_REGISTERS;
-        const can = unlocked && !limitReached && G.money >= cv.price;
+        const can = unlocked && !limitReached && (tutorialFree || G.money >= cv.price);
         const el = document.createElement('div');
+        el.dataset.cashVariantId = cv.id;
         el.className = 'prod-row' + (can ? '' : ' cant');
         el.innerHTML = `
           <div class="pr-emoji" style="width:36px;height:36px;background:#${cv.color.toString(16).padStart(6,'0')};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${unlocked ? cv.emoji : '🔒'}</div>
           <div class="pr-info">
             <div class="pr-name">${cv.name}</div>
-            <div class="pr-sub">${unlocked ? ('Касса для оплаты · максимум ' + MAX_CASH_REGISTERS) : ('Дополнительная касса откроется на уровне ' + EXTRA_CASH_REGISTER_UNLOCK_LEVEL)}</div>
+            <div class="pr-sub">${tutorialFree ? 'Стартовая касса для обучения' : (unlocked ? ('Касса для оплаты · максимум ' + MAX_CASH_REGISTERS) : ('Дополнительная касса откроется на уровне ' + EXTRA_CASH_REGISTER_UNLOCK_LEVEL))}</div>
           </div>
           <div class="pr-right">
-            <div class="pr-price">${unlocked ? ('💰' + fmt(cv.price)) : ('🔒 Ур.' + EXTRA_CASH_REGISTER_UNLOCK_LEVEL)}</div>
+            <div class="pr-price">${tutorialFree ? 'Бесплатно' : (unlocked ? ('💰' + fmt(cv.price)) : ('🔒 Ур.' + EXTRA_CASH_REGISTER_UNLOCK_LEVEL))}</div>
             <div class="pr-profit" style="color:#aaa">${cashRegisters.length}/${MAX_CASH_REGISTERS}</div>
           </div>`;
         if (unlocked && !limitReached) el.onclick = () => buyCashRegister(cv);
@@ -11025,16 +11162,18 @@ function getAutoShelfPosition(idx) {
 // ── ПОКУПКА ВИТРИНЫ ──
 function buyShelf(sv) {
   if (!isShelfVariantAllowedForShop(sv)) return;
-  if (!isShelfVariantUnlocked(sv)) {
+  const tutorialFree = isTutorialFreeStarterShelfPurchase(sv);
+  if (!tutorialFree && !isShelfVariantUnlocked(sv)) {
     showToast('🔒 ' + sv.name + ' откроется на уровне ' + getShelfUnlockLevel(sv), '#6b6b86');
     return;
   }
-  if (G.money < sv.price) { showToast('❌ Недостаточно денег'); return; }
+  const price = tutorialFree ? 0 : sv.price;
+  if (G.money < price) { showToast('❌ Недостаточно денег'); return; }
   if (SHELF_POSITIONS.length >= MAX_SHELVES) { showToast('❌ Достигнут лимит витрин'); return; }
-  G.money -= sv.price;
+  G.money -= price;
   updateHUD();
   const idx = SHELF_POSITIONS.length;
-  const shelfPlace = getAutoShelfPosition(idx);
+  const shelfPlace = tutorialFree && idx === 0 ? { x:0, z:-1.0 } : getAutoShelfPosition(idx);
   const nx = shelfPlace.x, nz = shelfPlace.z;
   SHELF_POSITIONS.push([nx, 0, nz]);
   G.slots.push(null);
@@ -11045,14 +11184,17 @@ function buyShelf(sv) {
   const routeStatus = getShopRouteConnectivityStatus();
   if (!routeStatus.ok) {
     removeShelfForStorage(idx);
-    G.money += sv.price;
+    G.money += price;
     updateHUD();
     showRouteConnectivityBlockedToast(routeStatus);
     return;
   }
+  if (tutorialFree) notifyGameEvent('starter_shelf_bought', 1, { variantId:sv.id, shelfIdx:idx });
   closeShopModal();
-  enterEditorMode();
-  showToast('✅ ' + sv.name + ' куплена!');
+  // Во время обучения сразу возвращаем игрока к HUD, чтобы кнопка «Магазин»
+  // оставалась доступной для следующего шага — покупки кассы.
+  if (!tutorialFree) enterEditorMode();
+  showToast(tutorialFree ? '✅ Стартовая витрина установлена бесплатно' : ('✅ ' + sv.name + ' куплена!'));
 }
 
 function addShelfMesh(i, x, z, bodyColor, topColor, variantId = 'shelf_brown') {
@@ -11755,6 +11897,7 @@ function chooseShopType(type) {
   initializeSeasonSystem();
   activeCat = type === 'electronics' ? 'tech' : 'clothes';
   rebuildStarterShelfForShopType();
+  prepareInitialStoreForTutorial();
   initializeShopFloorSystem();
 
   const config = SHOP_TYPES[type];
