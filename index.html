@@ -1629,6 +1629,103 @@
     #shop-type-screen .shop-type-name { font-size:16px!important; }
   }
 
+
+  /* КОМПАКТНОЕ ОКНО ПОВЫШЕНИЯ УРОВНЯ */
+  #levelUpModal { z-index:90; }
+  #levelUpModal .level-up-box {
+    width:min(230px, calc(100vw - 32px));
+    max-width:230px;
+    padding:15px 13px 13px;
+    border-radius:16px;
+    text-align:center;
+    max-height:78vh;
+    overflow-y:auto;
+  }
+  .level-up-icon { font-size:30px; line-height:1; }
+  .level-up-title {
+    margin-top:7px;
+    font-size:16px;
+    line-height:1.15;
+    font-weight:900;
+    color:var(--menu-text);
+  }
+  .level-up-reached {
+    margin-top:5px;
+    font-size:12px;
+    line-height:1.35;
+    font-weight:800;
+    color:var(--menu-secondary);
+  }
+  .level-up-available-label {
+    margin-top:13px;
+    font-size:10px;
+    line-height:1.2;
+    font-weight:900;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    color:var(--menu-muted);
+  }
+  .level-up-unlocks {
+    display:grid;
+    gap:6px;
+    margin-top:7px;
+    text-align:left;
+  }
+  .level-up-unlock-row {
+    display:flex;
+    align-items:center;
+    gap:8px;
+    min-height:34px;
+    padding:7px 8px;
+    border-radius:10px;
+    border:1px solid var(--menu-border);
+    background:var(--menu-card);
+    color:var(--menu-text);
+  }
+  .level-up-unlock-icon {
+    flex:0 0 23px;
+    width:23px;
+    text-align:center;
+    font-size:17px;
+    line-height:1;
+  }
+  .level-up-unlock-name {
+    min-width:0;
+    font-size:10px;
+    line-height:1.25;
+    font-weight:900;
+  }
+  .level-up-unlock-type {
+    margin-top:1px;
+    font-size:8px;
+    line-height:1.2;
+    font-weight:700;
+    color:var(--menu-muted);
+  }
+  .level-up-empty {
+    padding:9px 8px;
+    border-radius:10px;
+    border:1px solid var(--menu-border);
+    background:var(--menu-card);
+    color:var(--menu-muted);
+    font-size:9px;
+    line-height:1.3;
+    text-align:center;
+  }
+  .level-up-claim-btn {
+    width:100%;
+    margin-top:11px;
+    padding:10px 8px;
+    border:none;
+    border-radius:11px;
+    background:var(--menu-accent);
+    color:var(--menu-accent-text);
+    font-size:11px;
+    font-weight:900;
+    cursor:pointer;
+  }
+  .level-up-claim-btn:active { transform:scale(.97); }
+
 </style>
 </head>
 <body data-menu-style="standard">
@@ -1833,6 +1930,19 @@
       <div id="developerSeasonStatus">Текущий сезон: Зима</div>
     </div>
     <button type="button" class="modal-close" onclick="closeSettingsModal()" aria-label="Закрыть">✕</button>
+  </div>
+</div>
+
+
+<!-- КОМПАКТНОЕ ОКНО ПОВЫШЕНИЯ УРОВНЯ -->
+<div class="modal-bg" id="levelUpModal" role="dialog" aria-modal="true" aria-labelledby="levelUpTitle">
+  <div class="modal-box level-up-box">
+    <div class="level-up-icon">🎉</div>
+    <div class="level-up-title" id="levelUpTitle">Поздравляем!</div>
+    <div class="level-up-reached" id="levelUpReachedText">Вы достигли нового уровня</div>
+    <div class="level-up-available-label">Вам теперь доступно</div>
+    <div class="level-up-unlocks" id="levelUpUnlocks"></div>
+    <button type="button" class="level-up-claim-btn" onclick="claimLevelUpReward()">Забрать награду</button>
   </div>
 </div>
 
@@ -2501,6 +2611,8 @@ function isTutorialInteractionAllowed(event) {
 
   const element = event.target && event.target.nodeType === 1 ? event.target : null;
   if (element?.closest('#tutorial-skip-btn')) return true;
+  // Окно нового уровня должно оставаться доступным даже во время обучения.
+  if (element?.closest('#levelUpModal')) return true;
 
   const step = TUTORIAL_STEPS[tutorialStepIndex];
   // На приветственном и финальном экране нужна основная кнопка «Начать/Готово».
@@ -9548,28 +9660,130 @@ function showToast(msg, color='#00c896') {
     toastHideTimer = null;
   }, 2200);
 }
+
+// ── КОМПАКТНЫЕ УВЕДОМЛЕНИЯ О НОВОМ УРОВНЕ ──
+const levelUpNotificationQueue = [];
+let activeLevelUpNotification = null;
+
+function getLevelUnlockNotificationItems(level) {
+  const items = [];
+  const summary = getUnlockSummaryForLevels(level, level);
+
+  summary.products.forEach(product => {
+    items.push({ icon:product.emoji, name:product.name, type:'Новый товар' });
+  });
+
+  summary.shelves.forEach(entry => {
+    const shelf = getShelfVariantById(entry.id);
+    if (shelf) items.push({ icon:shelf.emoji || '🪟', name:shelf.name, type:'Новая витрина' });
+  });
+
+  // Показываем доступного работника на уровне, если он открывается именно сейчас.
+  if (typeof WORKER_UNLOCK_LEVELS !== 'undefined') {
+    Object.entries(WORKER_UNLOCK_LEVELS).forEach(([type, unlockLevel]) => {
+      if (unlockLevel !== level || type === 'guard') return;
+      const info = STAFF_TYPES_INFO[type];
+      if (info) items.push({ icon:info.emoji, name:info.single, type:'Новый работник' });
+    });
+  }
+
+  // Специальный объект магазина: первая и вторая доступная примерочная/зона проверки.
+  const facility = getStoreFacilityDef(G.shopType);
+  if (facility?.unlockLevel === level) {
+    items.push({ icon:facility.emoji, name:facility.name, type:'Новый объект магазина' });
+  }
+  if (facility?.secondUnlockLevel === level) {
+    items.push({ icon:facility.emoji, name:'Вторая: ' + facility.name, type:'Дополнительный объект' });
+  }
+
+  if (SHOP_EXPANSION_LEVELS.includes(level)) {
+    items.push({ icon:'🏪', name:'Расширение магазина', type:'Новое улучшение' });
+  }
+
+  if (level === SECOND_FLOOR_UNLOCK_LEVEL) {
+    items.push({ icon:'🛗', name:'Второй этаж магазина', type:'Новая возможность' });
+  }
+
+  return items;
+}
+
+function enqueueLevelUpNotification(level) {
+  const safeLevel = Math.max(1, Math.min(MAX_LEVEL, Number(level) || 1));
+  levelUpNotificationQueue.push({
+    level:safeLevel,
+    title:getLevelTitle(safeLevel),
+    items:getLevelUnlockNotificationItems(safeLevel),
+  });
+  showNextLevelUpNotification();
+}
+
+function showNextLevelUpNotification() {
+  if (activeLevelUpNotification || levelUpNotificationQueue.length === 0) return;
+
+  activeLevelUpNotification = levelUpNotificationQueue.shift();
+  const modal = document.getElementById('levelUpModal');
+  const reached = document.getElementById('levelUpReachedText');
+  const list = document.getElementById('levelUpUnlocks');
+  if (!modal || !reached || !list) {
+    activeLevelUpNotification = null;
+    return;
+  }
+
+  const data = activeLevelUpNotification;
+  reached.textContent = 'Вы достигли ' + data.level + ' уровня — ' + data.title;
+  list.innerHTML = '';
+
+  if (data.items.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'level-up-empty';
+    empty.textContent = 'На этом уровне новых предметов нет';
+    list.appendChild(empty);
+  } else {
+    data.items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'level-up-unlock-row';
+
+      const icon = document.createElement('div');
+      icon.className = 'level-up-unlock-icon';
+      icon.textContent = item.icon || '🔓';
+
+      const text = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'level-up-unlock-name';
+      name.textContent = item.name;
+      const type = document.createElement('div');
+      type.className = 'level-up-unlock-type';
+      type.textContent = item.type;
+      text.append(name, type);
+
+      row.append(icon, text);
+      list.appendChild(row);
+    });
+  }
+
+  modal.classList.add('show');
+}
+
+function claimLevelUpReward() {
+  const modal = document.getElementById('levelUpModal');
+  if (modal) modal.classList.remove('show');
+  activeLevelUpNotification = null;
+  setTimeout(showNextLevelUpNotification, 180);
+}
+
 function addXP(amount) {
   G.xp += Math.max(0, amount || 0);
   const previousLevel = G.level;
-  let levelsGained = 0;
+  const gainedLevels = [];
 
   while (G.level < MAX_LEVEL && G.xp >= LEVELS[G.level + 1].xp) {
     G.level++;
-    levelsGained++;
-    logEvent('⭐ Уровень '+G.level+' достигнут!');
+    gainedLevels.push(G.level);
+    logEvent('⭐ Уровень ' + G.level + ' достигнут!');
   }
 
-  if (levelsGained > 0) {
-    const title = getLevelTitle(G.level);
+  if (gainedLevels.length > 0) {
     const unlocks = getUnlockSummaryForLevels(previousLevel + 1, G.level);
-    const unlockedExpansionLevels = SHOP_EXPANSION_LEVELS.filter(level => previousLevel < level && G.level >= level);
-    const unlockCount = unlocks.products.length + unlocks.shelves.length + unlockedExpansionLevels.length;
-    const message = (levelsGained > 1
-      ? '🎉 Получено уровней: '+levelsGained+'! Теперь ур.'+G.level+' — '+title
-      : '🎉 Уровень '+G.level+'! '+title)
-      + (unlockCount > 0 ? ' · Открыто: '+unlockCount : '');
-    showToast(message, '#f5c518');
-
     if (unlocks.products.length) {
       logEvent('🔓 Товары: ' + unlocks.products.map(p => p.emoji + ' ' + p.name).join(', '));
     }
@@ -9577,9 +9791,9 @@ function addXP(amount) {
       const shelfNames = unlocks.shelves.map(item => getShelfVariantById(item.id).name);
       logEvent('🔓 Витрины: ' + shelfNames.join(', '));
     }
-    unlockedExpansionLevels.forEach(level => {
-      logEvent('🔓 Расширение магазина доступно с уровня ' + level);
-    });
+    SHOP_EXPANSION_LEVELS
+      .filter(level => previousLevel < level && G.level >= level)
+      .forEach(level => logEvent('🔓 Расширение магазина доступно с уровня ' + level));
 
     const shopModal = document.getElementById('shopModal');
     if (shopModal && shopModal.classList.contains('show')) {
@@ -9590,6 +9804,9 @@ function addXP(amount) {
 
   updateHUD();
   notifyGameEvent('level_reached', G.level || 1, { level:G.level || 1 });
+
+  // Если за одно начисление получено несколько уровней, показываем их по очереди.
+  gainedLevels.forEach(level => enqueueLevelUpNotification(level));
 }
 
 const MENU_STYLE_OPTIONS = [
