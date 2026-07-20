@@ -2036,7 +2036,7 @@
 <div class="modal-bg" id="questsModal">
   <div class="modal-box">
     <h3>📋 Квесты</h3>
-    <div style="font-size:11px;color:#888;margin:-4px 0 12px">Выполните текущее задание и нажмите «Забрать награду». После этого появится следующий квест.</div>
+    <div id="quests-modal-help" style="font-size:11px;color:#888;margin:-4px 0 12px">Выполните текущее задание и нажмите «Забрать награду». После этого появится следующий квест.</div>
     <div id="quests-list"></div>
     <button class="btn-back" style="margin-top:4px" onclick="restartTutorial()">🎓 Повторить обучение</button>
     <button type="button" class="modal-close" onclick="closeQuestsModal()" aria-label="Закрыть">✕</button>
@@ -2172,6 +2172,7 @@ function initQuestSystem() {
       progress: q.absolute && q.event === 'level_reached' ? (G.level || 1) : 0,
       completed: false,
       claimed: false,
+      completedDuringTutorial: false,
     };
   });
   questSystemReady = true;
@@ -2189,6 +2190,28 @@ function getActiveQuest() {
   return index >= 0 ? QUEST_DEFINITIONS[index] : null;
 }
 
+// Во время обучения следующий квест становится активным сразу после выполнения
+// предыдущего, даже если награда за предыдущий ещё не забрана.
+function getQuestProgressIndex() {
+  if (!tutorialActive) return getActiveQuestIndex();
+  return QUEST_DEFINITIONS.findIndex(q => {
+    const state = questState[q.id];
+    return state && !state.completed && !state.claimed;
+  });
+}
+
+function getQuestProgressTarget() {
+  const index = getQuestProgressIndex();
+  return index >= 0 ? QUEST_DEFINITIONS[index] : null;
+}
+
+function getPendingTutorialQuestRewards() {
+  return QUEST_DEFINITIONS.filter(quest => {
+    const state = questState[quest.id];
+    return !!(state?.completed && !state.claimed && state.completedDuringTutorial);
+  });
+}
+
 function rewardText(reward = {}) {
   const parts = [];
   if (reward.money) parts.push('💰' + fmt(reward.money));
@@ -2202,18 +2225,25 @@ function completeQuest(quest) {
   if (!state || state.completed || state.claimed) return;
   state.completed = true;
   state.progress = quest.target;
+  if (tutorialActive) state.completedDuringTutorial = true;
 
   showToast('✅ Квест выполнен: ' + quest.title + '. Откройте квесты и заберите награду.', '#f5c518');
   logEvent('📋 ' + quest.title + ' выполнен — награда ожидает');
   updateQuestUI();
 }
 
+function canClaimQuestReward(quest, state) {
+  if (!quest || !state?.completed || state.claimed) return false;
+  if (state.completedDuringTutorial) return true;
+  const active = getActiveQuest();
+  return !!active && active.id === quest.id;
+}
+
 function claimQuestReward(questId) {
   if (!questSystemReady) return;
   const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
-  const active = getActiveQuest();
   const state = quest ? questState[quest.id] : null;
-  if (!quest || !active || active.id !== quest.id || !state?.completed || state.claimed) return;
+  if (!canClaimQuestReward(quest, state)) return;
 
   state.claimed = true;
   const reward = quest.reward || {};
@@ -2234,7 +2264,7 @@ function claimQuestReward(questId) {
 function notifyGameEvent(eventName, amount = 1, data = {}) {
   if (!questSystemReady && gameStarted) initQuestSystem();
 
-  const quest = getActiveQuest();
+  const quest = tutorialActive ? getQuestProgressTarget() : getActiveQuest();
   if (quest) {
     const state = questState[quest.id];
     if (!state.completed && !state.claimed && quest.event === eventName) {
@@ -2256,24 +2286,11 @@ function updateQuestUI() {
   if (document.getElementById('questsModal')?.classList.contains('show')) renderQuestsModal();
 }
 
-function renderQuestsModal() {
-  const list = document.getElementById('quests-list');
-  if (!list || !questSystemReady) return;
-  list.innerHTML = '';
-
-  const quest = getActiveQuest();
-  if (!quest) {
-    const empty = document.createElement('div');
-    empty.className = 'quest-empty';
-    empty.textContent = 'Все стартовые квесты завершены. Новые задания будут добавлены позже.';
-    list.appendChild(empty);
-    return;
-  }
-
+function createQuestCard(quest, isActive = false) {
   const state = questState[quest.id] || { progress:0, completed:false, claimed:false };
   const ratio = state.completed ? 100 : Math.min(100, ((state.progress || 0) / quest.target) * 100);
   const card = document.createElement('div');
-  card.className = 'quest-card ' + (state.completed ? 'done' : 'active');
+  card.className = 'quest-card ' + (state.completed ? 'done' : (isActive ? 'active' : 'locked'));
   card.innerHTML = `
     <div class="quest-card-head">
       <div class="quest-card-icon">${state.completed ? '✅' : quest.icon}</div>
@@ -2287,9 +2304,9 @@ function renderQuestsModal() {
       <span>${state.completed ? 'Выполнено — заберите награду' : Math.min(state.progress || 0, quest.target) + ' / ' + quest.target}</span>
       <span class="quest-reward">${rewardText(quest.reward)}</span>
     </div>
-    ${state.completed ? '<button type="button" class="quest-claim-btn">🎁 Забрать награду</button>' : ''}`;
+    ${state.completed && canClaimQuestReward(quest, state) ? '<button type="button" class="quest-claim-btn">🎁 Забрать награду</button>' : ''}`;
 
-  if (state.completed) {
+  if (state.completed && canClaimQuestReward(quest, state)) {
     const claim = () => claimQuestReward(quest.id);
     card.querySelector('.quest-claim-btn')?.addEventListener('click', event => {
       event.stopPropagation();
@@ -2299,7 +2316,59 @@ function renderQuestsModal() {
       if (!event.target.closest('.quest-claim-btn')) claim();
     });
   }
-  list.appendChild(card);
+  return card;
+}
+
+function renderQuestsModal() {
+  const list = document.getElementById('quests-list');
+  if (!list || !questSystemReady) return;
+  list.innerHTML = '';
+
+  const pendingTutorialRewards = getPendingTutorialQuestRewards();
+  const help = document.getElementById('quests-modal-help');
+  if (help) {
+    help.textContent = (tutorialActive || pendingTutorialRewards.length > 0)
+      ? 'Во время обучения выполненные квесты остаются в списке. Следующий квест появляется сразу, а награды можно забрать позже.'
+      : 'Выполните текущее задание и нажмите «Забрать награду». После этого появится следующий квест.';
+  }
+
+  // Только во время обучения завершённые квесты накапливаются,
+  // а рядом с ними сразу появляется следующий активный квест.
+  if (tutorialActive) {
+    const progressQuest = getQuestProgressTarget();
+    const visible = [...pendingTutorialRewards];
+    if (progressQuest && !visible.some(item => item.id === progressQuest.id)) visible.push(progressQuest);
+
+    if (visible.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'quest-empty';
+      empty.textContent = 'Все учебные квесты выполнены. Заберите накопленные награды.';
+      list.appendChild(empty);
+      return;
+    }
+
+    visible.forEach(quest => list.appendChild(createQuestCard(quest, quest.id === progressQuest?.id)));
+    return;
+  }
+
+  // После завершения обучения накопленные награды остаются видимыми,
+  // пока игрок не заберёт каждую из них.
+  if (pendingTutorialRewards.length > 0) {
+    pendingTutorialRewards.forEach(quest => list.appendChild(createQuestCard(quest, false)));
+    return;
+  }
+
+  // Вне обучения сохраняется прежняя последовательная система: один квест за раз.
+  const quest = getActiveQuest();
+  if (!quest) {
+    const empty = document.createElement('div');
+    empty.className = 'quest-empty';
+    empty.textContent = 'Все стартовые квесты завершены. Новые задания будут добавлены позже.';
+    list.appendChild(empty);
+    return;
+  }
+
+  list.appendChild(createQuestCard(quest, true));
 }
 
 // Каждый HUD открывается как при первом входе: без сохранённой прокрутки.
@@ -2339,6 +2408,10 @@ document.getElementById('questsModal')?.addEventListener('click', e => {
 // Во время обучения стартовое оборудование покупается бесплатно,
 // а при пропуске обучения недостающие объекты создаются автоматически.
 let tutorialStarterStorePrepared = false;
+// Во время учебной покупки объект сначала создаётся, затем игрок обязан
+// вручную поставить его в редакторе. Следующий шаг начинается только
+// после успешного отпускания объекта в допустимом месте.
+let tutorialEquipmentPlacement = null;
 
 function getTutorialStarterShelfVariant() {
   return getShelfVariantById(getDefaultShelfVariantId());
@@ -2377,6 +2450,71 @@ function getTutorialStorePurchaseTarget(kind) {
     return document.querySelector(`#products-list [data-cash-variant-id="${CASH_REGISTER_VARIANTS[0]?.id || 'cash_classic'}"]`);
   }
   return document.querySelector(`#products-list [data-shelf-variant-id="${getDefaultShelfVariantId()}"]`);
+}
+
+function getTutorialEquipmentStepTarget(kind) {
+  const placement = tutorialEquipmentPlacement;
+  if (placement?.kind !== kind) return getTutorialStorePurchaseTarget(kind);
+
+  if (kind === 'cash') {
+    const cash = cashRegisters[placement.index];
+    return makeTutorialObjectTarget(cash && (cash.hitZone || cash.group), 18);
+  }
+
+  const shelf = shelfMeshes[placement.index];
+  return makeTutorialObjectTarget(shelf && (shelf.group || shelf.stand || shelf.base), 18);
+}
+
+function beginTutorialEquipmentPlacement(kind, index) {
+  if (!tutorialActive) return;
+  tutorialEquipmentPlacement = { kind, index };
+
+  closeShopModal();
+  closeItemModal();
+  if (!editorMode) enterEditorMode();
+
+  editorSelection = kind === 'cash'
+    ? { type:'cash', index }
+    : { type:'shelf', index };
+  editorActionMove();
+
+  renderTutorialStep();
+  showToast(kind === 'cash'
+    ? '↔️ Перетащите кассу в нужное место и отпустите'
+    : '↔️ Перетащите витрину в нужное место и отпустите');
+}
+
+function handleTutorialEquipmentPlacementResult(kind, index, success) {
+  const placement = tutorialEquipmentPlacement;
+  if (!tutorialActive || placement?.kind !== kind || placement.index !== index) return;
+
+  if (!success) {
+    showToast('❌ Здесь поставить нельзя. Выберите другое место.', '#e94560ee');
+    setTimeout(() => {
+      const current = tutorialEquipmentPlacement;
+      if (tutorialActive && current?.kind === kind && current.index === index) {
+        beginTutorialEquipmentPlacement(kind, index);
+      }
+    }, 100);
+    return;
+  }
+
+  tutorialEquipmentPlacement = null;
+  if (editorMode) exitEditorMode();
+
+  const eventName = kind === 'cash' ? 'starter_cash_placed' : 'starter_shelf_placed';
+  notifyGameEvent(eventName, 1, { index });
+  showToast(kind === 'cash'
+    ? '✅ Стартовая касса установлена'
+    : '✅ Стартовая витрина установлена');
+
+  // После ручной установки возвращаем игрока в магазин:
+  // сначала к кассе, затем к первому товару.
+  setTimeout(() => {
+    if (!tutorialActive) return;
+    const step = TUTORIAL_STEPS[tutorialStepIndex];
+    if (step?.id === 'buy_cash' || step?.id === 'product') openShopModal();
+  }, 120);
 }
 
 function getTutorialProductTarget() {
@@ -2457,8 +2595,14 @@ function ensureTutorialStarterEquipment() {
 }
 
 function tutorialStepAlreadySatisfied(step) {
-  if (step?.id === 'buy_shelf') return SHELF_POSITIONS.length > 0;
-  if (step?.id === 'buy_cash') return cashRegisters.length > 0;
+  if (step?.id === 'buy_shelf') {
+    if (tutorialEquipmentPlacement?.kind === 'shelf') return false;
+    return SHELF_POSITIONS.length > 0;
+  }
+  if (step?.id === 'buy_cash') {
+    if (tutorialEquipmentPlacement?.kind === 'cash') return false;
+    return cashRegisters.length > 0;
+  }
   return false;
 }
 
@@ -2474,8 +2618,8 @@ function advancePastSatisfiedTutorialSteps() {
 const TUTORIAL_STEPS = [
   { id:'welcome', title:'Добро пожаловать в MiceShop!', text:'Магазин пока пустой. Сначала бесплатно купим стартовую витрину и кассу, затем закажем первый товар.', manual:true, button:'Начать' },
   { id:'shop', title:'Откройте магазин', text:'Нажмите кнопку «Магазин». Обучение сразу откроет бесплатную стартовую витрину.', event:'shop_opened', target:() => document.getElementById('shop-main-btn') },
-  { id:'buy_shelf', title:'Купите стартовую витрину', text:'Нажмите на бесплатную стартовую витрину. После покупки обучение сразу покажет кассу.', event:'starter_shelf_bought', target:() => getTutorialStorePurchaseTarget('shelf') },
-  { id:'buy_cash', title:'Купите стартовую кассу', text:'Нажмите на бесплатную стартовую кассу. После покупки откроются товары.', event:'starter_cash_bought', target:() => getTutorialStorePurchaseTarget('cash') },
+  { id:'buy_shelf', title:'Купите и поставьте витрину', text:'Купите бесплатную стартовую витрину. Затем редактор откроется автоматически — перетащите витрину и отпустите её в выбранном месте.', event:'starter_shelf_placed', target:() => getTutorialEquipmentStepTarget('shelf') },
+  { id:'buy_cash', title:'Купите и поставьте кассу', text:'Купите бесплатную стартовую кассу. Затем редактор откроется автоматически — перетащите кассу и отпустите её в выбранном месте.', event:'starter_cash_placed', target:() => getTutorialEquipmentStepTarget('cash') },
   { id:'product', title:'Выберите первый товар', text:'Нажмите на первый доступный товар.', event:'product_viewed', target:() => getTutorialProductTarget() },
   { id:'order', title:'Закажите товар', text:'Оставьте количество 1 и нажмите кнопку покупки. Товар отправится на склад.', event:'product_ordered', target:() => document.querySelector('#itemModalBox .btn-buy') },
   { id:'delivery', title:'Дождитесь доставки', text:'Откройте склад и следите за таймером во вкладке «В пути». При желании доставку можно ускорить за 1💎 — это необязательно.', event:'delivery_arrived', target:() => {
@@ -2654,6 +2798,7 @@ document.addEventListener('keydown', event => {
 
 function startTutorial() {
   closeQuestsModal();
+  tutorialEquipmentPlacement = null;
   tutorialActive = true;
   tutorialStepIndex = 0;
   tutorialPreviousAutoStocking = G.autoStocking;
@@ -2672,6 +2817,8 @@ function restartTutorial() {
 
 function skipTutorial(silent = false, provideStarterEquipment = true) {
   if (provideStarterEquipment) ensureTutorialStarterEquipment();
+  tutorialEquipmentPlacement = null;
+  if (editorMode) exitEditorMode();
   tutorialActive = false;
   G.autoStocking = tutorialPreviousAutoStocking;
   if (tutorialPositionTimer) clearInterval(tutorialPositionTimer);
@@ -2737,12 +2884,16 @@ function renderTutorialStep() {
   const visibleStep = Math.max(0, Math.min(actionCount, tutorialStepIndex));
   label.textContent = step.id === 'welcome' ? 'Короткое обучение' : step.id === 'complete' ? 'Готово' : 'Шаг ' + visibleStep + ' из ' + actionCount;
   title.textContent = step.title;
-  if ((step.id === 'buy_shelf' || step.id === 'buy_cash') && !document.getElementById('shopModal')?.classList.contains('show')) {
-    body.textContent = 'Откройте «Магазин», чтобы продолжить установку бесплатного стартового оборудования.';
+  if (step.id === 'buy_shelf' && tutorialEquipmentPlacement?.kind === 'shelf') {
+    body.textContent = 'Редактор открыт. Зажмите витрину, перетащите её в выбранное место и отпустите.';
+  } else if (step.id === 'buy_cash' && tutorialEquipmentPlacement?.kind === 'cash') {
+    body.textContent = 'Редактор открыт. Зажмите кассу, перетащите её в выбранное место и отпустите.';
+  } else if ((step.id === 'buy_shelf' || step.id === 'buy_cash') && !document.getElementById('shopModal')?.classList.contains('show')) {
+    body.textContent = 'Откройте «Магазин», чтобы купить бесплатное стартовое оборудование.';
   } else if (step.id === 'buy_shelf') {
-    body.textContent = 'Нажмите на карточку «Бесплатно» — стартовая витрина сразу появится в магазине.';
+    body.textContent = 'Нажмите на карточку «Бесплатно». После покупки автоматически откроется редактор для установки витрины.';
   } else if (step.id === 'buy_cash') {
-    body.textContent = 'Нажмите на карточку «Бесплатно» — стартовая касса сразу появится в магазине.';
+    body.textContent = 'Нажмите на карточку «Бесплатно». После покупки автоматически откроется редактор для установки кассы.';
   } else if (step.id === 'product' && !document.getElementById('shopModal')?.classList.contains('show')) {
     body.textContent = 'Откройте «Магазин» и выберите первый доступный товар.';
   } else if (step.id === 'product' && activeCat !== (G.shopType === 'electronics' ? 'tech' : 'clothes')) {
@@ -4091,21 +4242,29 @@ canvas.addEventListener('touchend', e=>{
     dragInternalWallId=null;
     dragInternalWallStartPos=null;
   } else if(moveMode && dragCashierIdx!==null){
-    const cashRouteStatus = getShopRouteConnectivityStatus();
-    if (!cashRouteStatus.ok && dragCashierStartPos) {
+    const placedCashIndex = dragCashierIdx;
+    const placedCash = cashRegisters[placedCashIndex];
+    const cashPlaceInvalid = !!placedCash && !canPlaceCashRegister(placedCashIndex, placedCash.x, placedCash.z);
+    const cashRouteStatus = !cashPlaceInvalid ? getShopRouteConnectivityStatus() : null;
+    const cashPlacementValid = !cashPlaceInvalid && (!cashRouteStatus || cashRouteStatus.ok);
+    if (!cashPlacementValid && dragCashierStartPos) {
       setCashRegisterPosition(dragCashierIdx, dragCashierStartPos[0], dragCashierStartPos[1]);
-      showRouteConnectivityBlockedToast(cashRouteStatus);
+      if (cashRouteStatus && !cashRouteStatus.ok) showRouteConnectivityBlockedToast(cashRouteStatus);
+      else if (!editorObjectMoveMode && !moveModeSilent) showToast('❌ Место занято — касса возвращена', '#e94560ee');
     } else {
       sellers.forEach(s => { if (s.role !== 'cleaning') { s.roleKey = ''; s.target = chooseSellerFloorTarget(); } });
       if (!editorObjectMoveMode && !moveModeSilent) showToast('✅ Касса перемещена');
     }
+    handleTutorialEquipmentPlacementResult('cash', placedCashIndex, cashPlacementValid);
     dragCashierIdx=null;
     dragCashierStartPos=null;
   } else if(moveMode && dragShelfIdx!==null){
+    const placedShelfIndex = dragShelfIdx;
     // Проверяем финальную позицию на коллизию с учётом разворота.
     const [nx,,nz]=SHELF_POSITIONS[dragShelfIdx];
     const collision = !canPlaceShelfAt(dragShelfIdx, nx, nz);
     const shelfRouteStatus = !collision ? getShopRouteConnectivityStatus() : null;
+    const shelfPlacementValid = !collision && (!shelfRouteStatus || shelfRouteStatus.ok);
     if((collision || (shelfRouteStatus && !shelfRouteStatus.ok)) && dragStartPos){
       const [sx,sz]=dragStartPos;
       moveShelfTo(dragShelfIdx, sx, sz, false);
@@ -4117,6 +4276,7 @@ canvas.addEventListener('touchend', e=>{
       sm.stand.material.emissive.setHex(0xf5c518);
       sm.stand.material.emissiveIntensity=0.25;
     });
+    handleTutorialEquipmentPlacementResult('shelf', placedShelfIndex, shelfPlacementValid);
     dragShelfIdx=null;
     dragStartPos=null;
   } else if (winMoveMode && dragDoorIdx !== null) {
@@ -7470,13 +7630,12 @@ function buyCashRegister(variant) {
   }
 
   if (tutorialFree) {
-    notifyGameEvent('starter_cash_bought', 1, { variantId:variant.id });
-    prepareTutorialShopView();
+    beginTutorialEquipmentPlacement('cash', idx);
   } else {
     closeShopModal();
     enterEditorMode();
   }
-  showToast(tutorialFree ? '✅ Стартовая касса установлена бесплатно' : '✅ Касса куплена');
+  showToast(tutorialFree ? '✅ Касса куплена бесплатно — теперь поставьте её' : '✅ Касса куплена');
 }
 function buyDoor(variant) {
   if ((G.currentFloor || 1) === 2) {
@@ -11439,13 +11598,12 @@ function buyShelf(sv) {
     return;
   }
   if (tutorialFree) {
-    notifyGameEvent('starter_shelf_bought', 1, { variantId:sv.id, shelfIdx:idx });
-    prepareTutorialShopView();
+    beginTutorialEquipmentPlacement('shelf', idx);
   } else {
     closeShopModal();
     enterEditorMode();
   }
-  showToast(tutorialFree ? '✅ Стартовая витрина установлена бесплатно' : ('✅ ' + sv.name + ' куплена!'));
+  showToast(tutorialFree ? '✅ Витрина куплена бесплатно — теперь поставьте её' : ('✅ ' + sv.name + ' куплена!'));
 }
 
 function addShelfMesh(i, x, z, bodyColor, topColor, variantId = 'shelf_brown') {
