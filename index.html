@@ -290,6 +290,7 @@
   .developer-level-step:active,
   .developer-level-apply:active { transform:scale(.96); }
   #developerLevelInput,
+  #developerXPInput,
   #developerMoneyInput,
   #developerRatingInput,
   #developerSeasonSelect {
@@ -326,6 +327,7 @@
     font-size:13px;
   }
   #developerLevelStatus,
+  #developerXPStatus,
   #developerMoneyStatus,
   #developerRatingStatus,
   #developerSeasonStatus {
@@ -1268,6 +1270,7 @@
   .modal-box .developer-level-step,
   .modal-box .developer-level-apply,
   .modal-box #developerLevelInput,
+  .modal-box #developerXPInput,
   .modal-box #developerMoneyInput,
   .modal-box #developerRatingInput,
   .modal-box #developerSeasonSelect,
@@ -1778,8 +1781,8 @@
   </div>
 </div>
 <div id="hud-resources" aria-label="Ресурсы магазина">
-  <div class="money-pill" id="moneyDisplay"><span class="hud-pill-icon">💰</span><span class="hud-pill-value">5 000</span></div>
-  <div class="money-pill crystal-pill" id="crystalDisplay"><span class="hud-pill-icon">💎</span><span class="hud-pill-value">20</span></div>
+  <div class="money-pill" id="moneyDisplay"><span class="hud-pill-icon">💰</span><span class="hud-pill-value">1 000</span></div>
+  <div class="money-pill crystal-pill" id="crystalDisplay"><span class="hud-pill-icon">💎</span><span class="hud-pill-value">5</span></div>
 </div>
 
 <!-- 3D CANVAS -->
@@ -1902,6 +1905,13 @@
       </div>
       <button class="developer-level-apply" type="button" onclick="applyDeveloperLevel()">Применить уровень</button>
       <div id="developerLevelStatus">Текущий уровень: 1</div>
+
+      <div class="setting-sub" style="margin-top:14px">Укажите количество опыта, которое нужно добавить.</div>
+      <div class="developer-money-controls">
+        <input id="developerXPInput" type="number" min="1" max="999999999999" step="1" inputmode="numeric" value="100" aria-label="Количество добавляемого опыта">
+        <button class="developer-level-apply" type="button" onclick="applyDeveloperXP()">Добавить XP</button>
+      </div>
+      <div id="developerXPStatus">Текущий опыт: 0 XP</div>
 
       <div class="setting-sub" style="margin-top:14px">Укажите нужное количество денег для проверки покупок.</div>
       <div class="developer-money-controls">
@@ -2073,8 +2083,11 @@
 // ══════════════════════════════════════
 //  GAME STATE
 // ══════════════════════════════════════
+const STARTING_MONEY = 1000;
+const STARTING_CRYSTALS = 5;
+
 const G = {
-  money: 5000, crystals: 20, xp: 0, level: 1, shopStage: 1,
+  money: STARTING_MONEY, crystals: STARTING_CRYSTALS, xp: 0, level: 1, shopStage: 1,
   shopType: null,
   currentFloor: 1,
   currentSeason: 'winter',
@@ -2100,6 +2113,7 @@ const G = {
   workerSalaryDebt: 0, // накопленная, но ещё не списанная зарплата
   workerSalaryLastAccrualAt: null, // время последнего расчётного периода
   workerSalaryHires: [], // купленные работники и их индивидуальные зарплаты
+  decorXPMilestones: {}, // одноразовые награды XP за развитие декора и рейтинга
 };
 
 // Перемещаемый декор внутри магазина увеличен в 1,5 раза.
@@ -3233,6 +3247,31 @@ function adjustDeveloperLevel(change) {
   input.value = next;
 }
 
+function updateDeveloperXPUI() {
+  const input = document.getElementById('developerXPInput');
+  const status = document.getElementById('developerXPStatus');
+  const xp = Math.max(0, Math.floor(Number(G.xp) || 0));
+  if (input && (!input.value || Number(input.value) < 1)) input.value = 100;
+  if (status) status.textContent = 'Текущий опыт: ' + fmtFull(xp) + ' XP · уровень ' + (G.level || 1);
+}
+
+function applyDeveloperXP() {
+  const input = document.getElementById('developerXPInput');
+  if (!input) return;
+
+  const requested = Number(input.value);
+  if (!Number.isFinite(requested) || requested < 1) {
+    showToast('❌ Введите количество XP от 1 до 999 999 999 999', '#e94560');
+    updateDeveloperXPUI();
+    return;
+  }
+
+  const amount = Math.max(1, Math.min(999999999999, Math.floor(requested)));
+  addXP(amount);
+  updateDeveloperXPUI();
+  updateDeveloperLevelUI();
+}
+
 function updateDeveloperMoneyUI() {
   const input = document.getElementById('developerMoneyInput');
   const status = document.getElementById('developerMoneyStatus');
@@ -3326,6 +3365,7 @@ function applyDeveloperLevel() {
 
   updateHUD();
   updateDeveloperLevelUI();
+  updateDeveloperXPUI();
 
   const shopModal = document.getElementById('shopModal');
   if (shopModal && shopModal.classList.contains('show')) {
@@ -3347,6 +3387,7 @@ function openSettingsModal() {
   updateSfxToggleUI();
   updateInternalWallTransparencyToggleUI();
   updateDeveloperLevelUI();
+  updateDeveloperXPUI();
   updateDeveloperMoneyUI();
   updateDeveloperRatingUI();
   updateDeveloperSeasonUI();
@@ -3493,45 +3534,45 @@ function getLevelTitle(level) {
 }
 
 const PRODUCTS = [
-  {id:'tshirt', name:'Футболка',   emoji:'👕', cat:'Одежда',    cost:200,   sell:380,   time:60,  xp:15,  shelfKinds:['hanging_rack']},
-  {id:'shorts', name:'Шорты',      emoji:'🩳', cat:'Одежда',    cost:320,   sell:590,   time:90,  xp:22,  shelfKinds:['classic_counter']},
-  {id:'jeans',  name:'Джинсы',     emoji:'👖', cat:'Одежда',    cost:450,   sell:830,   time:120, xp:30,  shelfKinds:['classic_counter']},
-  {id:'sneakers',name:'Кроссовки', emoji:'👟', cat:'Обувь',     cost:800,   sell:1450,  time:180, xp:50,  shelfKinds:['shoe_cubby']},
-  {id:'women_shoes',name:'Женские туфли',emoji:'👠',cat:'Обувь', cost:900,  sell:1650,  time:190, xp:55,  shelfKinds:['shoe_cubby']},
-  {id:'men_shoes',name:'Мужские туфли',emoji:'👞',cat:'Обувь',   cost:950,  sell:1750,  time:200, xp:58,  shelfKinds:['shoe_cubby']},
-  {id:'jacket', name:'Куртка',     emoji:'🧥', cat:'Одежда',    cost:1200,  sell:2100,  time:240, xp:70,  shelfKinds:['hanging_rack']},
-  {id:'dress',  name:'Платье',     emoji:'👗', cat:'Одежда',    cost:1050,  sell:1900,  time:220, xp:65,  shelfKinds:['hanging_rack']},
-  {id:'suit',   name:'Костюм',     emoji:'🤵', cat:'Одежда',    cost:1600,  sell:2800,  time:280, xp:85,  shelfKinds:['hanging_rack']},
-  {id:'headphones',name:'Наушники',emoji:'🎧',cat:'Техника',    cost:1500,  sell:2700,  time:200, xp:80,  shelfKinds:['tech_island']},
-  {id:'television',name:'Телевизор',emoji:'📺',cat:'Техника',     cost:3500,  sell:6000,  time:360, xp:140, shelfKinds:['tv_low_stand']},
-  {id:'washing_machine',name:'Стиральная машина',emoji:'🧺',cat:'Техника', cost:4200, sell:7200, time:420, xp:160, shelfKinds:['appliance_pedestal']},
-  {id:'coffee_machine',name:'Кофемашина',emoji:'☕',cat:'Техника', cost:2200, sell:3900, time:300, xp:110, shelfKinds:['tech_backstand']},
-  {id:'game_console',name:'Игровая приставка',emoji:'🎮',cat:'Техника', cost:3000, sell:5200, time:340, xp:125, shelfKinds:['tech_backstand']},
-  {id:'desktop_pc',name:'Стационарный компьютер',emoji:'🖥️',cat:'Техника', cost:8000, sell:13500, time:600, xp:280, shelfKinds:['tech_backstand']},
-  {id:'perfume',name:'Духи',       emoji:'🧴', cat:'Красота',   cost:1800,  sell:3200,  time:260, xp:90,  shelfKinds:['glass_case']},
-  {id:'watch',  name:'Часы',       emoji:'⌚', cat:'Аксессуары', cost:2000,  sell:3500,  time:300, xp:100, shelfKinds:['glass_case']},
-  {id:'jewelry',name:'Ювелирные украшения',emoji:'💍',cat:'Аксессуары', cost:2200,sell:3900,time:320,xp:110, shelfKinds:['glass_case']},
-  {id:'wallet', name:'Кошелёк',    emoji:'👛', cat:'Аксессуары', cost:700,   sell:1300,  time:160, xp:42,  shelfKinds:['glass_case']},
-  {id:'glasses',name:'Очки',       emoji:'🕶️', cat:'Аксессуары', cost:1100, sell:2000,  time:210, xp:60,  shelfKinds:['glass_case']},
-  {id:'bag',    name:'Сумка',      emoji:'👜', cat:'Аксессуары', cost:600,   sell:1100,  time:150, xp:40,  shelfKinds:['glass_case']},
-  {id:'phone',  name:'Смартфон',   emoji:'📱', cat:'Техника',   cost:5000,  sell:8500,  time:480, xp:200, shelfKinds:['tech_island']},
-  {id:'laptop', name:'Ноутбук',    emoji:'💻', cat:'Техника',   cost:12000, sell:20000, time:720, xp:400, shelfKinds:['tech_island']},
+  {id:'tshirt', name:'Футболка',   emoji:'👕', cat:'Одежда',    cost:200,   sell:380,   time:60,  xp:12,  shelfKinds:['hanging_rack']},
+  {id:'shorts', name:'Шорты',      emoji:'🩳', cat:'Одежда',    cost:320,   sell:590,   time:90,  xp:18,  shelfKinds:['classic_counter']},
+  {id:'jeans',  name:'Джинсы',     emoji:'👖', cat:'Одежда',    cost:450,   sell:830,   time:120, xp:24,  shelfKinds:['classic_counter']},
+  {id:'sneakers',name:'Кроссовки', emoji:'👟', cat:'Обувь',     cost:800,   sell:1450,  time:180, xp:36,  shelfKinds:['shoe_cubby']},
+  {id:'women_shoes',name:'Женские туфли',emoji:'👠',cat:'Обувь', cost:900,  sell:1650,  time:190, xp:38,  shelfKinds:['shoe_cubby']},
+  {id:'men_shoes',name:'Мужские туфли',emoji:'👞',cat:'Обувь',   cost:950,  sell:1750,  time:200, xp:40,  shelfKinds:['shoe_cubby']},
+  {id:'jacket', name:'Куртка',     emoji:'🧥', cat:'Одежда',    cost:1200,  sell:2100,  time:240, xp:50,  shelfKinds:['hanging_rack']},
+  {id:'dress',  name:'Платье',     emoji:'👗', cat:'Одежда',    cost:1050,  sell:1900,  time:220, xp:46,  shelfKinds:['hanging_rack']},
+  {id:'suit',   name:'Костюм',     emoji:'🤵', cat:'Одежда',    cost:1600,  sell:2800,  time:280, xp:60,  shelfKinds:['hanging_rack']},
+  {id:'headphones',name:'Наушники',emoji:'🎧',cat:'Техника',    cost:1500,  sell:2700,  time:200, xp:42,  shelfKinds:['tech_island']},
+  {id:'television',name:'Телевизор',emoji:'📺',cat:'Техника',     cost:3500,  sell:6000,  time:360, xp:80, shelfKinds:['tv_low_stand']},
+  {id:'washing_machine',name:'Стиральная машина',emoji:'🧺',cat:'Техника', cost:4200, sell:7200, time:420, xp:92, shelfKinds:['appliance_pedestal']},
+  {id:'coffee_machine',name:'Кофемашина',emoji:'☕',cat:'Техника', cost:2200, sell:3900, time:300, xp:66, shelfKinds:['tech_backstand']},
+  {id:'game_console',name:'Игровая приставка',emoji:'🎮',cat:'Техника', cost:3000, sell:5200, time:340, xp:75, shelfKinds:['tech_backstand']},
+  {id:'desktop_pc',name:'Стационарный компьютер',emoji:'🖥️',cat:'Техника', cost:8000, sell:13500, time:600, xp:138, shelfKinds:['tech_backstand']},
+  {id:'perfume',name:'Духи',       emoji:'🧴', cat:'Красота',   cost:1800,  sell:3200,  time:260, xp:55,  shelfKinds:['glass_case']},
+  {id:'watch',  name:'Часы',       emoji:'⌚', cat:'Аксессуары', cost:2000,  sell:3500,  time:300, xp:66, shelfKinds:['glass_case']},
+  {id:'jewelry',name:'Ювелирные украшения',emoji:'💍',cat:'Аксессуары', cost:2200,sell:3900,time:320,xp:70, shelfKinds:['glass_case']},
+  {id:'wallet', name:'Кошелёк',    emoji:'👛', cat:'Аксессуары', cost:700,   sell:1300,  time:160, xp:32,  shelfKinds:['glass_case']},
+  {id:'glasses',name:'Очки',       emoji:'🕶️', cat:'Аксессуары', cost:1100, sell:2000,  time:210, xp:44,  shelfKinds:['glass_case']},
+  {id:'bag',    name:'Сумка',      emoji:'👜', cat:'Аксессуары', cost:600,   sell:1100,  time:150, xp:30,  shelfKinds:['glass_case']},
+  {id:'phone',  name:'Смартфон',   emoji:'📱', cat:'Техника',   cost:5000,  sell:8500,  time:480, xp:110, shelfKinds:['tech_island']},
+  {id:'laptop', name:'Ноутбук',    emoji:'💻', cat:'Техника',   cost:12000, sell:20000, time:720, xp:166, shelfKinds:['tech_island']},
 
   // Сезонные товары. Базовая цена указана без сезонного коэффициента.
-  {id:'women_winter_boots', name:'Женские зимние сапоги', emoji:'👢', cat:'Обувь', cost:1200, sell:2200, time:220, xp:65, shelfKinds:['shoe_cubby'], season:'winter', lowSeasons:['spring','summer']},
-  {id:'men_winter_boots', name:'Мужские зимние ботинки', emoji:'🥾', cat:'Обувь', cost:1300, sell:2400, time:230, xp:70, shelfKinds:['shoe_cubby'], season:'winter', lowSeasons:['spring','summer']},
-  {id:'winter_hat', name:'Зимняя шапка', emoji:'🧢', cat:'Аксессуары', cost:350, sell:700, time:90, xp:25, shelfKinds:['classic_counter'], season:'winter', lowSeasons:['spring','summer']},
+  {id:'women_winter_boots', name:'Женские зимние сапоги', emoji:'👢', cat:'Обувь', cost:1200, sell:2200, time:220, xp:46, shelfKinds:['shoe_cubby'], season:'winter', lowSeasons:['spring','summer']},
+  {id:'men_winter_boots', name:'Мужские зимние ботинки', emoji:'🥾', cat:'Обувь', cost:1300, sell:2400, time:230, xp:48, shelfKinds:['shoe_cubby'], season:'winter', lowSeasons:['spring','summer']},
+  {id:'winter_hat', name:'Зимняя шапка', emoji:'🧢', cat:'Аксессуары', cost:350, sell:700, time:90, xp:18, shelfKinds:['classic_counter'], season:'winter', lowSeasons:['spring','summer']},
 
-  {id:'umbrella', name:'Зонт', emoji:'☂️', cat:'Аксессуары', cost:500, sell:950, time:120, xp:35, shelfKinds:['classic_counter'], season:'autumn', lowSeasons:['spring','summer']},
-  {id:'rubber_boots', name:'Резиновые сапоги', emoji:'👢', cat:'Обувь', cost:900, sell:1700, time:190, xp:55, shelfKinds:['shoe_cubby'], season:'autumn', lowSeasons:['spring','summer']},
-  {id:'autumn_raincoat', name:'Осенний плащ', emoji:'🧥', cat:'Одежда', cost:1100, sell:2050, time:220, xp:65, shelfKinds:['hanging_rack'], season:'autumn', lowSeasons:['spring','summer']},
-  {id:'windbreaker', name:'Ветровка', emoji:'🧥', cat:'Одежда', cost:850, sell:1600, time:180, xp:50, shelfKinds:['hanging_rack'], season:'autumn', lowSeasons:['spring','summer']},
+  {id:'umbrella', name:'Зонт', emoji:'☂️', cat:'Аксессуары', cost:500, sell:950, time:120, xp:24, shelfKinds:['classic_counter'], season:'autumn', lowSeasons:['spring','summer']},
+  {id:'rubber_boots', name:'Резиновые сапоги', emoji:'👢', cat:'Обувь', cost:900, sell:1700, time:190, xp:38, shelfKinds:['shoe_cubby'], season:'autumn', lowSeasons:['spring','summer']},
+  {id:'autumn_raincoat', name:'Осенний плащ', emoji:'🧥', cat:'Одежда', cost:1100, sell:2050, time:220, xp:46, shelfKinds:['hanging_rack'], season:'autumn', lowSeasons:['spring','summer']},
+  {id:'windbreaker', name:'Ветровка', emoji:'🧥', cat:'Одежда', cost:850, sell:1600, time:180, xp:36, shelfKinds:['hanging_rack'], season:'autumn', lowSeasons:['spring','summer']},
 
-  {id:'thin_turtleneck', name:'Тонкая водолазка', emoji:'👚', cat:'Одежда', cost:600, sell:1150, time:140, xp:40, shelfKinds:['hanging_rack'], season:'spring', lowSeasons:['summer','autumn']},
-  {id:'leather_jacket', name:'Кожаная куртка', emoji:'🧥', cat:'Одежда', cost:1450, sell:2600, time:250, xp:80, shelfKinds:['hanging_rack'], season:'spring', lowSeasons:['summer','autumn']},
+  {id:'thin_turtleneck', name:'Тонкая водолазка', emoji:'👚', cat:'Одежда', cost:600, sell:1150, time:140, xp:28, shelfKinds:['hanging_rack'], season:'spring', lowSeasons:['summer','autumn']},
+  {id:'leather_jacket', name:'Кожаная куртка', emoji:'🧥', cat:'Одежда', cost:1450, sell:2600, time:250, xp:53, shelfKinds:['hanging_rack'], season:'spring', lowSeasons:['summer','autumn']},
 
-  {id:'swimsuit', name:'Купальник', emoji:'🩱', cat:'Одежда', cost:650, sell:1200, time:150, xp:42, shelfKinds:['hanging_rack'], season:'summer', lowSeasons:['autumn','winter']},
-  {id:'flip_flops', name:'Сланцы', emoji:'🩴', cat:'Обувь', cost:300, sell:650, time:85, xp:24, shelfKinds:['shoe_cubby'], season:'summer', lowSeasons:['autumn','winter']},
+  {id:'swimsuit', name:'Купальник', emoji:'🩱', cat:'Одежда', cost:650, sell:1200, time:150, xp:30, shelfKinds:['hanging_rack'], season:'summer', lowSeasons:['autumn','winter']},
+  {id:'flip_flops', name:'Сланцы', emoji:'🩴', cat:'Обувь', cost:300, sell:650, time:85, xp:17, shelfKinds:['shoe_cubby'], season:'summer', lowSeasons:['autumn','winter']},
 ];
 
 
@@ -10102,6 +10143,88 @@ function getStoreRatingDetails() {
   };
 }
 
+// ── ОПЫТ ЗА РАЗВИТИЕ ДЕКОРА И РЕЙТИНГА ──
+// Эти награды выдаются только один раз за всю игру и не зависят от того,
+// будет ли предмет позже перемещён, убран на склад или продан.
+const DECOR_XP_MILESTONES = [
+  { id:'first_decor', xp:50,  text:'Первый предмет декора', test:stats => stats.regularTypes >= 1 },
+  { id:'three_decor_types', xp:100, text:'Три разных вида декора', test:stats => stats.regularTypes >= 3 },
+  { id:'five_decor_types', xp:150, text:'Пять разных видов декора', test:stats => stats.regularTypes >= 5 },
+  { id:'first_facility', xp:100, text:'Примерочная или зона проверки техники', test:stats => stats.facilities >= 1 },
+  { id:'rating_20', xp:100, text:'Рейтинг магазина 20%', test:stats => stats.rating >= 20 },
+  { id:'rating_40', xp:150, text:'Рейтинг магазина 40%', test:stats => stats.rating >= 40 },
+];
+
+let decorXPMilestoneCheckInProgress = false;
+
+function getAllInstalledDecorationsForProgress() {
+  const result = [];
+  const seenArrays = new Set();
+  const append = list => {
+    if (!Array.isArray(list) || seenArrays.has(list)) return;
+    seenArrays.add(list);
+    list.forEach(item => { if (item && item.type) result.push(item); });
+  };
+
+  // Текущий этаж может ещё не быть записан в shopFloorStates после последней установки.
+  append(typeof decorations !== 'undefined' ? decorations : []);
+  if (typeof shopFloorStates !== 'undefined' && shopFloorStates) {
+    Object.values(shopFloorStates).forEach(state => append(state?.decorations));
+  }
+  return result;
+}
+
+function getDecorXPProgressStats(rating = null) {
+  const installed = getAllInstalledDecorationsForProgress();
+  const regularTypes = new Set();
+  let facilities = 0;
+
+  installed.forEach(item => {
+    const def = getDecorDef(item.type);
+    if (!def) return;
+    if (def.facility) {
+      facilities++;
+      return;
+    }
+    // Лифт и другие специальные объекты не считаются обычным декором.
+    if (!def.special) regularTypes.add(def.id);
+  });
+
+  const currentRating = rating === null || rating === undefined
+    ? getStoreRatingDetails().rating
+    : clampRating(rating);
+  return { regularTypes:regularTypes.size, facilities, rating:currentRating };
+}
+
+function ensureDecorXPMilestoneState() {
+  if (!G.decorXPMilestones || typeof G.decorXPMilestones !== 'object' || Array.isArray(G.decorXPMilestones)) {
+    G.decorXPMilestones = {};
+  }
+  return G.decorXPMilestones;
+}
+
+function evaluateDecorXPMilestones(rating = null) {
+  if (decorXPMilestoneCheckInProgress || !gameStarted) return 0;
+  decorXPMilestoneCheckInProgress = true;
+  try {
+    const claimed = ensureDecorXPMilestoneState();
+    const stats = getDecorXPProgressStats(rating);
+    const unlocked = DECOR_XP_MILESTONES.filter(item => !claimed[item.id] && item.test(stats));
+    if (!unlocked.length) return 0;
+
+    // Сначала фиксируем награды, затем начисляем XP. Это защищает от повторного
+    // срабатывания, когда addXP() обновляет HUD и рейтинг ещё раз.
+    unlocked.forEach(item => { claimed[item.id] = true; });
+    const totalXP = unlocked.reduce((sum, item) => sum + item.xp, 0);
+    unlocked.forEach(item => logEvent('⭐ ' + item.text + ': +' + item.xp + ' XP'));
+    showToast('⭐ Развитие магазина: +' + totalXP + ' XP');
+    addXP(totalXP);
+    return totalXP;
+  } finally {
+    decorXPMilestoneCheckInProgress = false;
+  }
+}
+
 function updateRatingUI() {
   const d = getStoreRatingDetails();
   recordRatingHistory(d.rating);
@@ -10114,6 +10237,7 @@ function updateRatingUI() {
   if (pct) pct.textContent = d.rating + '%';
   if (fill) fill.style.width = d.rating + '%';
   if (barText) barText.textContent = d.rating + '%';
+  evaluateDecorXPMilestones(d.rating);
 }
 
 function openRatingModal() {
@@ -10549,8 +10673,30 @@ function getShelfHitForPlacement(hits, product) {
   return compatible || shelfHits[0] || null;
 }
 
-// Максимум витрин
+// Абсолютный технический максимум витрин на одном этаже.
+// Доступный игроку лимит растёт на 1 каждые 5 уровней:
+// 1–4 ур. — 1, 5–9 ур. — 2, 10–14 ур. — 3 и так далее.
 const MAX_SHELVES = 12;
+
+function getMaxShelvesForLevel(level = G.level) {
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+  return Math.min(MAX_SHELVES, 1 + Math.floor(safeLevel / 5));
+}
+
+function getNextShelfLimitLevel(level = G.level) {
+  const currentLimit = getMaxShelvesForLevel(level);
+  if (currentLimit >= MAX_SHELVES) return null;
+  return currentLimit * 5;
+}
+
+function getShelfLimitText(level = G.level) {
+  const limit = getMaxShelvesForLevel(level);
+  const nextLevel = getNextShelfLimitLevel(level);
+  return nextLevel === null
+    ? ('лимит ' + limit + ' · максимум')
+    : ('лимит ' + limit + ' · следующий на ур. ' + nextLevel);
+}
+
 // Храним цвета купленных витрин
 G.shelfVariants = [];
 G.shelfRotations = [];
@@ -11345,11 +11491,17 @@ function renderProductList() {
 
     if (showSubcat('shelves')) {
       const currentCount = SHELF_POSITIONS.length;
+      const currentLimit = getMaxShelvesForLevel();
+      const nextLimitLevel = getNextShelfLimitLevel();
       SHELF_VARIANTS.filter(isShelfVariantAllowedForShop).forEach(sv => {
         const unlockLevel = getShelfUnlockLevel(sv);
         const tutorialFree = isTutorialFreeStarterShelfPurchase(sv);
         const unlocked = tutorialFree || isShelfVariantUnlocked(sv);
-        const can = unlocked && (tutorialFree || G.money >= sv.price);
+        const limitReached = !tutorialFree && currentCount >= currentLimit;
+        const can = unlocked && !limitReached && (tutorialFree || G.money >= sv.price);
+        const limitHint = nextLimitLevel === null
+          ? ('достигнут максимальный лимит ' + currentLimit)
+          : ('следующая витрина откроется на уровне ' + nextLimitLevel);
         const el = document.createElement('div');
         el.dataset.shelfVariantId = sv.id;
         el.className = 'prod-row' + (can ? '' : ' cant');
@@ -11357,13 +11509,17 @@ function renderProductList() {
           <div class="pr-emoji" style="width:36px;height:36px;background:#${sv.color.toString(16).padStart(6,'0')};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${unlocked ? sv.emoji : '🔒'}</div>
           <div class="pr-info">
             <div class="pr-name">${sv.name}</div>
-            <div class="pr-sub">${tutorialFree ? 'Стартовая витрина для обучения · установлено 0/' + MAX_SHELVES : (unlocked ? ((sv.desc || 'Новая витрина') + ' · установлено ' + currentCount + '/' + MAX_SHELVES) : ('Откроется на уровне ' + unlockLevel))}</div>
+            <div class="pr-sub">${tutorialFree
+              ? ('Стартовая витрина для обучения · установлено 0/' + currentLimit)
+              : (unlocked
+                ? ((sv.desc || 'Новая витрина') + ' · установлено ' + currentCount + '/' + currentLimit + (limitReached ? ' · ' + limitHint : ''))
+                : ('Откроется на уровне ' + unlockLevel))}</div>
           </div>
           <div class="pr-right">
-            <div class="pr-price">${tutorialFree ? 'Бесплатно' : (unlocked ? ('💰' + fmt(sv.price)) : ('🔒 Ур.' + unlockLevel))}</div>
-            <div class="pr-profit" style="color:#aaa">${unlocked ? (currentCount + '/' + MAX_SHELVES) : ''}</div>
+            <div class="pr-price">${tutorialFree ? 'Бесплатно' : (limitReached ? 'Лимит' : (unlocked ? ('💰' + fmt(sv.price)) : ('🔒 Ур.' + unlockLevel)))}</div>
+            <div class="pr-profit" style="color:#aaa">${unlocked ? (currentCount + '/' + currentLimit) : ''}</div>
           </div>`;
-        if (unlocked) el.onclick = () => buyShelf(sv);
+        if (unlocked && !limitReached) el.onclick = () => buyShelf(sv);
         list.appendChild(el);
       });
     }
@@ -11577,7 +11733,13 @@ function buyShelf(sv) {
   }
   const price = tutorialFree ? 0 : sv.price;
   if (G.money < price) { showToast('❌ Недостаточно денег'); return; }
-  if (SHELF_POSITIONS.length >= MAX_SHELVES) { showToast('❌ Достигнут лимит витрин'); return; }
+  if (SHELF_POSITIONS.length >= getMaxShelvesForLevel()) {
+    const nextLevel = getNextShelfLimitLevel();
+    showToast(nextLevel === null
+      ? '❌ Достигнут максимальный лимит витрин'
+      : ('🔒 Следующая витрина откроется на уровне ' + nextLevel), '#6b6b86');
+    return;
+  }
   G.money -= price;
   updateHUD();
   const idx = SHELF_POSITIONS.length;
@@ -13994,7 +14156,13 @@ function placeEquipmentFromStorage(key) {
   let placed = false;
 
   if (item.kind === 'shelf') {
-    if (SHELF_POSITIONS.length >= MAX_SHELVES) { showToast('❌ Достигнут лимит витрин'); return; }
+    if (SHELF_POSITIONS.length >= getMaxShelvesForLevel()) {
+      const nextLevel = getNextShelfLimitLevel();
+      showToast(nextLevel === null
+        ? '❌ Достигнут максимальный лимит витрин'
+        : ('🔒 Следующая витрина откроется на уровне ' + nextLevel), '#6b6b86');
+      return;
+    }
     const def = getEquipmentDef('shelf', item.type);
     const idx = SHELF_POSITIONS.length;
     const shelfPlace = getAutoShelfPosition(idx);
