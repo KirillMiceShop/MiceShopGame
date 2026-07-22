@@ -358,15 +358,19 @@
     align-items:center;
     gap:10px;
   }
+  /* Единая вертикальная стопка HUD-уведомлений под кнопкой квестов. */
   #salary-notifications {
     width:min(230px, calc(100vw - 30px));
     display:flex;
     flex-direction:column;
     align-items:flex-start;
-    gap:6px;
+    gap:8px;
     pointer-events:none;
   }
-  .salary-notification {
+  .salary-notification,
+  .hud-toast-notification {
+    box-sizing:border-box;
+    width:fit-content;
     max-width:100%;
     padding:8px 11px;
     border-radius:12px;
@@ -378,22 +382,30 @@
     font-size:11px;
     line-height:1.3;
     font-weight:800;
+    white-space:normal;
+    overflow-wrap:anywhere;
     opacity:0;
     transform:translateX(-10px);
     transition:opacity .18s ease, transform .18s ease;
     backdrop-filter:blur(8px);
     -webkit-backdrop-filter:blur(8px);
   }
-  .salary-notification.show {
+  .salary-notification.show,
+  .hud-toast-notification.show {
     opacity:1;
     transform:translateX(0);
   }
-  .salary-notification.debt {
+  .salary-notification.debt,
+  .hud-toast-notification.warning {
     border-left-color:#e94560;
+  }
+  .hud-toast-notification.event {
+    border-left-color:#00c896;
   }
   @media (orientation:landscape) and (max-height:600px) {
     #salary-notifications { width:min(210px, calc(100vw - 24px)); }
-    .salary-notification { padding:6px 9px; font-size:9px; }
+    .salary-notification,
+    .hud-toast-notification { padding:6px 9px; font-size:9px; }
   }
   #hud-resources {
     position:fixed;
@@ -739,15 +751,9 @@
 
 
   /* TOAST */
-  #toast {
-    position:fixed; top:75px; left:50%; transform:translateX(-50%);
-    background:#00c896ee; color:#000;
-    padding:7px 16px; border-radius:20px;
-    font-size:12px; font-weight:700;
-    z-index:30; pointer-events:none;
-    opacity:0; transition:opacity .3s; white-space:nowrap;
-  }
-  #toast.show { opacity:1; }
+  /* Старый одиночный toast оставлен только для совместимости.
+     Все видимые объявления теперь идут в общей HUD-стопке слева. */
+  #toast { display:none !important; }
 
   /* EVENT LOG */
   #event-log {
@@ -1715,6 +1721,57 @@
     line-height:1.3;
     text-align:center;
   }
+  .level-up-reward-label {
+    margin-top:12px;
+    font-size:10px;
+    line-height:1.2;
+    font-weight:900;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    color:var(--menu-muted);
+  }
+  .level-up-rewards {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:6px;
+    margin-top:7px;
+  }
+  .level-up-reward-item {
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+    gap:7px;
+    min-height:38px;
+    padding:7px 8px;
+    border-radius:10px;
+    border:1px solid var(--menu-border);
+    background:var(--menu-card);
+    color:var(--menu-text);
+    text-align:left;
+  }
+  .level-up-reward-icon {
+    flex:0 0 22px;
+    width:22px;
+    text-align:center;
+    font-size:17px;
+    line-height:1;
+  }
+  .level-up-reward-copy {
+    min-width:0;
+  }
+  .level-up-reward-name {
+    font-size:8px;
+    line-height:1.15;
+    font-weight:800;
+    color:var(--menu-muted);
+  }
+  .level-up-reward-value {
+    margin-top:2px;
+    font-size:11px;
+    line-height:1.15;
+    font-weight:900;
+    color:var(--menu-text);
+  }
   .level-up-claim-btn {
     width:100%;
     margin-top:11px;
@@ -1776,8 +1833,8 @@
       <button id="quest-btn" onclick="openQuestsModal()" aria-label="Квесты">📋</button>
     </div>
 
-    <!-- УВЕДОМЛЕНИЯ О ЗАРПЛАТЕ РАБОТНИКОВ -->
-    <div id="salary-notifications" aria-live="polite"></div>
+    <!-- ЕДИНАЯ СТОПКА ИГРОВЫХ УВЕДОМЛЕНИЙ -->
+    <div id="salary-notifications" aria-live="polite" aria-atomic="false"></div>
   </div>
 </div>
 <div id="hud-resources" aria-label="Ресурсы магазина">
@@ -1952,6 +2009,8 @@
     <div class="level-up-reached" id="levelUpReachedText">Вы достигли нового уровня</div>
     <div class="level-up-available-label">Вам теперь доступно</div>
     <div class="level-up-unlocks" id="levelUpUnlocks"></div>
+    <div class="level-up-reward-label">Ваша награда</div>
+    <div class="level-up-rewards" id="levelUpRewards"></div>
     <button type="button" class="level-up-claim-btn" onclick="claimLevelUpReward()">Забрать награду</button>
   </div>
 </div>
@@ -2114,6 +2173,7 @@ const G = {
   workerSalaryLastAccrualAt: null, // время последнего расчётного периода
   workerSalaryHires: [], // купленные работники и их индивидуальные зарплаты
   decorXPMilestones: {}, // одноразовые награды XP за развитие декора и рейтинга
+  claimedLevelRewards: [], // уровни, за которые награда уже была получена
 };
 
 // Перемещаемый декор внутри магазина увеличен в 1,5 раза.
@@ -8025,12 +8085,12 @@ function findShelfForStocking() {
   const storageEntries = Object.entries(G.storage || {}).filter(([id, qty]) => qty > 0);
   if (storageEntries.length === 0) return null;
 
-  // Сначала добиваем витрины с тем же товаром до 10 шт.
+  // Сначала добиваем витрины с тем же товаром до вместимости конкретной модели.
   for (let i = 0; i < G.slots.length; i++) {
     const item = G.slots[i];
     if (!item || item.soldOut || item.qty <= 0) continue;
     const available = G.storage[item.product.id] || 0;
-    if (available > 0 && item.qty < SHELF_STOCK_CAPACITY && canShelfAcceptProduct(i, item.product.id)) {
+    if (available > 0 && item.qty < getShelfStockCapacity(i) && canShelfAcceptProduct(i, item.product.id)) {
       return { slotIdx: i, productId: item.product.id };
     }
   }
@@ -8053,7 +8113,7 @@ function finishAutoStock(slotIdx, productId) {
   const item = G.slots[slotIdx];
   if (item && (item.soldOut || item.product.id !== productId)) return false;
   const currentQty = item ? item.qty : 0;
-  const free = Math.max(0, SHELF_STOCK_CAPACITY - currentQty);
+  const free = Math.max(0, getShelfStockCapacity(slotIdx) - currentQty);
   const qty = Math.min(free, G.storage[productId] || 0);
   if (qty <= 0) return false;
   placeItem(productId, slotIdx, qty, true);
@@ -9381,7 +9441,8 @@ function refreshShelfItemVisual(slotIdx) {
   const mesh = shelfItemMeshes[slotIdx];
   if (!item || !mesh) return;
 
-  const scale = Math.max(0.65, 0.85 + (item.qty / Math.max(item.maxQty, PRODUCT_PACK_SIZE)) * 0.25);
+  const displayCapacity = Math.max(1, Number(item.maxQty) || getShelfStockCapacity(slotIdx));
+  const scale = Math.max(0.65, 0.85 + (item.qty / displayCapacity) * 0.25);
   mesh.scale.set(scale, scale, scale);
 }
 
@@ -9815,6 +9876,34 @@ function fmtTime(s) {
   return Math.floor(s/60)+'м'+(s%60>0?' '+s%60+'с':'');
 }
 let toastHideTimer = null;
+let hudAnnouncementCounter = 0;
+const HUD_ANNOUNCEMENT_LIMIT = 5;
+
+function removeHudAnnouncement(notification) {
+  if (!notification || !notification.isConnected) return;
+  notification.classList.remove('show');
+  setTimeout(() => notification.remove(), 220);
+}
+
+function showHudAnnouncement(text, kind = 'event', duration = 2200) {
+  const container = document.getElementById('salary-notifications');
+  if (!container) return null;
+
+  const notification = document.createElement('div');
+  notification.className = 'hud-toast-notification ' + kind;
+  notification.dataset.hudAnnouncementId = String(++hudAnnouncementCounter);
+  notification.textContent = String(text || '');
+  container.appendChild(notification);
+
+  while (container.children.length > HUD_ANNOUNCEMENT_LIMIT) {
+    container.firstElementChild?.remove();
+  }
+
+  requestAnimationFrame(() => notification.classList.add('show'));
+  setTimeout(() => removeHudAnnouncement(notification), Math.max(500, Number(duration) || 2200));
+  return notification;
+}
+
 function getToastDisplayType(msg, color = '') {
   const text = String(msg || '').trim();
   const lower = text.toLowerCase();
@@ -9848,17 +9937,7 @@ function shouldShowBlockingToast(msg, color = '') {
 function showToast(msg, color='#00c896') {
   const displayType = getToastDisplayType(msg, color);
   if (!displayType) return;
-  const t = document.getElementById('toast');
-  if (!t) return;
-  t.textContent = msg;
-  t.style.background = displayType === 'warning' ? '#e94560ee' : color;
-  t.style.color = '#fff';
-  t.classList.add('show');
-  if (toastHideTimer) clearTimeout(toastHideTimer);
-  toastHideTimer = setTimeout(() => {
-    t.classList.remove('show');
-    toastHideTimer = null;
-  }, 2200);
+  showHudAnnouncement(msg, displayType, 2200);
 }
 
 // ── КОМПАКТНЫЕ УВЕДОМЛЕНИЯ О НОВОМ УРОВНЕ ──
@@ -9907,12 +9986,46 @@ function getLevelUnlockNotificationItems(level) {
   return items;
 }
 
+function getLevelReward(level) {
+  const safeLevel = Math.max(2, Math.min(MAX_LEVEL, Math.floor(Number(level) || 2)));
+  const isDecadeLevel = safeLevel % 10 === 0;
+
+  // На каждом 10-м уровне действует отдельная крупная денежная награда.
+  const money = isDecadeLevel
+    ? (safeLevel / 10) * 10000
+    : 1500 + Math.floor((safeLevel - 2) / 3) * 250;
+
+  return {
+    money:Math.max(0, Math.round(money)),
+    crystals:isDecadeLevel ? 5 : 1,
+  };
+}
+
+function ensureClaimedLevelRewards() {
+  if (!Array.isArray(G.claimedLevelRewards)) G.claimedLevelRewards = [];
+  G.claimedLevelRewards = [...new Set(
+    G.claimedLevelRewards
+      .map(level => Math.floor(Number(level)))
+      .filter(level => Number.isFinite(level) && level >= 2 && level <= MAX_LEVEL)
+  )];
+  return G.claimedLevelRewards;
+}
+
+function isLevelRewardClaimed(level) {
+  return ensureClaimedLevelRewards().includes(Math.floor(Number(level) || 0));
+}
+
 function enqueueLevelUpNotification(level) {
-  const safeLevel = Math.max(1, Math.min(MAX_LEVEL, Number(level) || 1));
+  const safeLevel = Math.max(2, Math.min(MAX_LEVEL, Number(level) || 2));
+  if (isLevelRewardClaimed(safeLevel)) return;
+  if (activeLevelUpNotification?.level === safeLevel) return;
+  if (levelUpNotificationQueue.some(item => item.level === safeLevel)) return;
+
   levelUpNotificationQueue.push({
     level:safeLevel,
     title:getLevelTitle(safeLevel),
     items:getLevelUnlockNotificationItems(safeLevel),
+    reward:getLevelReward(safeLevel),
   });
   showNextLevelUpNotification();
 }
@@ -9924,7 +10037,8 @@ function showNextLevelUpNotification() {
   const modal = document.getElementById('levelUpModal');
   const reached = document.getElementById('levelUpReachedText');
   const list = document.getElementById('levelUpUnlocks');
-  if (!modal || !reached || !list) {
+  const rewards = document.getElementById('levelUpRewards');
+  if (!modal || !reached || !list || !rewards) {
     activeLevelUpNotification = null;
     return;
   }
@@ -9961,10 +10075,43 @@ function showNextLevelUpNotification() {
     });
   }
 
+  const reward = data.reward || getLevelReward(data.level);
+  rewards.innerHTML = '';
+
+  const moneyItem = document.createElement('div');
+  moneyItem.className = 'level-up-reward-item';
+  moneyItem.innerHTML = '<span class="level-up-reward-icon">💰</span>'
+    + '<span class="level-up-reward-copy">'
+    + '<span class="level-up-reward-name">Деньги</span>'
+    + '<span class="level-up-reward-value">+ ' + fmtFull(reward.money) + '</span>'
+    + '</span>';
+
+  const crystalItem = document.createElement('div');
+  crystalItem.className = 'level-up-reward-item';
+  crystalItem.innerHTML = '<span class="level-up-reward-icon">💎</span>'
+    + '<span class="level-up-reward-copy">'
+    + '<span class="level-up-reward-name">Кристаллы</span>'
+    + '<span class="level-up-reward-value">+ ' + fmtFull(reward.crystals) + '</span>'
+    + '</span>';
+
+  rewards.append(moneyItem, crystalItem);
   modal.classList.add('show');
 }
 
 function claimLevelUpReward() {
+  const data = activeLevelUpNotification;
+  if (!data) return;
+
+  const level = Math.floor(Number(data.level) || 0);
+  if (!isLevelRewardClaimed(level)) {
+    const reward = data.reward || getLevelReward(level);
+    G.money = Math.max(0, Number(G.money) || 0) + reward.money;
+    G.crystals = Math.max(0, Number(G.crystals) || 0) + reward.crystals;
+    ensureClaimedLevelRewards().push(level);
+    updateHUD();
+    logEvent('🎁 Награда за ' + level + ' уровень: ' + fmtFull(reward.money) + ' денег и ' + reward.crystals + ' 💎');
+  }
+
   const modal = document.getElementById('levelUpModal');
   if (modal) modal.classList.remove('show');
   activeLevelUpNotification = null;
@@ -10618,9 +10765,7 @@ function getShelfVariantById(id) {
 function getShelfKindForIndex(idx) {
   // Источник истины — фактически построенная витрина. Это защищает совместимость
   // после удаления витрин, если массив вариантов временно оказался смещён.
-  const builtVariantId = shelfMeshes?.[idx]?.variantId;
-  const variantId = builtVariantId || (G.shelfVariants && G.shelfVariants[idx]) || 'shelf_brown';
-  return getShelfVariantById(variantId).shelfKind || 'classic_counter';
+  return getShelfVariantById(getShelfVariantIdForIndex(idx)).shelfKind || 'classic_counter';
 }
 
 function getProductShelfKinds(productOrId) {
@@ -10726,7 +10871,35 @@ function getBuyRevenue(product, qty = 1) {
   return getSeasonalSellPrice(product) * qty;
 }
 
-const SHELF_STOCK_CAPACITY = 10;
+// Вместимость зависит от конкретной существующей модели витрины.
+// Стартовые и витрины 2 уровня — 1 товар; 3–4 уровня — 2;
+// 5–6 уровней — 3; витрина 7 уровня — 4 товара.
+const SHELF_STOCK_CAPACITIES = Object.freeze({
+  shelf_brown: 1,
+  rack_simple: 1,
+  tech_island: 1,
+  tech_backstand: 1,
+  shoe_cubby: 2,
+  tv_low_stand: 2,
+  glass_case: 3,
+  appliance_pedestal: 3,
+  rack_wardrobe: 4,
+});
+
+function getShelfVariantIdForIndex(idx) {
+  const builtVariantId = shelfMeshes?.[idx]?.variantId;
+  return builtVariantId || (G.shelfVariants && G.shelfVariants[idx]) || getDefaultShelfVariantId();
+}
+
+function getShelfVariantCapacity(variantOrId) {
+  const id = typeof variantOrId === 'string' ? variantOrId : variantOrId?.id;
+  return Math.max(1, Number(SHELF_STOCK_CAPACITIES[id]) || 1);
+}
+
+function getShelfStockCapacity(slotIdx) {
+  return getShelfVariantCapacity(getShelfVariantIdForIndex(slotIdx));
+}
+
 const WORKER_PRICE = 400;
 const WORKER_LIMITS = { cashier: 2, seller: 2, cleaner: 1, guard: 0 };
 const WORKER_UNLOCK_LEVELS = { cleaner: 5, seller: 8, cashier: 11, guard: MAX_LEVEL + 1 };
@@ -10806,21 +10979,10 @@ function getCurrentWorkerPayroll() {
 }
 
 function showSalaryNotification(text, kind = 'paid') {
-  const container = document.getElementById('salary-notifications');
-  if (!container) return;
-
-  const notification = document.createElement('div');
-  notification.className = 'salary-notification' + (kind === 'debt' ? ' debt' : '');
+  const notification = showHudAnnouncement(text, kind === 'debt' ? 'warning' : 'salary', 5200);
+  if (!notification) return;
+  notification.classList.add('salary-notification');
   notification.dataset.salaryNotificationId = String(++salaryNotificationCounter);
-  notification.textContent = text;
-  container.appendChild(notification);
-
-  while (container.children.length > 3) container.firstElementChild?.remove();
-  requestAnimationFrame(() => notification.classList.add('show'));
-  setTimeout(() => {
-    notification.classList.remove('show');
-    setTimeout(() => notification.remove(), 220);
-  }, 5200);
 }
 
 function initializeWorkerSalarySystem(now = Date.now()) {
@@ -11495,6 +11657,7 @@ function renderProductList() {
       const nextLimitLevel = getNextShelfLimitLevel();
       SHELF_VARIANTS.filter(isShelfVariantAllowedForShop).forEach(sv => {
         const unlockLevel = getShelfUnlockLevel(sv);
+        const capacity = getShelfVariantCapacity(sv);
         const tutorialFree = isTutorialFreeStarterShelfPurchase(sv);
         const unlocked = tutorialFree || isShelfVariantUnlocked(sv);
         const limitReached = !tutorialFree && currentCount >= currentLimit;
@@ -11510,9 +11673,9 @@ function renderProductList() {
           <div class="pr-info">
             <div class="pr-name">${sv.name}</div>
             <div class="pr-sub">${tutorialFree
-              ? ('Стартовая витрина для обучения · установлено 0/' + currentLimit)
+              ? ('Стартовая витрина для обучения · вместимость ' + capacity + ' шт · установлено 0/' + currentLimit)
               : (unlocked
-                ? ((sv.desc || 'Новая витрина') + ' · установлено ' + currentCount + '/' + currentLimit + (limitReached ? ' · ' + limitHint : ''))
+                ? ((sv.desc || 'Новая витрина') + ' · вместимость ' + capacity + ' шт · установлено ' + currentCount + '/' + currentLimit + (limitReached ? ' · ' + limitHint : ''))
                 : ('Откроется на уровне ' + unlockLevel))}</div>
           </div>
           <div class="pr-right">
@@ -12908,22 +13071,25 @@ function openShelvesModal() {
 
   G.slots.forEach((item, i) => {
     const div = document.createElement('div');
+    const shelfCapacity = getShelfStockCapacity(i);
+    const shelfVariant = getShelfVariantById(getShelfVariantIdForIndex(i));
     div.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.07)';
 
     if (!item) {
       div.innerHTML = `
         <div style="font-size:22px;opacity:.3">🪟</div>
-        <div style="flex:1"><div style="font-size:13px;font-weight:600;color:#555">Витрина ${i+1}</div>
-        <div style="font-size:10px;color:#444">Пусто</div></div>`;
+        <div style="flex:1"><div style="font-size:13px;font-weight:600;color:#555">Витрина ${i+1} · ${shelfVariant.name}</div>
+        <div style="font-size:10px;color:#444">Пусто · вместимость ${shelfCapacity} шт</div></div>`;
     } else {
       const wait = item.soldOut ? 0 : Math.max(0, Math.ceil((item.nextSaleAt - Date.now()) / 1000));
       const shelfSalePrice = getShelfCurrentSaleAmount(item);
-      const pct = Math.max(0, Math.min(100, Math.floor((item.qty / Math.max(item.maxQty, PRODUCT_PACK_SIZE)) * 100)));
+      const displayCapacity = Math.max(1, Number(item.maxQty) || shelfCapacity);
+      const pct = Math.max(0, Math.min(100, Math.floor((item.qty / displayCapacity) * 100)));
       div.innerHTML = `
         <div style="font-size:26px">${item.product.emoji}</div>
         <div style="flex:1">
           <div style="font-size:13px;font-weight:600">${item.product.name}</div>
-          <div style="font-size:10px;color:#888">Витрина ${i+1} · ${item.soldOut ? 'распродано, нужна уборка' : 'осталось ' + item.qty + '/' + item.maxQty + ' шт'} · выручка ${fmt(shelfSalePrice)}₽ / шт${(item.discountedQty || 0) > 0 ? ' · уценено ' + item.discountedQty : ''}</div>
+          <div style="font-size:10px;color:#888">Витрина ${i+1} · ${shelfVariant.name} · ${item.soldOut ? 'распродано, нужна уборка' : 'осталось ' + item.qty + ' шт · вместимость ' + shelfCapacity + ' шт'} · выручка ${fmt(shelfSalePrice)}₽ / шт${(item.discountedQty || 0) > 0 ? ' · уценено ' + item.discountedQty : ''}</div>
           <div style="height:3px;background:#222;border-radius:2px;margin-top:5px;overflow:hidden">
             <div style="height:100%;width:${pct}%;background:#00c896;border-radius:2px"></div>
           </div>
@@ -13727,8 +13893,9 @@ function placeItem(productId, slotIdx, qty = 1, fromStorage = false) {
     return;
   }
 
+  const shelfCapacity = getShelfStockCapacity(slotIdx);
   const currentQty = existing && existing.product.id === p.id && !existing.soldOut ? existing.qty : 0;
-  const freeSpace = SHELF_STOCK_CAPACITY - currentQty;
+  const freeSpace = shelfCapacity - currentQty;
   if (freeSpace <= 0) { showToast('❌ Витрина уже заполнена'); return; }
   qty = Math.min(qty, freeSpace);
 
@@ -13752,7 +13919,7 @@ function placeItem(productId, slotIdx, qty = 1, fromStorage = false) {
   if (existing && existing.product.id === p.id) {
     existing.qty += qty;
     existing.discountedQty = (existing.discountedQty || 0) + (storageTake.discountedQty || 0);
-    existing.maxQty = SHELF_STOCK_CAPACITY;
+    existing.maxQty = Math.max(shelfCapacity, existing.qty);
     existing.soldOut = false;
     if (!existing.nextSaleAt) {
       existing.nextSaleAt = Date.now() + p.time * 1000;
@@ -13767,7 +13934,7 @@ function placeItem(productId, slotIdx, qty = 1, fromStorage = false) {
     G.slots[slotIdx] = {
       product: p,
       qty,
-      maxQty: SHELF_STOCK_CAPACITY,
+      maxQty: shelfCapacity,
       nextSaleAt: Date.now() + p.time * 1000,
       activeSalePrice: getSeasonalSellPrice(p),
       soldOut: false,
@@ -13807,6 +13974,7 @@ function openShelfDetailModal(slotIdx) {
 function renderShelfDetailModal() {
   const idx = shelfMoveSlotIdx;
   const item = G.slots[idx];
+  const shelfCapacity = getShelfStockCapacity(idx);
   const box = document.getElementById('shelfDetailBox');
   if (!item) { closeShelfDetailModal(); return; }
 
@@ -13834,7 +14002,7 @@ function renderShelfDetailModal() {
     <div class="item-modal-title">Витрина ${idx + 1}</div>
     <div class="item-modal-cat">${item.product.name}</div>
     <div class="item-stats">
-      <div class="item-stat"><div class="item-stat-val" style="color:#f5c518">${item.qty} шт</div><div class="item-stat-lbl">на витрине</div></div>
+      <div class="item-stat"><div class="item-stat-val" style="color:#f5c518">${item.qty}/${shelfCapacity}</div><div class="item-stat-lbl">товар / вместимость</div></div>
       <div class="item-stat"><div class="item-stat-val">⏱${wait > 0 ? fmtTime(wait) : 'готово'}</div><div class="item-stat-lbl">след. продажа</div></div>
       <div class="item-stat"><div class="item-stat-val" style="color:#00c896">+${fmt(nextSalePrice)}</div><div class="item-stat-lbl">за след. шт</div></div>
       <div class="item-stat"><div class="item-stat-val">📦${G.storage[item.product.id] || 0}</div><div class="item-stat-lbl">на складе</div></div>
@@ -13873,7 +14041,7 @@ function moveShelfQtyToStorage(slotIdx) {
   const normalMoved = qty - discountedMoved;
   item.qty -= qty;
   item.discountedQty = Math.max(0, (item.discountedQty || 0) - discountedMoved);
-  item.maxQty = SHELF_STOCK_CAPACITY;
+  item.maxQty = Math.max(getShelfStockCapacity(slotIdx), item.qty);
   if (normalMoved > 0) addProductToStorage(item.product.id, normalMoved, { displayed: true, returnedFromShelf: true, multiplier: 1 });
   if (discountedMoved > 0) addProductToStorage(item.product.id, discountedMoved, { displayed: true, returnedFromShelf: true, multiplier: 0.5 });
   refreshShelfItemVisual(slotIdx);
