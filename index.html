@@ -627,6 +627,9 @@
 
   /* ITEM DETAIL MODAL */
   .item-big-emoji { font-size:52px; display:block; text-align:center; margin-bottom:6px; }
+  .phone-3d-preview { position:relative; width:100%; height:220px; margin:4px 0 10px; border-radius:16px; overflow:hidden; background:radial-gradient(circle at 50% 42%, rgba(120,130,145,.24), rgba(10,12,18,.92) 72%); border:1px solid rgba(255,255,255,.12); touch-action:none; }
+  .phone-3d-preview canvas { display:block; width:100%; height:100%; }
+  .phone-3d-hint { position:absolute; left:0; right:0; bottom:7px; text-align:center; font-size:10px; color:rgba(255,255,255,.66); pointer-events:none; }
   .item-modal-title { font-size:17px; font-weight:700; text-align:center; }
   .item-modal-cat { font-size:11px; color:#888; text-align:center; margin-bottom:14px; }
   .item-stats { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px; }
@@ -12116,6 +12119,198 @@ function renderProductList() {
   });
 }
 
+
+// Процедурная 3D-модель смартфона, встроенная по параметрам загруженного sculpt-spec JSON.
+// Модель не требует отдельного файла при запуске игры.
+const SMARTPHONE_SCULPT_SPEC = Object.freeze({
+  name:'front-view-black-smartphone',
+  chassis:{ width:3.24, height:6.6, depth:0.38, radius:0.32, color:0x292c2c },
+  band:{ width:3.14, height:6.49, depth:0.09, radius:0.27, color:0x858988 },
+  screen:{ width:3.0, height:6.25, depth:0.035, radius:0.235, color:0x010202 },
+  earpiece:{ x:-0.13, y:2.71, width:0.36, height:0.05 },
+  camera:{ x:0.42, y:2.71, radius:0.07 },
+  buttons:[
+    { x:-1.66, y:0.98, w:0.10, h:0.25 },
+    { x:-1.66, y:0.42, w:0.10, h:0.42 },
+    { x:-1.66, y:-0.28, w:0.10, h:0.42 },
+    { x:1.66, y:0.48, w:0.10, h:0.68 }
+  ]
+});
+
+function createRoundedRectShape(width, height, radius) {
+  const w = width / 2, h = height / 2;
+  const r = Math.max(0.001, Math.min(radius, w, h));
+  const shape = new THREE.Shape();
+  shape.moveTo(-w + r, -h);
+  shape.lineTo(w - r, -h);
+  shape.quadraticCurveTo(w, -h, w, -h + r);
+  shape.lineTo(w, h - r);
+  shape.quadraticCurveTo(w, h, w - r, h);
+  shape.lineTo(-w + r, h);
+  shape.quadraticCurveTo(-w, h, -w, h - r);
+  shape.lineTo(-w, -h + r);
+  shape.quadraticCurveTo(-w, -h, -w + r, -h);
+  return shape;
+}
+
+function createRoundedSlab(width, height, depth, radius, material) {
+  const geometry = new THREE.ExtrudeGeometry(createRoundedRectShape(width, height, radius), {
+    depth,
+    bevelEnabled:true,
+    bevelSegments:2,
+    steps:1,
+    bevelSize:Math.min(radius * 0.18, depth * 0.28),
+    bevelThickness:Math.min(depth * 0.22, radius * 0.15),
+    curveSegments:8
+  });
+  geometry.center();
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  return mesh;
+}
+
+function createSmartphone3DModel(options = {}) {
+  const spec = SMARTPHONE_SCULPT_SPEC;
+  const group = new THREE.Group();
+  const unit = Number(options.unit) || 0.18;
+  const material = (color, metalness, roughness, emissive=0x000000, emissiveIntensity=0) =>
+    new THREE.MeshStandardMaterial({ color, metalness, roughness, emissive, emissiveIntensity });
+
+  const chassis = createRoundedSlab(spec.chassis.width, spec.chassis.height, spec.chassis.depth, spec.chassis.radius,
+    material(spec.chassis.color, .78, .23, 0x0d0f0f, .08));
+  group.add(chassis);
+
+  const band = createRoundedSlab(spec.band.width, spec.band.height, spec.band.depth, spec.band.radius,
+    material(spec.band.color, .9, .2, 0x1a1c1c, .12));
+  band.position.z = 0.225;
+  group.add(band);
+
+  const screen = createRoundedSlab(spec.screen.width, spec.screen.height, spec.screen.depth, spec.screen.radius,
+    material(spec.screen.color, .3, .08));
+  screen.position.z = 0.292;
+  group.add(screen);
+
+  const notch = createRoundedSlab(1.20, 0.42, 0.045, 0.18, material(0x050606, .2, .16));
+  notch.position.set(0, 2.86, 0.327);
+  group.add(notch);
+
+  const earpiece = createRoundedSlab(spec.earpiece.width, spec.earpiece.height, 0.025, 0.02,
+    material(0x383b3b, .48, .36, 0x111212, .1));
+  earpiece.position.set(spec.earpiece.x, spec.earpiece.y, 0.35);
+  group.add(earpiece);
+
+  const camera = new THREE.Mesh(
+    new THREE.SphereGeometry(spec.camera.radius, 16, 10),
+    material(0x0a1b30, .55, .12, 0x07111d, .12)
+  );
+  camera.scale.z = .45;
+  camera.position.set(spec.camera.x, spec.camera.y, 0.36);
+  group.add(camera);
+
+  spec.buttons.forEach(btn => {
+    const button = createRoundedSlab(btn.w, btn.h, 0.18, 0.035, material(0x565a59, .86, .2, 0x111313, .08));
+    button.rotation.y = Math.PI / 2;
+    button.position.set(btn.x, btn.y, 0.01);
+    group.add(button);
+  });
+
+  // Тонкие разрывы металлической рамки сверху и снизу.
+  [-2.42, 2.42].forEach(y => [-1.51, 1.51].forEach(x => {
+    const seam = createRoundedSlab(.13, .028, .022, .01, material(0x171919, .35, .32));
+    seam.position.set(x, y, .35);
+    group.add(seam);
+  }));
+
+  group.scale.setScalar(unit);
+  group.userData.productModel = 'phone';
+  return group;
+}
+
+let phonePreviewState = null;
+
+function disposePhone3DPreview() {
+  if (!phonePreviewState) return;
+  cancelAnimationFrame(phonePreviewState.raf || 0);
+  const { renderer, scene:previewScene, canvas, handlers } = phonePreviewState;
+  if (canvas && handlers) {
+    canvas.removeEventListener('pointerdown', handlers.down);
+    canvas.removeEventListener('pointermove', handlers.move);
+    canvas.removeEventListener('pointerup', handlers.up);
+    canvas.removeEventListener('pointercancel', handlers.up);
+  }
+  previewScene?.traverse(obj => {
+    if (obj.geometry) obj.geometry.dispose?.();
+    if (obj.material) {
+      const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+      materials.forEach(m => m.dispose?.());
+    }
+  });
+  renderer?.dispose?.();
+  phonePreviewState = null;
+}
+
+function initPhone3DPreview() {
+  disposePhone3DPreview();
+  const host = document.getElementById('phone3dPreview');
+  if (!host || typeof THREE === 'undefined') return;
+  const previewCanvas = document.createElement('canvas');
+  host.prepend(previewCanvas);
+  const previewRenderer = new THREE.WebGLRenderer({ canvas:previewCanvas, antialias:true, alpha:true });
+  previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  previewRenderer.outputEncoding = THREE.sRGBEncoding;
+  previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+  previewRenderer.toneMappingExposure = 1.05;
+
+  const previewScene = new THREE.Scene();
+  const previewCamera = new THREE.PerspectiveCamera(32, 1, .1, 30);
+  previewCamera.position.set(0, 0, 5.2);
+  previewScene.add(new THREE.HemisphereLight(0xffffff, 0x202530, 1.25));
+  const key = new THREE.DirectionalLight(0xffffff, 1.8);
+  key.position.set(3, 4, 5); previewScene.add(key);
+  const rim = new THREE.DirectionalLight(0x8ab8ff, .75);
+  rim.position.set(-4, 1, -2); previewScene.add(rim);
+
+  const model = createSmartphone3DModel({ unit:.38 });
+  model.rotation.set(-0.08, 0.35, 0);
+  previewScene.add(model);
+
+  let dragging = false, lastX = 0, lastY = 0;
+  const handlers = {
+    down(e) { dragging = true; lastX = e.clientX; lastY = e.clientY; previewCanvas.setPointerCapture?.(e.pointerId); },
+    move(e) {
+      if (!dragging) return;
+      const dx = e.clientX - lastX, dy = e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      model.rotation.y += dx * .012;
+      model.rotation.x = Math.max(-.65, Math.min(.65, model.rotation.x + dy * .008));
+    },
+    up(e) { dragging = false; previewCanvas.releasePointerCapture?.(e.pointerId); }
+  };
+  previewCanvas.addEventListener('pointerdown', handlers.down);
+  previewCanvas.addEventListener('pointermove', handlers.move);
+  previewCanvas.addEventListener('pointerup', handlers.up);
+  previewCanvas.addEventListener('pointercancel', handlers.up);
+
+  const state = { renderer:previewRenderer, scene:previewScene, camera:previewCamera, model, canvas:previewCanvas, handlers, raf:0 };
+  phonePreviewState = state;
+  const render = () => {
+    if (phonePreviewState !== state || !document.getElementById('itemModal')?.classList.contains('show')) return;
+    const rect = host.getBoundingClientRect();
+    const width = Math.max(180, Math.floor(rect.width));
+    const height = Math.max(160, Math.floor(rect.height));
+    if (previewCanvas.width !== Math.floor(width * Math.min(window.devicePixelRatio || 1, 1.5)) || previewCanvas.height !== Math.floor(height * Math.min(window.devicePixelRatio || 1, 1.5))) {
+      previewRenderer.setSize(width, height, false);
+      previewCamera.aspect = width / height;
+      previewCamera.updateProjectionMatrix();
+    }
+    if (!dragging) model.rotation.y += .0035;
+    previewRenderer.render(previewScene, previewCamera);
+    state.raf = requestAnimationFrame(render);
+  };
+  render();
+}
+
 function showItemDetail(p) {
   activeProductId = p.id;
   buyQty = 1;
@@ -12124,6 +12319,7 @@ function showItemDetail(p) {
   resetModalViewState('itemModal');
   notifyGameEvent('product_viewed', 1, { productId:p.id });
   updateTutorialSpotlight();
+  if (p.id === 'phone') requestAnimationFrame(initPhone3DPreview);
 }
 
 function renderItemDetail() {
@@ -12139,7 +12335,9 @@ function renderItemDetail() {
   const box = document.getElementById('itemModalBox');
   box.innerHTML = `
     <button type="button" class="modal-close" onclick="closeItemModal()" aria-label="Закрыть">✕</button>
-    <span class="item-big-emoji">${p.emoji}</span>
+    ${p.id === 'phone'
+      ? `<div class="phone-3d-preview" id="phone3dPreview"><div class="phone-3d-hint">Проведите пальцем, чтобы повернуть модель</div></div>`
+      : `<span class="item-big-emoji">${p.emoji}</span>`}
     <div class="item-modal-title">${p.name}</div>
     <div class="item-modal-cat">${p.cat}</div>
     <div style="font-size:12px;color:#aaa;text-align:center;margin-top:4px">Прилавок: ${productShelfHint(p)}</div>
@@ -12166,6 +12364,9 @@ function renderItemDetail() {
       ? `<button class="btn-buy" onclick="buyProductDelivery('${p.id}', ${buyQty})">Купить ${buyQty} шт · доставка на склад</button>`
       : `<button class="btn-buy" style="background:#555;pointer-events:none">Недостаточно денег</button>`}
     <button class="btn-back" onclick="closeItemModal()">← Назад</button>`;
+  if (p.id === 'phone' && document.getElementById('itemModal')?.classList.contains('show')) {
+    requestAnimationFrame(initPhone3DPreview);
+  }
 }
 
 function changeBuyQty(delta) {
@@ -12177,6 +12378,7 @@ function changeBuyQty(delta) {
 }
 
 function closeItemModal() {
+  disposePhone3DPreview();
   document.getElementById('itemModal').classList.remove('show');
 }
 document.getElementById('itemModal').addEventListener('click', e => {
@@ -14168,6 +14370,17 @@ function createItemMesh(product, slotIdx) {
   const [x, , z] = SHELF_POSITIONS[slotIdx];
   const group = new THREE.Group();
   const col = CATEGORY_COLORS[product.cat] || { body: 0x888888, accent: 0xffffff };
+
+  if (product.id === 'phone') {
+    const phoneModel = createSmartphone3DModel({ unit:0.19 });
+    phoneModel.rotation.x = -0.10;
+    group.add(phoneModel);
+    group.position.set(x, getShelfDisplayTopY(slotIdx) + 0.64, z);
+    group.rotation.y = ((G.shelfRotations && G.shelfRotations[slotIdx]) || 0);
+    scene.add(group);
+    shelfItemMeshes[slotIdx] = group;
+    return;
+  }
 
   // Разные формы для разных категорий
   let mainGeo;
