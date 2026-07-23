@@ -2155,6 +2155,7 @@ const G = {
   liftBuilt: false,
   liftPosition: null,
   totalEarned: 0, totalSold: 0,
+  soldProductIds: [], // уникальные товары, проданные за всю игру
   slots: [], // новый магазин начинает обучение без установленных витрин
   storage: {}, // productId -> qty
   storageBatches: {}, // productId -> партии {qty, storedAt, displayed, multiplier}
@@ -2227,36 +2228,121 @@ G.shopType = null; // тип магазина выбирается заново 
 //  ОБУЧЕНИЕ И СТАРТОВЫЕ КВЕСТЫ
 // ══════════════════════════════════════
 const QUEST_DEFINITIONS = [
-  { id:'first_order', icon:'🚚', title:'Первая поставка', text:'Закажите любой доступный товар', event:'product_ordered', target:1, reward:{ money:100, xp:10 } },
-  { id:'first_delivery', icon:'📦', title:'Товар приехал', text:'Дождитесь первой доставки на склад', event:'delivery_arrived', target:1, reward:{ money:100, xp:10 } },
-  { id:'first_stock', icon:'🪟', title:'Заполните витрину', text:'Выставьте товар со склада на витрину', event:'product_stocked', target:1, reward:{ money:150, xp:20 } },
-  { id:'first_sale', icon:'🛍️', title:'Первая продажа', text:'Продайте первый товар покупателю', event:'product_sold', target:1, reward:{ money:200, xp:30 } },
-  { id:'first_collection', icon:'💰', title:'Заберите выручку', text:'Нажмите на кассу и заберите деньги', event:'revenue_collected', target:1, reward:{ money:200, xp:20 } },
-  { id:'open_editor', icon:'✏️', title:'Познакомьтесь с редактором', text:'Откройте режим редактора магазина', event:'editor_opened', target:1, reward:{ money:100, xp:10 } },
-  { id:'reach_level_2', icon:'⭐', title:'Новый уровень', text:'Достигните 2 уровня магазина', event:'level_reached', target:2, absolute:true, reward:{ money:300, crystals:1 } },
+  // Учебные квесты. Только они могут накапливаться во время первого обучения.
+  { id:'first_order', tutorial:true, icon:'🚚', title:'Первая поставка', text:'Закажите любой доступный товар', event:'product_ordered', target:1, reward:{ money:100, xp:10 } },
+  { id:'first_delivery', tutorial:true, icon:'📦', title:'Товар приехал', text:'Дождитесь первой доставки на склад', event:'delivery_arrived', target:1, reward:{ money:100, xp:10 } },
+  { id:'first_stock', tutorial:true, icon:'🪟', title:'Заполните витрину', text:'Выставьте товар со склада на витрину', event:'product_stocked', target:1, reward:{ money:150, xp:20 } },
+  { id:'first_sale', tutorial:true, icon:'🛍️', title:'Первая продажа', text:'Продайте первый товар покупателю', event:'product_sold', target:1, reward:{ money:200, xp:30 } },
+  { id:'first_collection', tutorial:true, icon:'💰', title:'Заберите выручку', text:'Нажмите на кассу и заберите деньги', event:'revenue_collected', target:1, reward:{ money:200, xp:20 } },
+  { id:'open_editor', tutorial:true, icon:'✏️', title:'Познакомьтесь с редактором', text:'Откройте режим редактора магазина', event:'editor_opened', target:1, reward:{ money:100, xp:10 } },
+  { id:'reach_level_2', tutorial:true, icon:'⭐', title:'Новый уровень', text:'Достигните 2 уровня магазина', event:'level_reached', metric:'level', target:2, absolute:true, reward:{ money:300, crystals:1 } },
+
+  // 2 уровень — основы редактора.
+  { id:'change_wall_color', minLevel:2, icon:'🎨', title:'Новый интерьер', text:'Измените цвет стен', event:'wall_color_changed', target:1, reward:{ money:150, xp:40 } },
+  { id:'move_shelf', minLevel:2, icon:'↔️', title:'Новая расстановка', text:'Переместите витрину и успешно поставьте её на новом месте', event:'shelf_moved', target:1, reward:{ money:100, xp:40 } },
+  { id:'rotate_shelf', minLevel:2, icon:'🔄', title:'Другой ракурс', text:'Поверните витрину в редакторе', event:'shelf_rotated', target:1, reward:{ money:100, xp:40 } },
+  { id:'rotate_cash', minLevel:2, icon:'💵', title:'Удобная касса', text:'Поверните кассу в редакторе', event:'cash_rotated', target:1, reward:{ money:100, xp:40 } },
+  { id:'reach_level_3', minLevel:2, icon:'⭐', title:'Следующая ступень', text:'Достигните 3 уровня магазина', event:'level_reached', metric:'level', target:3, absolute:true, reward:{ money:250, xp:100 } },
+
+  // 3–4 уровни — оформление и ассортимент.
+  { id:'install_two_decor', minLevel:3, icon:'🛋️', title:'Оформляем магазин', text:'Купите и установите 2 объекта оформления', metric:'regular_decor_count', target:2, absolute:true, reward:{ money:350, xp:60 } },
+  { id:'install_facility', minLevel:3, icon:'🚪', title:'Комфорт покупателей', text:() => G.shopType === 'electronics' ? 'Купите и установите зону проверки техники' : 'Купите и установите примерочную', metric:'facility_count', target:1, absolute:true, reward:{ money:300, xp:80 } },
+  { id:'change_floor_color', minLevel:3, icon:'🟫', title:'Новый пол', text:'Измените цвет пола', event:'floor_color_changed', target:1, reward:{ money:100, xp:40 } },
+  { id:'sell_three_product_types', minLevel:3, icon:'🧺', title:'Разнообразный ассортимент', text:'Продайте товары 3 разных видов', metric:'distinct_products_sold', target:3, absolute:true, reward:{ money:400, xp:70 } },
+  { id:'sell_ten_products', minLevel:3, icon:'🛍️', title:'Первые покупатели', text:'Продайте суммарно 10 товаров', metric:'total_sold', target:10, absolute:true, reward:{ money:400, xp:60 } },
+  { id:'reach_level_5', minLevel:3, icon:'⭐', title:'Магазин развивается', text:'Достигните 5 уровня магазина', event:'level_reached', metric:'level', target:5, absolute:true, reward:{ money:750, xp:90 } },
+
+  // 5–7 уровни — управление магазином.
+  { id:'install_second_shelf', minLevel:5, icon:'🪟', title:'Больше места для товара', text:'Купите и установите вторую витрину', metric:'shelf_count', target:2, absolute:true, reward:{ money:600, xp:80 } },
+  { id:'stock_two_product_types', minLevel:5, icon:'🏬', title:'Два отдела', text:'Одновременно выставьте разные товары на двух витринах', metric:'different_stocked_shelves', target:2, absolute:true, reward:{ money:500, xp:80 } },
+  { id:'hire_cleaner', minLevel:5, icon:'🧹', title:'Чистый магазин', text:'Наймите уборщика', metric:'staff_cleaner', target:1, absolute:true, reward:{ money:500, xp:80 } },
+  { id:'shelf_storage_cycle', minLevel:5, icon:'📦', title:'Перестановка оборудования', text:'Уберите витрину на склад, затем установите её обратно', kind:'shelf_storage_cycle', target:2, reward:{ money:300, xp:80 } },
+  { id:'reach_rating_20', minLevel:5, icon:'💖', title:'Привлекательный магазин', text:'Достигните рейтинга магазина 20%', metric:'rating', target:20, absolute:true, reward:{ money:500, xp:80 } },
+  { id:'sell_twenty_five_products', minLevel:5, icon:'🛍️', title:'Стабильные продажи', text:'Продайте суммарно 25 товаров', metric:'total_sold', target:25, absolute:true, reward:{ money:800, xp:80 } },
+  { id:'earn_fifteen_thousand', minLevel:5, icon:'💰', title:'Растущий бизнес', text:'Получите суммарную выручку 15 000 денег', metric:'total_earned', target:15000, absolute:true, reward:{ money:1000, xp:80 } },
+  { id:'reach_level_8', minLevel:5, icon:'⭐', title:'Опытный владелец', text:'Достигните 8 уровня магазина', event:'level_reached', metric:'level', target:8, absolute:true, reward:{ money:1250, xp:140 } },
+
+  // 8–9 уровни — автоматизация и подготовка к 10 уровню.
+  { id:'hire_extra_seller', minLevel:8, icon:'👕', title:'Помощник в торговом зале', text:'Наймите дополнительного продавца', metric:'extra_sellers', target:1, absolute:true, reward:{ money:700, xp:90 } },
+  { id:'sell_fifty_products', minLevel:8, icon:'🛍️', title:'Проверенный магазин', text:'Продайте суммарно 50 товаров', metric:'total_sold', target:50, absolute:true, reward:{ money:1500, xp:90 } },
+  { id:'reach_rating_40', minLevel:8, icon:'🌟', title:'Известный магазин', text:'Достигните рейтинга магазина 40%', metric:'rating', target:40, absolute:true, reward:{ money:1500, xp:90 } },
+  { id:'reach_level_10', minLevel:8, icon:'🏆', title:'Владелец развивающегося бизнеса', text:'Достигните 10 уровня магазина', event:'level_reached', metric:'level', target:10, absolute:true, reward:{ money:2500, xp:120 } },
 ];
 
 const questState = {};
 let questSystemReady = false;
 
+function getQuestText(quest) {
+  if (!quest) return '';
+  return typeof quest.text === 'function' ? quest.text() : (quest.text || '');
+}
+
+function getFirstUnclaimedQuestIndex() {
+  return QUEST_DEFINITIONS.findIndex(q => !questState[q.id]?.claimed);
+}
+
+function isQuestUnlocked(quest) {
+  return !!quest && (G.level || 1) >= (quest.minLevel || 1);
+}
+
+function getQuestMetricValue(quest) {
+  if (!quest?.metric) return null;
+  if (quest.metric === 'level') return G.level || 1;
+  if (quest.metric === 'total_sold') return Math.max(0, Number(G.totalSold) || 0);
+  if (quest.metric === 'total_earned') return Math.max(0, Number(G.totalEarned) || 0);
+  if (quest.metric === 'distinct_products_sold') {
+    if (!Array.isArray(G.soldProductIds)) G.soldProductIds = [];
+    return new Set(G.soldProductIds.filter(Boolean)).size;
+  }
+  if (quest.metric === 'regular_decor_count') {
+    const installed = typeof getAllInstalledDecorationsForProgress === 'function'
+      ? getAllInstalledDecorationsForProgress()
+      : (Array.isArray(decorations) ? decorations : []);
+    return installed.filter(item => {
+      const def = getDecorDef(item.type);
+      return def && !def.special && !def.facility;
+    }).length;
+  }
+  if (quest.metric === 'facility_count') {
+    const installed = typeof getAllInstalledDecorationsForProgress === 'function'
+      ? getAllInstalledDecorationsForProgress()
+      : (Array.isArray(decorations) ? decorations : []);
+    return installed.filter(item => getDecorDef(item.type)?.facility).length;
+  }
+  if (quest.metric === 'shelf_count') return Array.isArray(SHELF_POSITIONS) ? SHELF_POSITIONS.length : 0;
+  if (quest.metric === 'different_stocked_shelves') {
+    const stocked = (Array.isArray(G.slots) ? G.slots : []).filter(item => item && item.qty > 0 && !item.soldOut && item.product?.id);
+    return Math.min(stocked.length, new Set(stocked.map(item => item.product.id)).size);
+  }
+  if (quest.metric === 'staff_cleaner') return Math.max(0, Number(getStaffCount('cleaner')) || 0);
+  if (quest.metric === 'extra_sellers') return Math.max(0, (Number(getStaffCount('seller')) || 0) - 1);
+  if (quest.metric === 'rating') return typeof getStoreRatingDetails === 'function' ? getStoreRatingDetails().rating : 0;
+  return null;
+}
+
 function initQuestSystem() {
   if (questSystemReady) return;
   QUEST_DEFINITIONS.forEach(q => {
+    const metricValue = getQuestMetricValue(q);
     questState[q.id] = {
-      progress: q.absolute && q.event === 'level_reached' ? (G.level || 1) : 0,
+      progress: metricValue === null ? 0 : Math.min(q.target, metricValue),
       completed: false,
       claimed: false,
       completedDuringTutorial: false,
+      meta: {},
     };
   });
   questSystemReady = true;
   const btn = document.getElementById('quest-btn');
   if (btn) btn.style.display = 'flex';
+  syncActiveQuestProgress();
   updateQuestUI();
 }
 
 function getActiveQuestIndex() {
-  return QUEST_DEFINITIONS.findIndex(q => !questState[q.id]?.claimed);
+  const index = getFirstUnclaimedQuestIndex();
+  if (index < 0) return -1;
+  return isQuestUnlocked(QUEST_DEFINITIONS[index]) ? index : -1;
 }
 
 function getActiveQuest() {
@@ -2264,13 +2350,18 @@ function getActiveQuest() {
   return index >= 0 ? QUEST_DEFINITIONS[index] : null;
 }
 
-// Во время обучения следующий квест становится активным сразу после выполнения
-// предыдущего, даже если награда за предыдущий ещё не забрана.
+function getNextUnclaimedQuest() {
+  const index = getFirstUnclaimedQuestIndex();
+  return index >= 0 ? QUEST_DEFINITIONS[index] : null;
+}
+
+// Во время первого обучения следующий учебный квест становится активным сразу
+// после выполнения предыдущего, даже если награда ещё не забрана.
 function getQuestProgressIndex() {
-  if (!tutorialActive) return getActiveQuestIndex();
+  if (!tutorialActive || tutorialReplayMode) return getActiveQuestIndex();
   return QUEST_DEFINITIONS.findIndex(q => {
     const state = questState[q.id];
-    return state && !state.completed && !state.claimed;
+    return q.tutorial && state && !state.completed && !state.claimed;
   });
 }
 
@@ -2282,7 +2373,7 @@ function getQuestProgressTarget() {
 function getPendingTutorialQuestRewards() {
   return QUEST_DEFINITIONS.filter(quest => {
     const state = questState[quest.id];
-    return !!(state?.completed && !state.claimed && state.completedDuringTutorial);
+    return !!(quest.tutorial && state?.completed && !state.claimed && state.completedDuringTutorial);
   });
 }
 
@@ -2299,11 +2390,58 @@ function completeQuest(quest) {
   if (!state || state.completed || state.claimed) return;
   state.completed = true;
   state.progress = quest.target;
-  if (tutorialActive) state.completedDuringTutorial = true;
+  if (tutorialActive && !tutorialReplayMode) state.completedDuringTutorial = true;
 
   showToast('✅ Квест выполнен: ' + quest.title + '. Откройте квесты и заберите награду.', '#f5c518');
   logEvent('📋 ' + quest.title + ' выполнен — награда ожидает');
   updateQuestUI();
+}
+
+
+function syncQuestProgressFromGameState(quest) {
+  if (!quest || !quest.metric || !isQuestUnlocked(quest)) return false;
+  const state = questState[quest.id];
+  if (!state || state.completed || state.claimed) return false;
+  const value = getQuestMetricValue(quest);
+  if (value === null) return false;
+  state.progress = Math.min(quest.target, Math.max(state.progress || 0, Number(value) || 0));
+  if (state.progress >= quest.target) completeQuest(quest);
+  else updateQuestUI();
+  return true;
+}
+
+function syncActiveQuestProgress() {
+  if (!questSystemReady || tutorialReplayMode) return;
+  const quest = tutorialActive ? getQuestProgressTarget() : getActiveQuest();
+  if (quest) syncQuestProgressFromGameState(quest);
+}
+
+function applyQuestEventProgress(quest, eventName, amount = 1, data = {}) {
+  if (!quest || !isQuestUnlocked(quest)) return false;
+  const state = questState[quest.id];
+  if (!state || state.completed || state.claimed) return false;
+
+  if (quest.kind === 'shelf_storage_cycle') {
+    if (eventName === 'shelf_stored' && (state.progress || 0) < 1) {
+      state.progress = 1;
+      state.meta = { ...(state.meta || {}), shelfStored:true, storedType:data.variantId || null };
+      updateQuestUI();
+      return true;
+    }
+    if (eventName === 'shelf_restored_from_storage' && (state.progress || 0) >= 1) {
+      state.progress = 2;
+      completeQuest(quest);
+      return true;
+    }
+    return false;
+  }
+
+  if (quest.event !== eventName) return false;
+  if (quest.absolute) state.progress = Math.max(state.progress || 0, Number(amount) || 0);
+  else state.progress = Math.min(quest.target, (state.progress || 0) + Math.max(1, Number(amount) || 1));
+  if (state.progress >= quest.target) completeQuest(quest);
+  else updateQuestUI();
+  return true;
 }
 
 function canClaimQuestReward(quest, state) {
@@ -2331,21 +2469,23 @@ function claimQuestReward(questId) {
 
   updateQuestUI();
   if (reward.xp) {
-    setTimeout(() => addXP(reward.xp), 0);
+    setTimeout(() => {
+      addXP(reward.xp);
+      syncActiveQuestProgress();
+    }, 0);
+  } else {
+    setTimeout(syncActiveQuestProgress, 0);
   }
 }
 
 function notifyGameEvent(eventName, amount = 1, data = {}) {
   if (!questSystemReady && gameStarted) initQuestSystem();
 
-  const quest = tutorialActive ? getQuestProgressTarget() : getActiveQuest();
-  if (quest) {
-    const state = questState[quest.id];
-    if (!state.completed && !state.claimed && quest.event === eventName) {
-      if (quest.absolute) state.progress = Math.max(state.progress || 0, Number(amount) || 0);
-      else state.progress = Math.min(quest.target, (state.progress || 0) + Math.max(1, Number(amount) || 1));
-      if (state.progress >= quest.target) completeQuest(quest);
-      else updateQuestUI();
+  if (!tutorialReplayMode) {
+    const quest = tutorialActive ? getQuestProgressTarget() : getActiveQuest();
+    if (quest) {
+      applyQuestEventProgress(quest, eventName, amount, data);
+      if (!questState[quest.id]?.completed) syncQuestProgressFromGameState(quest);
     }
   }
 
@@ -2360,22 +2500,23 @@ function updateQuestUI() {
   if (document.getElementById('questsModal')?.classList.contains('show')) renderQuestsModal();
 }
 
-function createQuestCard(quest, isActive = false) {
+function createQuestCard(quest, isActive = false, forceLocked = false) {
   const state = questState[quest.id] || { progress:0, completed:false, claimed:false };
   const ratio = state.completed ? 100 : Math.min(100, ((state.progress || 0) / quest.target) * 100);
   const card = document.createElement('div');
-  card.className = 'quest-card ' + (state.completed ? 'done' : (isActive ? 'active' : 'locked'));
+  const lockedByLevel = forceLocked || !isQuestUnlocked(quest);
+  card.className = 'quest-card ' + (state.completed ? 'done' : (isActive && !lockedByLevel ? 'active' : 'locked'));
   card.innerHTML = `
     <div class="quest-card-head">
       <div class="quest-card-icon">${state.completed ? '✅' : quest.icon}</div>
       <div>
         <div class="quest-card-title">${quest.title}</div>
-        <div class="quest-card-sub">${quest.text}</div>
+        <div class="quest-card-sub">${getQuestText(quest)}</div>
       </div>
     </div>
     <div class="quest-progress-bar"><div class="quest-progress-fill" style="width:${ratio}%"></div></div>
     <div class="quest-card-foot">
-      <span>${state.completed ? 'Выполнено — заберите награду' : Math.min(state.progress || 0, quest.target) + ' / ' + quest.target}</span>
+      <span>${state.completed ? 'Выполнено — заберите награду' : (lockedByLevel ? ('Откроется на ' + (quest.minLevel || 1) + ' уровне') : (Math.min(state.progress || 0, quest.target) + ' / ' + quest.target))}</span>
       <span class="quest-reward">${rewardText(quest.reward)}</span>
     </div>
     ${state.completed && canClaimQuestReward(quest, state) ? '<button type="button" class="quest-claim-btn">🎁 Забрать награду</button>' : ''}`;
@@ -2401,14 +2542,14 @@ function renderQuestsModal() {
   const pendingTutorialRewards = getPendingTutorialQuestRewards();
   const help = document.getElementById('quests-modal-help');
   if (help) {
-    help.textContent = (tutorialActive || pendingTutorialRewards.length > 0)
+    help.textContent = ((tutorialActive && !tutorialReplayMode) || pendingTutorialRewards.length > 0)
       ? 'Во время обучения выполненные квесты остаются в списке. Следующий квест появляется сразу, а награды можно забрать позже.'
       : 'Выполните текущее задание и нажмите «Забрать награду». После этого появится следующий квест.';
   }
 
   // Только во время обучения завершённые квесты накапливаются,
   // а рядом с ними сразу появляется следующий активный квест.
-  if (tutorialActive) {
+  if (tutorialActive && !tutorialReplayMode) {
     const progressQuest = getQuestProgressTarget();
     const visible = [...pendingTutorialRewards];
     if (progressQuest && !visible.some(item => item.id === progressQuest.id)) visible.push(progressQuest);
@@ -2435,9 +2576,14 @@ function renderQuestsModal() {
   // Вне обучения сохраняется прежняя последовательная система: один квест за раз.
   const quest = getActiveQuest();
   if (!quest) {
+    const nextQuest = getNextUnclaimedQuest();
+    if (nextQuest) {
+      list.appendChild(createQuestCard(nextQuest, false, true));
+      return;
+    }
     const empty = document.createElement('div');
     empty.className = 'quest-empty';
-    empty.textContent = 'Все стартовые квесты завершены. Новые задания будут добавлены позже.';
+    empty.textContent = 'Все квесты до 10 уровня завершены.';
     list.appendChild(empty);
     return;
   }
@@ -2465,6 +2611,7 @@ function resetModalViewState(modalId) {
 
 function openQuestsModal() {
   initQuestSystem();
+  syncActiveQuestProgress();
   renderQuestsModal();
   document.getElementById('questsModal')?.classList.add('show');
   resetModalViewState('questsModal');
@@ -2494,6 +2641,7 @@ function getTutorialStarterShelfVariant() {
 function isTutorialFreeStarterShelfPurchase(variant) {
   const step = TUTORIAL_STEPS[tutorialStepIndex];
   return !!(tutorialActive
+    && !tutorialReplayMode
     && step?.id === 'buy_shelf'
     && SHELF_POSITIONS.length === 0
     && variant?.id === getDefaultShelfVariantId());
@@ -2502,6 +2650,7 @@ function isTutorialFreeStarterShelfPurchase(variant) {
 function isTutorialFreeStarterCashPurchase(variant) {
   const step = TUTORIAL_STEPS[tutorialStepIndex];
   return !!(tutorialActive
+    && !tutorialReplayMode
     && step?.id === 'buy_cash'
     && cashRegisters.length === 0
     && variant?.id === CASH_REGISTER_VARIANTS[0]?.id);
@@ -2669,6 +2818,10 @@ function ensureTutorialStarterEquipment() {
 }
 
 function tutorialStepAlreadySatisfied(step) {
+  // Повторное обучение — только демонстрация. Шаги не пропускаются
+  // из-за уже установленного оборудования и не меняют игровой мир.
+  if (tutorialReplayMode) return false;
+
   if (step?.id === 'buy_shelf') {
     if (tutorialEquipmentPlacement?.kind === 'shelf') return false;
     return SHELF_POSITIONS.length > 0;
@@ -2752,10 +2905,40 @@ const TUTORIAL_STEPS = [
 ];
 
 let tutorialActive = false;
+let tutorialReplayMode = false;
 let tutorialStepIndex = 0;
 let tutorialPositionTimer = null;
 let tutorialPreviousAutoStocking = true;
 let tutorialRewardGranted = false;
+
+const TUTORIAL_REPLAY_DEMO_STEP_IDS = new Set([
+  'buy_shelf', 'buy_cash', 'order', 'delivery',
+  'stock', 'sale', 'collect', 'cleanup'
+]);
+
+function isTutorialReplayDemoStep(step) {
+  return !!(tutorialReplayMode && step && TUTORIAL_REPLAY_DEMO_STEP_IDS.has(step.id));
+}
+
+function isTutorialStepManual(step) {
+  return !!(step?.manual || isTutorialReplayDemoStep(step));
+}
+
+function getTutorialReplayStepText(step) {
+  if (!isTutorialReplayDemoStep(step)) return '';
+
+  const texts = {
+    buy_shelf: 'При первом прохождении здесь бесплатно покупается стартовая витрина, после чего автоматически открывается редактор для её установки. В повторном обучении витрина не создаётся и магазин не изменяется.',
+    buy_cash: 'При первом прохождении здесь бесплатно покупается стартовая касса и устанавливается через редактор. В повторном обучении новая касса не создаётся.',
+    order: 'В обычной игре здесь выбирается количество и оплачивается заказ. Повторное обучение не покупает товар, не списывает деньги и не создаёт новую поставку.',
+    delivery: 'После настоящего заказа товар появляется во вкладке «В пути» и доставляется по таймеру. Повторное обучение только объясняет этот этап и не создаёт доставку.',
+    stock: 'После доставки товар переносится со склада на подходящую витрину. Повторное обучение не добавляет товар и не меняет содержимое уже работающей витрины.',
+    sale: 'Товар на витрине продаётся по собственному таймеру. Повторное обучение не ускоряет, не перезапускает и не останавливает текущую продажу.',
+    collect: 'После реальной продажи выручка остаётся в кассе до сбора. Повторное обучение не добавляет деньги и не забирает уже накопленную выручку.',
+    cleanup: 'После полной распродажи витрина требует уборки. Повторное обучение только показывает этот этап и не меняет состояние витрины.'
+  };
+  return texts[step.id] || '';
+}
 
 // В обучении виртуальной целью могут быть не только HTML-кнопки,
 // но и 3D-объекты на canvas: стартовая витрина и касса.
@@ -2834,7 +3017,7 @@ function isTutorialInteractionAllowed(event) {
 
   const step = TUTORIAL_STEPS[tutorialStepIndex];
   // На приветственном и финальном экране нужна основная кнопка «Начать/Готово».
-  if (step?.manual && element?.closest('#tutorial-next-btn')) return true;
+  if (isTutorialStepManual(step) && element?.closest('#tutorial-next-btn')) return true;
 
   const target = getTutorialTarget();
   if (!target) return false;
@@ -2870,13 +3053,14 @@ document.addEventListener('keydown', event => {
   blockOutsideTutorialTarget(event);
 }, true);
 
-function startTutorial() {
+function startTutorial(replayMode = false) {
   closeQuestsModal();
   tutorialEquipmentPlacement = null;
+  tutorialReplayMode = !!replayMode;
   tutorialActive = true;
   tutorialStepIndex = 0;
   tutorialPreviousAutoStocking = G.autoStocking;
-  G.autoStocking = false;
+  if (!tutorialReplayMode) G.autoStocking = false;
   document.getElementById('tutorial-card').style.display = 'block';
   if (tutorialPositionTimer) clearInterval(tutorialPositionTimer);
   tutorialPositionTimer = setInterval(updateTutorialSpotlight, 180);
@@ -2886,14 +3070,16 @@ function startTutorial() {
 function restartTutorial() {
   closeQuestsModal();
   skipTutorial(true, false);
-  setTimeout(startTutorial, 120);
+  setTimeout(() => startTutorial(true), 120);
 }
 
 function skipTutorial(silent = false, provideStarterEquipment = true) {
-  if (provideStarterEquipment) ensureTutorialStarterEquipment();
+  const wasReplay = tutorialReplayMode;
+  if (provideStarterEquipment && !wasReplay) ensureTutorialStarterEquipment();
   tutorialEquipmentPlacement = null;
   if (editorMode) exitEditorMode();
   tutorialActive = false;
+  tutorialReplayMode = false;
   G.autoStocking = tutorialPreviousAutoStocking;
   if (tutorialPositionTimer) clearInterval(tutorialPositionTimer);
   tutorialPositionTimer = null;
@@ -2905,16 +3091,23 @@ function skipTutorial(silent = false, provideStarterEquipment = true) {
   if (dim) dim.style.display = 'none';
   closeShopModal();
   closeItemModal();
-  if (!silent) showToast('🎓 Обучение пропущено · стартовая витрина и касса установлены');
+  if (!silent) {
+    showToast(wasReplay
+      ? '🎓 Повторное обучение закрыто · без наград'
+      : '🎓 Обучение пропущено · стартовая витрина и касса установлены');
+  }
 }
 
 function finishTutorial() {
-  if (!tutorialRewardGranted) {
+  const wasReplay = tutorialReplayMode;
+  if (!wasReplay && !tutorialRewardGranted) {
     tutorialRewardGranted = true;
     G.money += 250;
     G.crystals += 1;
     updateHUD();
     showToast('🎓 Обучение завершено · 💰250 · 💎1', '#f5c518');
+  } else if (wasReplay) {
+    showToast('🎓 Повторное обучение завершено · без денег и наград', '#f5c518');
   }
   skipTutorial(true, false);
 }
@@ -2922,7 +3115,7 @@ function finishTutorial() {
 function tutorialNext() {
   if (!tutorialActive) return;
   const step = TUTORIAL_STEPS[tutorialStepIndex];
-  if (!step?.manual) return;
+  if (!isTutorialStepManual(step)) return;
   if (step.id === 'complete') { finishTutorial(); return; }
   tutorialStepIndex = Math.min(TUTORIAL_STEPS.length - 1, tutorialStepIndex + 1);
   renderTutorialStep();
@@ -2933,7 +3126,12 @@ function tutorialNotify(eventName, data = {}) {
   const step = TUTORIAL_STEPS[tutorialStepIndex];
   if (!step || step.event !== eventName) return;
 
-  if (eventName === 'product_stocked' && data.slotIdx !== undefined && G.slots[data.slotIdx]) {
+  // В повторном обучении допускаются только безопасные шаги просмотра.
+  // Экономические события идут своим ходом и не двигают демонстрацию.
+  if (tutorialReplayMode && !['shop_opened', 'product_viewed'].includes(eventName)) return;
+
+  // Ускорение первой продажи применяется только в самом первом обучении.
+  if (!tutorialReplayMode && eventName === 'product_stocked' && data.slotIdx !== undefined && G.slots[data.slotIdx]) {
     G.slots[data.slotIdx].nextSaleAt = Date.now() + 7000;
   }
 
@@ -2958,7 +3156,10 @@ function renderTutorialStep() {
   const visibleStep = Math.max(0, Math.min(actionCount, tutorialStepIndex));
   label.textContent = step.id === 'welcome' ? 'Короткое обучение' : step.id === 'complete' ? 'Готово' : 'Шаг ' + visibleStep + ' из ' + actionCount;
   title.textContent = step.title;
-  if (step.id === 'buy_shelf' && tutorialEquipmentPlacement?.kind === 'shelf') {
+  const replayStepText = getTutorialReplayStepText(step);
+  if (replayStepText) {
+    body.textContent = replayStepText;
+  } else if (step.id === 'buy_shelf' && tutorialEquipmentPlacement?.kind === 'shelf') {
     body.textContent = 'Редактор открыт. Зажмите витрину, перетащите её в выбранное место и отпустите.';
   } else if (step.id === 'buy_cash' && tutorialEquipmentPlacement?.kind === 'cash') {
     body.textContent = 'Редактор открыт. Зажмите кассу, перетащите её в выбранное место и отпустите.';
@@ -2987,15 +3188,17 @@ function renderTutorialStep() {
   } else {
     body.textContent = step.text;
   }
-  next.style.display = step.manual ? '' : 'none';
+  const stepManual = isTutorialStepManual(step);
+  next.style.display = stepManual ? '' : 'none';
   next.textContent = step.button || 'Далее';
-  card.classList.toggle('centered', step.id === 'welcome' || step.id === 'complete');
+  card.classList.toggle('centered', step.id === 'welcome' || step.id === 'complete' || isTutorialReplayDemoStep(step));
   updateTutorialSpotlight();
 }
 
 function getTutorialTarget() {
   if (!tutorialActive) return null;
   const step = TUTORIAL_STEPS[tutorialStepIndex];
+  if (isTutorialReplayDemoStep(step)) return null;
   if (!step || typeof step.target !== 'function') return null;
   try { return step.target(); } catch (e) { return null; }
 }
@@ -3010,10 +3213,10 @@ function updateTutorialSpotlight() {
 
   const target = getTutorialTarget();
   const rect = getTutorialTargetRect(target);
-  if (!rect || step.manual) {
+  if (!rect || isTutorialStepManual(step)) {
     spot.style.display = 'none';
     dim.style.display = 'block';
-    if (!step.manual) card.classList.remove('centered');
+    if (!isTutorialStepManual(step)) card.classList.remove('centered');
     return;
   }
 
@@ -3634,6 +3837,53 @@ const PRODUCTS = [
   {id:'swimsuit', name:'Купальник', emoji:'🩱', cat:'Одежда', cost:650, sell:1200, time:150, xp:30, shelfKinds:['hanging_rack'], season:'summer', lowSeasons:['autumn','winter']},
   {id:'flip_flops', name:'Сланцы', emoji:'🩴', cat:'Обувь', cost:300, sell:650, time:85, xp:17, shelfKinds:['shoe_cubby'], season:'summer', lowSeasons:['autumn','winter']},
 ];
+
+
+// Баланс стартового магазина электроники повторяет первые товары одежды
+// на тех же этапах прогрессии. Это применяется только если электроника
+// выбрана как первый магазин. Электроника на втором этаже сохраняет
+// собственные исходные цены и XP.
+const ORIGINAL_PRODUCT_ECONOMY = Object.fromEntries(
+  PRODUCTS.map(product => [product.id, {
+    cost: product.cost,
+    sell: product.sell,
+    xp: product.xp,
+  }])
+);
+
+const STARTER_ELECTRONICS_CLOTHING_BALANCE = {
+  headphones: 'shorts',
+  phone: 'tshirt',
+  coffee_machine: 'jeans',
+  game_console: 'sneakers',
+  laptop: 'jacket',
+  television: 'dress',
+  desktop_pc: 'wallet',
+  washing_machine: 'bag',
+};
+
+function configureStartingShopProductBalance(startingShopType) {
+  // Сначала всегда восстанавливаем исходные значения. Это защищает повторный
+  // запуск новой игры в той же вкладке и гарантирует отдельный баланс 2 этажа.
+  PRODUCTS.forEach(product => {
+    const original = ORIGINAL_PRODUCT_ECONOMY[product.id];
+    if (!original) return;
+    product.cost = original.cost;
+    product.sell = original.sell;
+    product.xp = original.xp;
+  });
+
+  if (startingShopType !== 'electronics') return;
+
+  Object.entries(STARTER_ELECTRONICS_CLOTHING_BALANCE).forEach(([electronicsId, clothingId]) => {
+    const electronicsProduct = PRODUCTS.find(product => product.id === electronicsId);
+    const clothingProduct = PRODUCTS.find(product => product.id === clothingId);
+    if (!electronicsProduct || !clothingProduct) return;
+    electronicsProduct.cost = clothingProduct.cost;
+    electronicsProduct.sell = clothingProduct.sell;
+    electronicsProduct.xp = clothingProduct.xp;
+  });
+}
 
 
 // ══════════════════════════════════════
@@ -4354,6 +4604,9 @@ canvas.addEventListener('touchend', e=>{
       else if (!editorObjectMoveMode && !moveModeSilent) showToast('❌ Место занято — касса возвращена', '#e94560ee');
     } else {
       sellers.forEach(s => { if (s.role !== 'cleaning') { s.roleKey = ''; s.target = chooseSellerFloorTarget(); } });
+      const cashMoved = !!dragCashierStartPos && !!placedCash
+        && (Math.abs(placedCash.x - dragCashierStartPos[0]) > 0.01 || Math.abs(placedCash.z - dragCashierStartPos[1]) > 0.01);
+      if (cashMoved) notifyGameEvent('cash_moved', 1, { index:placedCashIndex });
       if (!editorObjectMoveMode && !moveModeSilent) showToast('✅ Касса перемещена');
     }
     handleTutorialEquipmentPlacementResult('cash', placedCashIndex, cashPlacementValid);
@@ -4377,6 +4630,10 @@ canvas.addEventListener('touchend', e=>{
       sm.stand.material.emissive.setHex(0xf5c518);
       sm.stand.material.emissiveIntensity=0.25;
     });
+    const shelfMoved = shelfPlacementValid && !!dragStartPos
+      && (Math.abs(SHELF_POSITIONS[placedShelfIndex][0] - dragStartPos[0]) > 0.01
+        || Math.abs(SHELF_POSITIONS[placedShelfIndex][2] - dragStartPos[1]) > 0.01);
+    if (shelfMoved) notifyGameEvent('shelf_moved', 1, { index:placedShelfIndex });
     handleTutorialEquipmentPlacementResult('shelf', placedShelfIndex, shelfPlacementValid);
     dragShelfIdx=null;
     dragStartPos=null;
@@ -6691,6 +6948,7 @@ function placeDecorFromTap(clientX, clientY) {
   }
 
   const elevatorPlaced = isGlassElevatorDecor(placedDecor);
+  if (placedDecor) notifyGameEvent('decor_installed', 1, { type:def.id, facility:!!def.facility, fromStorage });
   stopDecorPlaceMode();
   enterEditorMode();
   if (elevatorPlaced) completeGlassElevatorPlacement(placedDecor);
@@ -7850,6 +8108,7 @@ function buyWorker(type) {
   updateHUD();
   if (document.getElementById('workersModal')?.classList.contains('show')) renderWorkersModal();
   renderProductList();
+  notifyGameEvent('worker_hired', 1, { type });
   showToast('👥 Нанят новый сотрудник');
 }
 
@@ -9461,6 +9720,8 @@ function sellOneUnitFromShelf(slotIdx, reason = 'timer') {
   G.pendingRevenue += saleAmount;
   G.pendingItems.push({ name: item.product.name, emoji: item.product.emoji, amount: saleAmount });
   G.totalSold++;
+  if (!Array.isArray(G.soldProductIds)) G.soldProductIds = [];
+  if (!G.soldProductIds.includes(item.product.id)) G.soldProductIds.push(item.product.id);
   addXP(item.product.xp);
   showToast('🛍 Товар продан: ' + item.product.name + ' ×1 · ' + fmtFull(saleAmount) + '₽');
   // Продажа по таймеру не управляет покупателями. Покупатели — только визуальная жизнь магазина.
@@ -10385,6 +10646,7 @@ function updateRatingUI() {
   if (fill) fill.style.width = d.rating + '%';
   if (barText) barText.textContent = d.rating + '%';
   evaluateDecorXPMilestones(d.rating);
+  syncActiveQuestProgress();
 }
 
 function openRatingModal() {
@@ -10636,15 +10898,18 @@ function updateHUD() {
   document.getElementById('levelLabel').textContent = 'Уровень ' + safeLevel + ' — ' + getLevelTitle(safeLevel);
   updateLiftButton();
 
-  const currentThreshold = LEVELS[safeLevel].xp;
-  const xpInCurrentLevel = Math.max(0, G.xp - currentThreshold);
-  const xpNeeded = safeLevel < MAX_LEVEL ? getXPNeededForLevel(safeLevel + 1) : 0;
-  const pct = safeLevel >= MAX_LEVEL ? 100 : Math.max(0, Math.min(100, (xpInCurrentLevel / xpNeeded) * 100));
+  // XP хранится и показывается накопительно: опыт прошлых уровней не обнуляется.
+  // Например: 2 уровень — 300 XP, 3 уровень — 650 XP общей суммы.
+  const totalXP = Math.max(0, Number(G.xp) || 0);
+  const nextTotalThreshold = safeLevel < MAX_LEVEL ? LEVELS[safeLevel + 1].xp : LEVELS[MAX_LEVEL].xp;
+  const pct = safeLevel >= MAX_LEVEL
+    ? 100
+    : Math.max(0, Math.min(100, (totalXP / Math.max(1, nextTotalThreshold)) * 100));
 
   document.getElementById('xp-fill').style.width = pct+'%';
   document.getElementById('xp-label').textContent = safeLevel >= MAX_LEVEL
-    ? 'Максимальный уровень'
-    : fmtFull(xpInCurrentLevel)+' / '+fmtFull(xpNeeded)+' XP';
+    ? 'Максимальный уровень · ' + fmtFull(totalXP) + ' XP'
+    : fmtFull(totalXP)+' / '+fmtFull(nextTotalThreshold)+' XP';
   updateRatingUI();
 }
 
@@ -11079,7 +11344,10 @@ function speedUpShelfSale(slotIdx) {
 }
 
 function getDeliverySeconds(product) {
-  const sorted = [...PRODUCTS].sort((a, b) => a.cost - b.cost);
+  // Баланс стартовой электроники меняет цену, но не должен скрыто менять
+  // уже настроенную длительность доставки. Поэтому сортируем по исходной цене.
+  const originalCost = item => ORIGINAL_PRODUCT_ECONOMY[item.id]?.cost ?? item.cost;
+  const sorted = [...PRODUCTS].sort((a, b) => originalCost(a) - originalCost(b));
   const idx = Math.max(0, sorted.findIndex(p => p.id === product.id));
   return DELIVERY_BASE_SECONDS + idx * DELIVERY_STEP_SECONDS;
 }
@@ -11452,9 +11720,11 @@ function renderProductList() {
         btn.style.cssText = `background:#${c.hex.toString(16).padStart(6,'0')};border-radius:10px;padding:10px 4px;text-align:center;cursor:pointer;border:2px solid rgba(255,255,255,0.1)`;
         btn.innerHTML = `<div style="font-size:10px;color:#000;font-weight:700;text-shadow:0 0 4px rgba(255,255,255,0.8)">Стены · ${c.name}<br>100₽</div>`;
         btn.onclick = () => {
+          if (Number(WALL) === Number(c.hex)) { showToast('ℹ️ Этот цвет стен уже выбран'); return; }
           if (G.money < 100) { showToast('❌ Нужно 100₽'); return; }
           G.money -= 100; updateHUD();
           recolorWalls(c.hex);
+          notifyGameEvent('wall_color_changed', 1, { color:c.hex });
           showToast('🎨 Цвет стен изменён!');
         };
         wallGrid.appendChild(btn);
@@ -11470,10 +11740,12 @@ function renderProductList() {
         btn.style.cssText = `background:#${c.hex.toString(16).padStart(6,'0')};border-radius:10px;padding:10px 4px;text-align:center;cursor:pointer;border:2px solid rgba(255,255,255,0.1)`;
         btn.innerHTML = `<div style="font-size:10px;color:#000;font-weight:700;text-shadow:0 0 4px rgba(255,255,255,0.8)">Пол · ${c.name}<br>50₽</div>`;
         btn.onclick = () => {
+          if (floorMat.color.getHex() === c.hex) { showToast('ℹ️ Этот цвет пола уже выбран'); return; }
           if (G.money < 50) { showToast('❌ Нужно 50₽'); return; }
           G.money -= 50; updateHUD();
           floorMat.color.setHex(c.hex);
           tileMeshes.forEach(m => m.material.color.setHex(c.hex));
+          notifyGameEvent('floor_color_changed', 1, { color:c.hex });
           showToast('🟫 Цвет пола изменён!');
         };
         floorGrid.appendChild(btn);
@@ -11928,6 +12200,7 @@ function buyShelf(sv) {
     closeShopModal();
     enterEditorMode();
   }
+  notifyGameEvent('shelf_installed', 1, { index:idx, variantId:sv.id, tutorialFree });
   showToast(tutorialFree ? '✅ Витрина куплена бесплатно — теперь поставьте её' : ('✅ ' + sv.name + ' куплена!'));
 }
 
@@ -12626,6 +12899,7 @@ function chooseShopType(type) {
   shopTypeChoiceLocked = true;
 
   G.shopType = type;
+  configureStartingShopProductBalance(type);
   G.currentSeason = 'winter';
   G.seasonStartedAt = Date.now();
   initializeSeasonSystem();
@@ -12658,6 +12932,7 @@ function chooseShopType(type) {
 function initializeShopTypeScreen() {
   const screen = document.getElementById('shop-type-screen');
   if (G.shopType && SHOP_TYPES[G.shopType]) {
+    configureStartingShopProductBalance(G.shopType);
     initializeSeasonSystem();
     rebuildStarterShelfForShopType();
     initializeShopFloorSystem();
@@ -12892,6 +13167,7 @@ function storeEquipmentFromTap(clientX, clientY) {
     const variantId = removeShelfForStorage(idx);
     if (variantId) {
       addEquipmentToStorage('shelf', variantId, 1);
+      notifyGameEvent('shelf_stored', 1, { variantId });
       showToast('📦 Витрина убрана на склад');
       warehouseTab = 'objects';
     }
@@ -13434,7 +13710,10 @@ function editorActionStore() {
     if (variantId) addEquipmentToStorage('cash', variantId, 1);
   } else if (sel.type === 'shelf') {
     const variantId = removeShelfForStorage(sel.index);
-    if (variantId) addEquipmentToStorage('shelf', variantId, 1);
+    if (variantId) {
+      addEquipmentToStorage('shelf', variantId, 1);
+      notifyGameEvent('shelf_stored', 1, { variantId });
+    }
   }
 
   warehouseTab = 'objects';
@@ -13654,6 +13933,7 @@ function rotateShelf(idx, silent = false) {
     if (!silent) showRouteConnectivityBlockedToast(routeStatus);
     return false;
   }
+  notifyGameEvent('shelf_rotated', 1, { index:idx });
   if (!silent) showToast('🔄 Витрина развернута');
   return true;
 }
@@ -13683,6 +13963,7 @@ function rotateCashRegister(idx, silent = false) {
     return false;
   }
   sellers.forEach(s => { if (s.role !== 'cleaning') { s.roleKey = ''; s.target = chooseSellerFloorTarget(); } });
+  notifyGameEvent('cash_rotated', 1, { index:idx });
   if (!silent) showToast('🔄 Касса развернута');
   return true;
 }
@@ -14403,6 +14684,7 @@ function placeEquipmentFromStorage(key) {
   if (!placed) { showToast('❌ Не получилось поставить оборудование'); return; }
 
   removeEquipmentFromStorage(key, 1);
+  if (item.kind === 'shelf') notifyGameEvent('shelf_restored_from_storage', 1, { variantId:item.type });
   closeWarehouseModal();
   startMoveMode(true);
 }
