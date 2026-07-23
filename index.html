@@ -2912,7 +2912,7 @@ let tutorialPreviousAutoStocking = true;
 let tutorialRewardGranted = false;
 
 const TUTORIAL_REPLAY_DEMO_STEP_IDS = new Set([
-  'buy_shelf', 'buy_cash', 'order', 'delivery',
+  'shop', 'buy_shelf', 'buy_cash', 'product', 'order', 'delivery',
   'stock', 'sale', 'collect', 'cleanup'
 ]);
 
@@ -2928,9 +2928,11 @@ function getTutorialReplayStepText(step) {
   if (!isTutorialReplayDemoStep(step)) return '';
 
   const texts = {
+    shop: 'Здесь открывается раздел «Магазин». В нём покупаются товары, витрины, кассы, оформление и другие объекты.',
     buy_shelf: 'При первом прохождении здесь бесплатно покупается стартовая витрина, после чего автоматически открывается редактор для её установки. В повторном обучении витрина не создаётся и магазин не изменяется.',
     buy_cash: 'При первом прохождении здесь бесплатно покупается стартовая касса и устанавливается через редактор. В повторном обучении новая касса не создаётся.',
-    order: 'В обычной игре здесь выбирается количество и оплачивается заказ. Повторное обучение не покупает товар, не списывает деньги и не создаёт новую поставку.',
+    product: 'Здесь выбирается первый доступный товар вашего магазина. Нажатие на карточку открывает окно с ценой, прибылью, опытом и временем продажи.',
+    order: 'В окне товара выбирается количество и нажимается кнопка покупки. Повторное обучение показывает этот экран, но не списывает деньги и не создаёт поставку.',
     delivery: 'После настоящего заказа товар появляется во вкладке «В пути» и доставляется по таймеру. Повторное обучение только объясняет этот этап и не создаёт доставку.',
     stock: 'После доставки товар переносится со склада на подходящую витрину. Повторное обучение не добавляет товар и не меняет содержимое уже работающей витрины.',
     sale: 'Товар на витрине продаётся по собственному таймеру. Повторное обучение не ускоряет, не перезапускает и не останавливает текущую продажу.',
@@ -2938,6 +2940,66 @@ function getTutorialReplayStepText(step) {
     cleanup: 'После полной распродажи витрина требует уборки. Повторное обучение только показывает этот этап и не меняет состояние витрины.'
   };
   return texts[step.id] || '';
+}
+
+function closeTutorialReplayWindows() {
+  closeItemModal();
+  closeShopModal();
+  closeWarehouseModal();
+  const cashModal = document.getElementById('cashModal');
+  if (cashModal) cashModal.classList.remove('show');
+}
+
+function getTutorialReplayProduct() {
+  const productCategoryId = G.shopType === 'electronics' ? 'tech' : 'clothes';
+  return PRODUCTS.find(product => product.cat === productCategoryId && product.level <= G.level)
+    || PRODUCTS.find(product => product.cat === productCategoryId)
+    || PRODUCTS[0]
+    || null;
+}
+
+// Повторное обучение само открывает экран, о котором говорит текущий шаг.
+// Оно не покупает товары, не меняет склад и не вмешивается в таймеры продаж.
+function prepareTutorialReplayStepView(step) {
+  if (!tutorialReplayMode || !step) return;
+
+  if (step.id === 'welcome' || step.id === 'complete') {
+    closeTutorialReplayWindows();
+    return;
+  }
+
+  if (step.id === 'shop' || step.id === 'buy_shelf' || step.id === 'buy_cash' || step.id === 'product') {
+    closeTutorialReplayWindows();
+    openShopModal();
+    prepareTutorialShopView();
+    return;
+  }
+
+  if (step.id === 'order') {
+    closeTutorialReplayWindows();
+    openShopModal();
+    activeCat = G.shopType === 'electronics' ? 'tech' : 'clothes';
+    activeSubcatByCategory[activeCat] = 'all';
+    renderCatTabs();
+    renderSubcatTabs();
+    renderProductList();
+    const product = getTutorialReplayProduct();
+    if (product) showItemDetail(product);
+    return;
+  }
+
+  if (step.id === 'delivery' || step.id === 'stock') {
+    closeTutorialReplayWindows();
+    openWarehouseModal();
+    warehouseTab = 'products';
+    warehouseProductTab = step.id === 'stock' ? 'stock' : 'transit';
+    renderWarehouseModal();
+    resetModalViewState('warehouseModal');
+    return;
+  }
+
+  // Продажа, сбор выручки и уборка показываются на основном экране магазина.
+  closeTutorialReplayWindows();
 }
 
 // В обучении виртуальной целью могут быть не только HTML-кнопки,
@@ -3064,6 +3126,7 @@ function startTutorial(replayMode = false) {
   document.getElementById('tutorial-card').style.display = 'block';
   if (tutorialPositionTimer) clearInterval(tutorialPositionTimer);
   tutorialPositionTimer = setInterval(updateTutorialSpotlight, 180);
+  prepareTutorialReplayStepView(TUTORIAL_STEPS[tutorialStepIndex]);
   renderTutorialStep();
 }
 
@@ -3118,6 +3181,7 @@ function tutorialNext() {
   if (!isTutorialStepManual(step)) return;
   if (step.id === 'complete') { finishTutorial(); return; }
   tutorialStepIndex = Math.min(TUTORIAL_STEPS.length - 1, tutorialStepIndex + 1);
+  prepareTutorialReplayStepView(TUTORIAL_STEPS[tutorialStepIndex]);
   renderTutorialStep();
 }
 
@@ -3126,9 +3190,9 @@ function tutorialNotify(eventName, data = {}) {
   const step = TUTORIAL_STEPS[tutorialStepIndex];
   if (!step || step.event !== eventName) return;
 
-  // В повторном обучении допускаются только безопасные шаги просмотра.
-  // Экономические события идут своим ходом и не двигают демонстрацию.
-  if (tutorialReplayMode && !['shop_opened', 'product_viewed'].includes(eventName)) return;
+  // Повторное обучение полностью управляется кнопкой «Далее».
+  // События реальной игры не должны пропускать или останавливать его шаги.
+  if (tutorialReplayMode) return;
 
   // Ускорение первой продажи применяется только в самом первом обучении.
   if (!tutorialReplayMode && eventName === 'product_stocked' && data.slotIdx !== undefined && G.slots[data.slotIdx]) {
