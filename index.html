@@ -358,6 +358,34 @@
     align-items:center;
     gap:10px;
   }
+  #quest-complete-check {
+    display:none;
+    align-items:center;
+    justify-content:center;
+    width:30px;
+    height:30px;
+    border-radius:50%;
+    background:#23c483;
+    color:#fff;
+    font-size:19px;
+    font-weight:900;
+    box-shadow:0 5px 15px rgba(35,196,131,.38);
+    pointer-events:none;
+    transform-origin:center bottom;
+  }
+  #quest-complete-check.show {
+    display:flex;
+    animation:questCheckBounce .75s ease-in-out infinite, questCheckBlink 1.5s ease-in-out infinite;
+  }
+  @keyframes questCheckBounce {
+    0%,100% { transform:translateY(0) scale(1); }
+    45% { transform:translateY(-8px) scale(1.08); }
+    65% { transform:translateY(-3px) scale(.98); }
+  }
+  @keyframes questCheckBlink {
+    0%,100% { opacity:1; }
+    50% { opacity:.45; }
+  }
   /* Единая вертикальная стопка HUD-уведомлений под кнопкой квестов. */
   #salary-notifications {
     width:min(230px, calc(100vw - 30px));
@@ -1024,6 +1052,15 @@
     top:50%;
     bottom:auto;
     transform:translateY(-50%);
+  }
+
+  #tutorial-card.replay-top-right,
+  #tutorial-card.replay-top-right.centered {
+    left:auto !important;
+    right:calc(env(safe-area-inset-right, 0px) + 12px) !important;
+    top:calc(env(safe-area-inset-top, 0px) + 12px) !important;
+    bottom:auto !important;
+    transform:none !important;
   }
   .tutorial-step-label { font-size:7px; color:#f5c518; font-weight:900; text-transform:uppercase; letter-spacing:.5px; }
   .tutorial-title { font-size:12px; color:#fff; font-weight:900; margin-top:3px; }
@@ -1844,6 +1881,7 @@
     <!-- КВЕСТЫ -->
     <div id="quest-hud-row">
       <button id="quest-btn" onclick="openQuestsModal()" aria-label="Квесты">📋</button>
+      <div id="quest-complete-check" aria-label="Квест выполнен">✓</div>
     </div>
 
     <!-- ЕДИНАЯ СТОПКА ИГРОВЫХ УВЕДОМЛЕНИЙ -->
@@ -2248,6 +2286,10 @@ const QUEST_DEFINITIONS = [
   { id:'first_sale', tutorial:true, icon:'🛍️', title:'Первая продажа', text:'Продайте первый товар покупателю', event:'product_sold', target:1, reward:{ money:200, xp:30 } },
   { id:'first_collection', tutorial:true, icon:'💰', title:'Заберите выручку', text:'Нажмите на кассу и заберите деньги', event:'revenue_collected', target:1, reward:{ money:200, xp:20 } },
   { id:'open_editor', tutorial:true, icon:'✏️', title:'Познакомьтесь с редактором', text:'Откройте режим редактора магазина', event:'editor_opened', target:1, reward:{ money:100, xp:10 } },
+  { id:'sell_three_level_one', tutorial:true, icon:'🛍️', title:'Первые продажи', text:'Продайте 3 товара покупателям', event:'product_sold', target:3, reward:{ money:250, xp:30 } },
+  { id:'buy_first_decor', tutorial:true, icon:'🪴', title:'Первое украшение', text:'Купите и установите один объект декора', event:'decor_purchased', target:1, reward:{ money:200, xp:20 } },
+  { id:'decor_storage_cycle', tutorial:true, icon:'📦', title:'Декор на складе', text:'Уберите декор на склад, затем верните этот декор обратно в зал', kind:'decor_storage_cycle', target:2, reward:{ money:200, xp:20 } },
+  { id:'sell_one_decor', tutorial:true, icon:'💰', title:'Продажа декора', text:'Продайте один установленный объект декора', event:'decor_sold', target:1, reward:{ money:200, xp:20 } },
   { id:'reach_level_2', tutorial:true, icon:'⭐', title:'Новый уровень', text:'Достигните 2 уровня магазина', event:'level_reached', metric:'level', target:2, absolute:true, reward:{ money:300, crystals:1 } },
 
   // 2 уровень — основы редактора.
@@ -2434,6 +2476,24 @@ function applyQuestEventProgress(quest, eventName, amount = 1, data = {}) {
   const state = questState[quest.id];
   if (!state || state.completed || state.claimed) return false;
 
+  if (quest.kind === 'decor_storage_cycle') {
+    if (eventName === 'decor_stored' && (state.progress || 0) < 1) {
+      state.progress = 1;
+      state.meta = { ...(state.meta || {}), decorStored:true, storedType:data.type || null };
+      updateQuestUI();
+      return true;
+    }
+    if (eventName === 'decor_restored_from_storage' && (state.progress || 0) >= 1) {
+      const storedType = state.meta?.storedType || null;
+      if (!storedType || !data.type || storedType === data.type) {
+        state.progress = 2;
+        completeQuest(quest);
+        return true;
+      }
+    }
+    return false;
+  }
+
   if (quest.kind === 'shelf_storage_cycle') {
     if (eventName === 'shelf_stored' && (state.progress || 0) < 1) {
       state.progress = 1;
@@ -2509,6 +2569,15 @@ function updateQuestUI() {
   if (!questSystemReady) return;
   const btn = document.getElementById('quest-btn');
   if (btn) btn.style.display = 'flex';
+
+  const completedCheck = document.getElementById('quest-complete-check');
+  if (completedCheck) {
+    const hasRewardToClaim = QUEST_DEFINITIONS.some(quest => {
+      const state = questState[quest.id];
+      return !!(state?.completed && !state.claimed);
+    });
+    completedCheck.classList.toggle('show', hasRewardToClaim);
+  }
 
   if (document.getElementById('questsModal')?.classList.contains('show')) renderQuestsModal();
 }
@@ -3136,7 +3205,9 @@ function startTutorial(replayMode = false) {
   tutorialStepIndex = 0;
   tutorialPreviousAutoStocking = G.autoStocking;
   if (!tutorialReplayMode) G.autoStocking = false;
-  document.getElementById('tutorial-card').style.display = 'block';
+  const tutorialCard = document.getElementById('tutorial-card');
+  tutorialCard.classList.toggle('replay-top-right', tutorialReplayMode);
+  tutorialCard.style.display = 'block';
   if (tutorialPositionTimer) clearInterval(tutorialPositionTimer);
   tutorialPositionTimer = setInterval(updateTutorialSpotlight, 180);
   prepareTutorialReplayStepView(TUTORIAL_STEPS[tutorialStepIndex]);
@@ -3162,7 +3233,10 @@ function skipTutorial(silent = false, provideStarterEquipment = true) {
   const card = document.getElementById('tutorial-card');
   const spot = document.getElementById('tutorial-spotlight');
   const dim = document.getElementById('tutorial-dimmer');
-  if (card) card.style.display = 'none';
+  if (card) {
+    card.style.display = 'none';
+    card.classList.remove('replay-top-right');
+  }
   if (spot) spot.style.display = 'none';
   if (dim) dim.style.display = 'none';
   closeShopModal();
@@ -7025,7 +7099,11 @@ function placeDecorFromTap(clientX, clientY) {
   }
 
   const elevatorPlaced = isGlassElevatorDecor(placedDecor);
-  if (placedDecor) notifyGameEvent('decor_installed', 1, { type:def.id, facility:!!def.facility, fromStorage });
+  if (placedDecor) {
+    notifyGameEvent('decor_installed', 1, { type:def.id, facility:!!def.facility, fromStorage });
+    if (fromStorage) notifyGameEvent('decor_restored_from_storage', 1, { type:def.id });
+    else notifyGameEvent('decor_purchased', 1, { type:def.id });
+  }
   stopDecorPlaceMode();
   enterEditorMode();
   if (elevatorPlaced) completeGlassElevatorPlacement(placedDecor);
@@ -13970,6 +14048,7 @@ function editorActionStore() {
     const decor = decorations.find(d => d.id === sel.id);
     if (decor && removeDecorById(sel.id)) {
       addEquipmentToStorage('decor', decor.type, 1);
+      notifyGameEvent('decor_stored', 1, { type:decor.type });
       updateHUD();
     }
   } else if (sel.type === 'innerWall') {
@@ -14013,7 +14092,9 @@ function editorActionSell() {
     const decor = decorations.find(d => d.id === sel.id);
     if (decor) {
       price = getEquipmentSellPrice(getEquipmentDef('decor', decor.type));
+      const soldDecorType = decor.type;
       removeDecorById(sel.id);
+      notifyGameEvent('decor_sold', 1, { type:soldDecorType });
     }
   } else if (sel.type === 'innerWall') {
     const wall = internalWalls.find(w => w.id === sel.id);
