@@ -5513,6 +5513,47 @@ const INTERNAL_WALL_THICK = 0.25;
 // внутренние стены двигаются с одинаковым шагом, чтобы не создавать
 // случайные узкие щели и почти совпадающие позиции.
 const PLACEMENT_GRID_STEP = 0.5;
+
+// Видимая сетка редактора. Линии используют тот же шаг, что и привязка объектов.
+let editorPlacementGrid = null;
+
+function rebuildEditorPlacementGrid() {
+  if (editorPlacementGrid) {
+    scene.remove(editorPlacementGrid);
+    if (editorPlacementGrid.geometry) editorPlacementGrid.geometry.dispose();
+    if (editorPlacementGrid.material) editorPlacementGrid.material.dispose();
+    editorPlacementGrid = null;
+  }
+
+  const minCoord = Math.ceil((-SHOP_HALF + 0.0001) / PLACEMENT_GRID_STEP) * PLACEMENT_GRID_STEP;
+  const maxCoord = Math.floor(( SHOP_HALF - 0.0001) / PLACEMENT_GRID_STEP) * PLACEMENT_GRID_STEP;
+  const vertices = [];
+
+  for (let coord = minCoord; coord <= maxCoord + 0.0001; coord += PLACEMENT_GRID_STEP) {
+    const snapped = Number(coord.toFixed(4));
+    vertices.push(minCoord, 0.018, snapped, maxCoord, 0.018, snapped);
+    vertices.push(snapped, 0.018, minCoord, snapped, 0.018, maxCoord);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  const material = new THREE.LineBasicMaterial({
+    color: 0x82d9ff,
+    transparent: true,
+    opacity: 0.34,
+    depthWrite: false,
+  });
+
+  editorPlacementGrid = new THREE.LineSegments(geometry, material);
+  editorPlacementGrid.renderOrder = 3;
+  editorPlacementGrid.visible = !!editorMode;
+  scene.add(editorPlacementGrid);
+}
+
+function setEditorPlacementGridVisible(visible) {
+  if (!editorPlacementGrid) rebuildEditorPlacementGrid();
+  if (editorPlacementGrid) editorPlacementGrid.visible = !!visible;
+}
 let internalWalls = [];
 let internalWallClickTargets = [];
 let nextInternalWallId = 0;
@@ -11785,6 +11826,7 @@ function applyShopStageVisuals() {
   floor.geometry.dispose();
   floor.geometry = new THREE.PlaneGeometry(SHOP_HALF * 2 + 0.2, SHOP_HALF * 2 + 0.2);
   rebuildFloorTiles();
+  rebuildEditorPlacementGrid();
 
   // Перестраиваем стены, брусчатку, дороги и низкие срезы стен.
   rebuildWallPanels();
@@ -13755,6 +13797,7 @@ function toggleEditorMode() {
 
 function enterEditorMode() {
   editorMode = true;
+  setEditorPlacementGridVisible(true);
   editorSelection = null;
   editorObjectMoveMode = false;
   editorMoveSelection = null;
@@ -13786,6 +13829,7 @@ function enterEditorMode() {
 
 function exitEditorMode() {
   editorMode = false;
+  setEditorPlacementGridVisible(false);
   editorSelection = null;
   editorObjectMoveMode = false;
   editorMoveSelection = null;
