@@ -2037,6 +2037,110 @@
     #editor-toggle-btn { right:62px; bottom:23px; width:62px; height:27px; font-size:9px; }
     #walls-toggle-btn { right:45px; bottom:46px; width:58px; height:26px; font-size:9px; }
   }
+
+
+  /* КОМПАКТНОЕ ОКНО КАЖДОГО ТОВАРА В ГОРИЗОНТАЛЬНОМ РЕЖИМЕ */
+  @media (orientation:landscape) and (max-height:600px) {
+    #itemModal {
+      padding:6px 10px;
+    }
+    #itemModal .modal-box {
+      width:min(620px, calc(100vw - 20px));
+      max-width:none;
+      max-height:calc(100vh - 12px);
+      padding:9px 12px 10px;
+      border-radius:15px;
+    }
+    #itemModal .modal-close {
+      top:7px;
+      right:7px;
+      width:25px;
+      height:25px;
+      font-size:13px;
+    }
+    #itemModal .item-big-emoji {
+      font-size:34px;
+      margin-bottom:2px;
+      line-height:1;
+    }
+    #itemModal .phone-3d-preview {
+      height:112px;
+      margin:0 0 5px;
+      border-radius:12px;
+    }
+    #itemModal .phone-3d-hint {
+      bottom:4px;
+      font-size:8px;
+    }
+    #itemModal .item-modal-title {
+      font-size:14px;
+      line-height:1.1;
+    }
+    #itemModal .item-modal-cat {
+      margin-bottom:4px;
+      font-size:9px;
+      line-height:1.1;
+    }
+    #itemModalBox > div[style*="Прилавок"] {
+      margin-top:2px!important;
+      font-size:9px!important;
+      line-height:1.15;
+    }
+    #itemModalBox > div[style*="border-radius:14px"] {
+      margin:6px 0!important;
+      padding:7px!important;
+      border-radius:10px!important;
+    }
+    #itemModalBox > div[style*="border-radius:14px"] > div:first-child {
+      margin-bottom:4px!important;
+      font-size:9px!important;
+    }
+    #itemModalBox > div[style*="grid-template-columns:1fr 1fr 1.2fr 1fr 1fr"] {
+      gap:3px!important;
+    }
+    #itemModalBox > div[style*="border-radius:14px"] .btn-back {
+      min-height:28px;
+      padding:5px 0!important;
+      border-radius:8px;
+      font-size:10px;
+    }
+    #itemModalBox > div[style*="grid-template-columns:1fr 1fr 1.2fr 1fr 1fr"] > div {
+      font-size:16px!important;
+      line-height:1;
+    }
+    #itemModal .item-stats {
+      grid-template-columns:repeat(5,minmax(0,1fr));
+      gap:4px;
+      margin-bottom:6px;
+    }
+    #itemModal .item-stat {
+      padding:5px 3px;
+      border-radius:8px;
+    }
+    #itemModal .item-stat-val {
+      font-size:10px;
+      line-height:1.1;
+      white-space:nowrap;
+    }
+    #itemModal .item-stat-lbl {
+      margin-top:1px;
+      font-size:7px;
+      line-height:1.1;
+    }
+    #itemModal .btn-buy {
+      padding:7px 8px;
+      margin-bottom:4px;
+      border-radius:9px;
+      font-size:10px;
+      line-height:1.15;
+    }
+    #itemModalBox > .btn-back {
+      padding:6px 8px;
+      border-radius:9px;
+      font-size:10px;
+      line-height:1.15;
+    }
+  }
 </style>
 </head>
 <body data-menu-style="standard">
