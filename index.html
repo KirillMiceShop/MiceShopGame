@@ -2006,17 +2006,21 @@
     width:66px;
     height:32px;
     border-radius:10px 0 0 0!important;
-    padding:4px 6px;
+    padding:4px 6px 4px 8px;
+    justify-content:flex-start!important;
+    text-align:left;
     font-size:10px;
     z-index:4;
   }
   #editor-toggle-btn {
-    right:72px;
+    right:48px;
     bottom:28px;
     width:70px;
     height:31px;
     border-radius:10px 0 0 0!important;
-    padding:4px 6px;
+    padding:4px 6px 4px 8px;
+    justify-content:flex-start!important;
+    text-align:left;
     font-size:10px;
     z-index:3;
   }
@@ -2026,16 +2030,18 @@
     width:66px;
     height:30px;
     border-radius:10px 0 0 0!important;
-    padding:4px 6px;
+    padding:4px 6px 4px 8px;
+    justify-content:flex-start!important;
+    text-align:left;
     font-size:10px;
     z-index:2;
   }
   #shelves-main-btn { z-index:5; }
 
   @media (orientation:landscape) and (max-height:600px) {
-    #warehouse-main-btn { right:79px; bottom:0; width:58px; height:27px; font-size:9px; }
-    #editor-toggle-btn { right:62px; bottom:23px; width:62px; height:27px; font-size:9px; }
-    #walls-toggle-btn { right:45px; bottom:46px; width:58px; height:26px; font-size:9px; }
+    #warehouse-main-btn { right:79px; bottom:0; width:58px; height:27px; padding-left:7px; font-size:9px; }
+    #editor-toggle-btn { right:41px; bottom:23px; width:62px; height:27px; padding-left:7px; justify-content:flex-start!important; text-align:left; font-size:9px; }
+    #walls-toggle-btn { right:45px; bottom:46px; width:58px; height:26px; padding-left:7px; font-size:9px; }
   }
 </style>
 </head>
@@ -15702,9 +15708,249 @@ function animate(now = performance.now()) {
   renderer.render(scene, camera);
 }
 
+
+// ══════════════════════════════════════
+//  АВТОСОХРАНЕНИЕ ИГРЫ
+// ══════════════════════════════════════
+const GAME_AUTOSAVE_KEY = 'miceshop_game_autosave_v1';
+const GAME_AUTOSAVE_INTERVAL_MS = 10000;
+let autosaveTimer = null;
+let autosaveRestoreInProgress = false;
+let lastAutosaveAt = 0;
+
+function serializeSlotForSave(slot) {
+  if (!slot) return null;
+  return {
+    productId: slot.product?.id || null,
+    qty: Math.max(0, Number(slot.qty) || 0),
+    soldOut: !!slot.soldOut,
+    nextSaleAt: Number(slot.nextSaleAt) || null,
+    activeSalePrice: Number(slot.activeSalePrice) || null,
+    discountedQty: Math.max(0, Number(slot.discountedQty) || 0),
+  };
+}
+
+function deserializeSlotFromSave(slot) {
+  if (!slot || !slot.productId) return null;
+  const product = PRODUCTS.find(item => item.id === slot.productId);
+  if (!product) return null;
+  return {
+    product,
+    qty: Math.max(0, Number(slot.qty) || 0),
+    soldOut: !!slot.soldOut,
+    nextSaleAt: Number(slot.nextSaleAt) || null,
+    activeSalePrice: Number(slot.activeSalePrice) || null,
+    discountedQty: Math.max(0, Number(slot.discountedQty) || 0),
+  };
+}
+
+function serializeFloorForSave(state) {
+  if (!state) return null;
+  return {
+    floorNumber: state.floorNumber,
+    shopType: state.shopType,
+    shopStage: state.shopStage,
+    slots: (state.slots || []).map(serializeSlotForSave),
+    shelfPositions: (state.shelfPositions || []).map(pos => [Number(pos[0]) || 0, 0, Number(pos[2]) || 0]),
+    shelfRotations: [...(state.shelfRotations || [])],
+    shelfVariants: [...(state.shelfVariants || [])],
+    staff: { ...(state.staff || {}) },
+    staffStyles: { ...(state.staffStyles || {}) },
+    cashRegisters: (state.cashRegisters || []).map(item => ({
+      variantId:item.variantId, x:Number(item.x) || 0, z:Number(item.z) || 0, rotation:Number(item.rotation) || 0,
+    })),
+    windows: (state.windows || []).map(item => ({ axis:item.axis, pos:Number(item.pos) || 0, type:item.type })),
+    doors: (state.doors || []).map(item => ({ axis:item.axis, pos:Number(item.pos) || 0, type:item.type })),
+    internalWalls: (state.internalWalls || []).map(item => ({ axis:item.axis, x:Number(item.x) || 0, z:Number(item.z) || 0 })),
+    decorations: (state.decorations || []).map(item => ({
+      type:item.type, x:Number(item.x) || 0, z:Number(item.z) || 0,
+      axis:item.axis || 'z', pos:Number(item.pos) || 0, rotation:Number(item.rotation) || 0,
+    })),
+  };
+}
+
+function createGameAutosaveSnapshot() {
+  if (!gameStarted || !G.shopType || autosaveRestoreInProgress) return null;
+  captureCurrentFloorState(G.currentFloor || 1);
+
+  const sharedState = {};
+  const excluded = new Set(['slots','shelfRotations','shelfVariants','staff','staffStyles','pendingSlot']);
+  Object.keys(G).forEach(key => {
+    if (excluded.has(key)) return;
+    const value = G[key];
+    if (typeof value !== 'function' && value !== undefined) sharedState[key] = value;
+  });
+
+  return {
+    version: 1,
+    savedAt: Date.now(),
+    currentFloor: G.currentFloor || 1,
+    sharedState,
+    floors: Object.values(shopFloorStates)
+      .map(serializeFloorForSave)
+      .filter(Boolean),
+    questState: JSON.parse(JSON.stringify(questState)),
+    tutorialRewardGranted: !!tutorialRewardGranted,
+  };
+}
+
+function saveGameAutosave(options = {}) {
+  const snapshot = createGameAutosaveSnapshot();
+  if (!snapshot) return false;
+  try {
+    localStorage.setItem(GAME_AUTOSAVE_KEY, JSON.stringify(snapshot));
+    lastAutosaveAt = snapshot.savedAt;
+    if (options.notify) showToast('💾 Игра сохранена', '#23c483');
+    return true;
+  } catch (error) {
+    console.warn('MiceShop autosave failed:', error);
+    if (options.notify) showToast('❌ Не удалось сохранить игру', '#e94560');
+    return false;
+  }
+}
+
+function readGameAutosave() {
+  try {
+    const raw = localStorage.getItem(GAME_AUTOSAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || data.version !== 1 || !data.sharedState?.shopType || !Array.isArray(data.floors)) return null;
+    return data;
+  } catch (error) {
+    console.warn('MiceShop autosave read failed:', error);
+    return null;
+  }
+}
+
+function removeFloorSceneObjects(state) {
+  if (!state) return;
+  getShopFloorStateSceneRoots(state).forEach(object => scene.remove(object));
+}
+
+function makeEmptyFloorStateFromSave(data) {
+  return {
+    floorNumber: Number(data.floorNumber) || 1,
+    shopType: SHOP_TYPES[data.shopType] ? data.shopType : 'clothing',
+    shopStage: Math.max(SHOP_STAGE_MIN, Math.min(SHOP_STAGE_MAX, Number(data.shopStage) || 1)),
+    slots: [], shelfRotations: [], shelfVariants: [],
+    staff: { cashier:1, seller:1, cleaner:0, guard:0, ...(data.staff || {}) },
+    staffStyles: { cashier:'classic', seller:'classic', cleaner:'classic', guard:'classic', ...(data.staffStyles || {}) },
+    shelfPositions: [], shelfMeshes: [], shelfClickTargets: [], shelfItemMeshes: {},
+    cashRegisters: [], cashRegisterTargets: [],
+    windows: [], windowClickTargets: [], doors: [], doorClickTargets: [],
+    internalWalls: [], internalWallClickTargets: [], decorations: [], decorClickTargets: [],
+    sellers: [], customers: [], nextWindowId:0, nextDoorId:0, nextInternalWallId:0, nextDecorId:0,
+  };
+}
+
+function buildFloorFromAutosave(data) {
+  const state = makeEmptyFloorStateFromSave(data);
+  bindShopFloorState(state);
+  SHOP_HALF = getShopHalfForStage(state.shopStage);
+
+  const positions = Array.isArray(data.shelfPositions) ? data.shelfPositions : [];
+  positions.forEach((pos, index) => {
+    const variantId = data.shelfVariants?.[index] || SHOP_TYPES[state.shopType].starterShelf;
+    const variant = getShelfVariantById(variantId);
+    const x = Number(pos?.[0]) || 0;
+    const z = Number(pos?.[2]) || 0;
+    SHELF_POSITIONS.push([x, 0, z]);
+    G.shelfVariants.push(variant.id);
+    G.shelfRotations.push(Number(data.shelfRotations?.[index]) || 0);
+    G.slots.push(deserializeSlotFromSave(data.slots?.[index]));
+    addShelfMesh(index, x, z, variant.color, variant.topColor, variant.id);
+    const rotation = G.shelfRotations[index] || 0;
+    const shelf = shelfMeshes[index];
+    [shelf?.group, shelf?.base, shelf?.stand, shelf?.topShelf, shelf?.label].forEach(object => {
+      if (object) object.rotation.y = rotation;
+    });
+    shelfClickTargets.filter(target => target?.userData?.shelfIndex === index).forEach(target => { target.rotation.y = rotation; });
+    if (G.slots[index]) createItemMesh(G.slots[index].product, index);
+  });
+
+  (data.cashRegisters || []).forEach(saved => {
+    const variant = CASH_REGISTER_VARIANTS.find(item => item.id === saved.variantId) || CASH_REGISTER_VARIANTS[0];
+    const cash = addCashRegister(variant, Number(saved.x) || 0, Number(saved.z) || 0);
+    if (cash) {
+      cash.rotation = Number(saved.rotation) || 0;
+      setCashRegisterPosition(cash.id, cash.x, cash.z);
+    }
+  });
+  (data.windows || []).forEach(saved => addWindow(saved.axis, Number(saved.pos) || 0, saved.type));
+  (data.doors || []).forEach(saved => addDoor(saved.axis, Number(saved.pos) || 0, saved.type));
+  (data.internalWalls || []).forEach(saved => addInternalWall(saved.axis, Number(saved.x) || 0, Number(saved.z) || 0));
+  (data.decorations || []).forEach(saved => addDecor(saved.type, saved));
+
+  captureCurrentFloorState(state.floorNumber);
+  return shopFloorStates[state.floorNumber];
+}
+
+function restoreGameAutosave(data) {
+  if (!data) return false;
+  autosaveRestoreInProgress = true;
+  try {
+    Object.values(shopFloorStates).forEach(removeFloorSceneObjects);
+    Object.keys(shopFloorStates).forEach(key => delete shopFloorStates[key]);
+
+    Object.assign(G, data.sharedState || {});
+    configureStartingShopProductBalance(G.shopType);
+
+    const sortedFloors = [...data.floors].sort((a,b) => (a.floorNumber || 1) - (b.floorNumber || 1));
+    sortedFloors.forEach(buildFloorFromAutosave);
+    if (!shopFloorStates[1]) throw new Error('First floor is missing in autosave');
+
+    const wantedFloor = shopFloorStates[data.currentFloor] ? Number(data.currentFloor) : 1;
+    Object.values(shopFloorStates).forEach(state => setShopFloorStateVisible(state, state.floorNumber === wantedFloor));
+    bindShopFloorState(shopFloorStates[wantedFloor]);
+    SHOP_HALF = getShopHalfForStage(G.shopStage);
+    shopFloorSystemReady = true;
+
+    Object.keys(questState).forEach(key => delete questState[key]);
+    Object.assign(questState, data.questState || {});
+    questSystemReady = Object.keys(questState).length > 0;
+    tutorialRewardGranted = !!data.tutorialRewardGranted;
+    tutorialActive = false;
+    tutorialReplayMode = false;
+    tutorialStarterStorePrepared = true;
+
+    rebuildExterior();
+    rebuildFloorTiles();
+    rebuildWallPanels();
+    rebuildSecondFloorFacade();
+    applyWindowHoles();
+    applyInternalWallTransparency();
+    updateLiftButton();
+    updateHUD();
+    updateQuestUI();
+    lastAutosaveAt = Number(data.savedAt) || Date.now();
+    return true;
+  } catch (error) {
+    console.warn('MiceShop autosave restore failed:', error);
+    return false;
+  } finally {
+    autosaveRestoreInProgress = false;
+  }
+}
+
+function startGameAutosave() {
+  if (autosaveTimer !== null) clearInterval(autosaveTimer);
+  autosaveTimer = setInterval(() => saveGameAutosave(), GAME_AUTOSAVE_INTERVAL_MS);
+}
+
+window.addEventListener('pagehide', () => saveGameAutosave());
+window.addEventListener('beforeunload', () => saveGameAutosave());
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) saveGameAutosave();
+});
+
 // ── START ──
 loadMenuStyle();
+const pendingGameAutosave = readGameAutosave();
+if (pendingGameAutosave?.sharedState) Object.assign(G, pendingGameAutosave.sharedState);
 initializeShopTypeScreen();
+const gameAutosaveLoaded = pendingGameAutosave ? restoreGameAutosave(pendingGameAutosave) : false;
+if (gameAutosaveLoaded) setTimeout(() => showToast('💾 Автосохранение загружено', '#23c483'), 350);
+startGameAutosave();
 updateHUD();
 animate();
 if (gameStarted) {
