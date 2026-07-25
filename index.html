@@ -4527,11 +4527,11 @@ updateRendererPixelRatio();
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.outputEncoding = THREE.sRGBEncoding;
-renderer.toneMapping = THREE.NoToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x9fd38c); // мягкий зелёный фон как продолжение газона
+scene.background = new THREE.Color(0x86b97a); // более насыщенный городской фон вокруг магазина
 scene.fog = null; // туманность полностью выключена
 
 // ══════════════════════════════════════
@@ -5280,8 +5280,8 @@ sun.target.position.set(1, 0, 1);
 sun.castShadow = true;
 
 // Качество и область теней.
-sun.shadow.mapSize.width = 512;
-sun.shadow.mapSize.height = 512;
+sun.shadow.mapSize.width = isMobileRenderer ? 512 : 1024;
+sun.shadow.mapSize.height = isMobileRenderer ? 512 : 1024;
 sun.shadow.camera.left = -18;
 sun.shadow.camera.right = 18;
 sun.shadow.camera.top = 18;
@@ -5307,7 +5307,7 @@ function box(w, h, d, color, x, y, z, rx=0, ry=0) {
   // Объяснение: BoxGeometry(ширина, высота, глубина)
   // MeshLambertMaterial — материал с освещением, без бликов
   const geo = new THREE.BoxGeometry(w, h, d);
-  const mat = new THREE.MeshLambertMaterial({ color });
+  const mat = new THREE.MeshStandardMaterial({ color, roughness:0.92, metalness:0 });
   const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y, z);
   m.rotation.x = rx; m.rotation.y = ry;
@@ -5435,27 +5435,54 @@ rebuildFloorTiles();
 // Возвращаем прежний размер газона: огромная плоскость и тысячи полос
 // перегружали телефон и из-за падения FPS все персонажи визуально шли медленнее.
 let exteriorYOffset = 0;
-const lawnStripMeshes = [];
+const lawnStripMeshes = []; // оставлен для совместимости со старой логикой смещения
 const lawnSize = 2000;
+
+function createLawnTexture() {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#4f9847';
+  ctx.fillRect(0, 0, size, size);
+
+  // Небольшая неоднородность травы без сотен отдельных плоскостей.
+  for (let i = 0; i < 900; i++) {
+    const light = 56 + Math.floor(Math.random() * 34);
+    ctx.fillStyle = `rgba(${35 + Math.floor(light / 4)},${95 + light},${35 + Math.floor(light / 5)},${0.07 + Math.random() * 0.08})`;
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 0.35 + Math.random() * 1.15;
+    ctx.fillRect(x, y, r, r);
+  }
+
+  // Очень мягкие полосы ухода за газоном.
+  for (let x = 0; x < size; x += 24) {
+    ctx.fillStyle = 'rgba(255,255,255,0.025)';
+    ctx.fillRect(x, 0, 11, size);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(120, 120);
+  texture.encoding = THREE.sRGBEncoding;
+  texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  return texture;
+}
+
 const lawnGeo = new THREE.PlaneGeometry(lawnSize, lawnSize);
-const lawnMat = new THREE.MeshLambertMaterial({ color: 0x4a9e4a });
+const lawnMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  map: createLawnTexture(),
+  roughness: 1,
+  metalness: 0
+});
 const lawn = new THREE.Mesh(lawnGeo, lawnMat);
 lawn.rotation.x = -Math.PI / 2;
 lawn.position.set(0, -0.02 + exteriorYOffset, 0);
 lawn.receiveShadow = true;
 scene.add(lawn);
-
-for (let i = -220; i <= 220; i++) {
-  const strip = new THREE.Mesh(
-    new THREE.PlaneGeometry(3, lawnSize),
-    new THREE.MeshLambertMaterial({ color: i % 2 === 0 ? 0x429442 : 0x52a852 })
-  );
-  strip.rotation.x = -Math.PI / 2;
-  strip.position.set(i * 3, -0.01, 0);
-  strip.receiveShadow = true;
-  scene.add(strip);
-  lawnStripMeshes.push(strip);
-}
 
 // ── УЛИЦА, БРУСЧАТКА И ДОРОГИ СНАРУЖИ ──
 const groundMeshes = [];
@@ -5468,6 +5495,7 @@ function setExteriorYOffset(offset = 0) {
     const baseY = Number.isFinite(mesh.userData.baseExteriorY) ? mesh.userData.baseExteriorY : 0.012;
     mesh.position.y = baseY + offset;
   });
+  if (typeof exteriorDecorGroup !== 'undefined') exteriorDecorGroup.position.y = offset;
 }
 
 function makeGroundRect(w, d, color, x, z, y = 0.012) {
@@ -5564,6 +5592,186 @@ function makeCrosswalk(x, z, orientation = 'horizontal') {
       makeGroundRect(stripeThick, stripeLen, 0xf7f3e7, x + offset, z, 0.02);
     }
   }
+}
+
+
+// ── ГОРОДСКОЕ ОКРУЖЕНИЕ ──
+// Декор строится отдельной группой: он не меняет геометрию самого магазина
+// и полностью перестраивается вместе с дорогами после расширения здания.
+const exteriorDecorGroup = new THREE.Group();
+scene.add(exteriorDecorGroup);
+
+function disposeExteriorObject(object) {
+  object.traverse(child => {
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach(material => material.dispose && material.dispose());
+    }
+  });
+}
+
+function clearExteriorDecor() {
+  while (exteriorDecorGroup.children.length) {
+    const child = exteriorDecorGroup.children.pop();
+    exteriorDecorGroup.remove(child);
+    disposeExteriorObject(child);
+  }
+}
+
+function exteriorStandardMaterial(color, roughness = 0.86, metalness = 0) {
+  return new THREE.MeshStandardMaterial({ color, roughness, metalness });
+}
+
+function addExteriorBox(group, w, h, d, color, x, y, z, ry = 0, roughness = 0.86, metalness = 0) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), exteriorStandardMaterial(color, roughness, metalness));
+  mesh.position.set(x, y, z);
+  mesh.rotation.y = ry;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+  return mesh;
+}
+
+function addExteriorCylinder(group, radiusTop, radiusBottom, height, color, x, y, z, segments = 12, roughness = 0.84, metalness = 0) {
+  const mesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(radiusTop, radiusBottom, height, segments),
+    exteriorStandardMaterial(color, roughness, metalness)
+  );
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+  return mesh;
+}
+
+function createExteriorTree(x, z, scale = 1) {
+  const group = new THREE.Group();
+  const trunk = addExteriorCylinder(group, 0.14 * scale, 0.19 * scale, 1.5 * scale, 0x6f4b2f, 0, 0.75 * scale, 0, 10, 1);
+  const crownMaterial = exteriorStandardMaterial(0x2f7f38, 0.96);
+  const crownGeo = new THREE.IcosahedronGeometry(0.78 * scale, 1);
+  const crowns = [
+    [0, 1.72, 0, 1.00],
+    [-0.42, 1.52, 0.08, 0.72],
+    [0.40, 1.50, -0.10, 0.76],
+    [0.05, 1.48, 0.40, 0.66]
+  ];
+  crowns.forEach(([cx, cy, cz, s]) => {
+    const crown = new THREE.Mesh(crownGeo, crownMaterial.clone());
+    crown.position.set(cx * scale, cy * scale, cz * scale);
+    crown.scale.setScalar(s);
+    crown.castShadow = true;
+    group.add(crown);
+  });
+  group.position.set(x, 0.03, z);
+  exteriorDecorGroup.add(group);
+  return group;
+}
+
+function createExteriorPlanter(x, z, length = 1.7, rotation = 0) {
+  const group = new THREE.Group();
+  addExteriorBox(group, length, 0.34, 0.56, 0x8b7258, 0, 0.17, 0, 0, 0.96);
+  addExteriorBox(group, length - 0.16, 0.13, 0.42, 0x433529, 0, 0.38, 0, 0, 1);
+  const bushes = Math.max(2, Math.round(length / 0.45));
+  for (let i = 0; i < bushes; i++) {
+    const bx = -length / 2 + 0.25 + i * ((length - 0.5) / Math.max(1, bushes - 1));
+    const bush = new THREE.Mesh(
+      new THREE.SphereGeometry(0.28, 9, 6),
+      exteriorStandardMaterial(i % 2 ? 0x3d8b45 : 0x34783b, 1)
+    );
+    bush.position.set(bx, 0.52, 0);
+    bush.scale.y = 0.72;
+    bush.castShadow = true;
+    group.add(bush);
+  }
+  group.position.set(x, 0.02, z);
+  group.rotation.y = rotation;
+  exteriorDecorGroup.add(group);
+  return group;
+}
+
+function createExteriorLamp(x, z, scale = 1) {
+  const group = new THREE.Group();
+  addExteriorCylinder(group, 0.16 * scale, 0.22 * scale, 0.16 * scale, 0x2c3037, 0, 0.08 * scale, 0, 12, 0.45, 0.55);
+  addExteriorCylinder(group, 0.055 * scale, 0.075 * scale, 2.35 * scale, 0x30343b, 0, 1.25 * scale, 0, 10, 0.42, 0.6);
+  addExteriorBox(group, 0.38 * scale, 0.18 * scale, 0.38 * scale, 0x252a31, 0, 2.42 * scale, 0, 0, 0.45, 0.55);
+  const glass = addExteriorBox(group, 0.27 * scale, 0.28 * scale, 0.27 * scale, 0xffe6a8, 0, 2.25 * scale, 0, 0, 0.28, 0.05);
+  glass.material.emissive = new THREE.Color(0xffd98a);
+  glass.material.emissiveIntensity = 0.18;
+  group.position.set(x, 0.02, z);
+  exteriorDecorGroup.add(group);
+  return group;
+}
+
+function createExteriorBench(x, z, rotation = 0) {
+  const group = new THREE.Group();
+  addExteriorBox(group, 1.55, 0.13, 0.48, 0x7b4f2c, 0, 0.52, 0, 0, 0.92);
+  addExteriorBox(group, 1.55, 0.65, 0.12, 0x714725, 0, 0.90, 0.19, 0, 0.92);
+  addExteriorBox(group, 0.12, 0.55, 0.12, 0x2f3339, -0.57, 0.27, 0, 0, 0.42, 0.65);
+  addExteriorBox(group, 0.12, 0.55, 0.12, 0x2f3339, 0.57, 0.27, 0, 0, 0.42, 0.65);
+  group.position.set(x, 0.02, z);
+  group.rotation.y = rotation;
+  exteriorDecorGroup.add(group);
+}
+
+function createExteriorHydrant(x, z) {
+  const group = new THREE.Group();
+  addExteriorCylinder(group, 0.16, 0.20, 0.55, 0xb9332d, 0, 0.30, 0, 12, 0.72, 0.15);
+  addExteriorCylinder(group, 0.23, 0.17, 0.16, 0xd94a3f, 0, 0.62, 0, 12, 0.62, 0.15);
+  addExteriorCylinder(group, 0.09, 0.09, 0.45, 0xb9332d, 0, 0.42, 0, 10, 0.72, 0.15).rotation.z = Math.PI / 2;
+  group.position.set(x, 0.02, z);
+  exteriorDecorGroup.add(group);
+}
+
+function createExteriorManhole(x, z) {
+  const mesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.36, 0.36, 0.035, 24),
+    exteriorStandardMaterial(0x24272b, 0.62, 0.35)
+  );
+  mesh.position.set(x, 0.034, z);
+  mesh.castShadow = false;
+  mesh.receiveShadow = true;
+  exteriorDecorGroup.add(mesh);
+}
+
+function buildExteriorDecor(exteriorShopHalf) {
+  clearExteriorDecor();
+  exteriorDecorGroup.position.y = exteriorYOffset;
+
+  const topOuterZ = -ROAD_CENTER - ROAD_W / 2 - SIDEWALK_W - 1.25;
+  const sideOuterX = ROAD_CENTER + ROAD_W / 2 + SIDEWALK_W + 1.20;
+  const frontLandscapeZ = exteriorShopHalf + 1.05;
+
+  // Деревья и зелёные полосы на дальних сторонах дорог.
+  [-12, -6, 0, 6, 12].forEach((x, index) => createExteriorTree(x, topOuterZ + (index % 2 ? -0.25 : 0.15), index % 2 ? 0.92 : 1.05));
+  [2.5, 8, 13.5, 19].forEach((z, index) => {
+    createExteriorTree(-sideOuterX, z, index % 2 ? 0.94 : 1.06);
+    createExteriorTree(sideOuterX, z + 1.2, index % 2 ? 1.04 : 0.92);
+  });
+
+  // Низкое озеленение рядом с фасадом, не закрывающее вход.
+  createExteriorPlanter(-exteriorShopHalf * 0.62, frontLandscapeZ, 2.2, 0);
+  createExteriorPlanter(exteriorShopHalf * 0.62, frontLandscapeZ, 2.2, 0);
+  createExteriorPlanter(-exteriorShopHalf - 0.9, -exteriorShopHalf * 0.35, 2.0, Math.PI / 2);
+  createExteriorPlanter(exteriorShopHalf + 0.9, -exteriorShopHalf * 0.35, 2.0, Math.PI / 2);
+
+  // Фонари вдоль тротуаров.
+  const innerTopSidewalkZ = -ROAD_CENTER + ROAD_W / 2 + SIDEWALK_W * 0.52;
+  [-10, -4, 4, 10].forEach(x => createExteriorLamp(x, innerTopSidewalkZ, 0.92));
+  [3, 10, 17].forEach(z => {
+    createExteriorLamp(-ROAD_CENTER + ROAD_W / 2 + SIDEWALK_W * 0.52, z, 0.92);
+    createExteriorLamp( ROAD_CENTER - ROAD_W / 2 - SIDEWALK_W * 0.52, z + 1.1, 0.92);
+  });
+
+  // Небольшие городские детали перед магазином.
+  createExteriorBench(-exteriorShopHalf * 0.72, exteriorShopHalf + 1.55, 0);
+  createExteriorBench(exteriorShopHalf * 0.72, exteriorShopHalf + 1.55, Math.PI);
+  createExteriorHydrant(exteriorShopHalf + 1.55, exteriorShopHalf + 1.25);
+
+  // Люки на асфальте делают дорогу менее плоской.
+  createExteriorManhole(-ROAD_CENTER, 4.5);
+  createExteriorManhole(ROAD_CENTER, 9.5);
+  createExteriorManhole(3.2, -ROAD_CENTER);
 }
 
 // Состояния этажей должны существовать до первого построения окружения.
@@ -5663,6 +5871,8 @@ function rebuildExterior() {
   makeCrosswalk(ROAD_CENTER - crosswalkOffset, -ROAD_CENTER, 'horizontal');
   makeCrosswalk(ROAD_CENTER + crosswalkOffset, -ROAD_CENTER, 'horizontal');
   makeCrosswalk(ROAD_CENTER, -ROAD_CENTER + crosswalkOffset, 'vertical');
+
+  buildExteriorDecor(exteriorShopHalf);
 }
 rebuildExterior();
 
