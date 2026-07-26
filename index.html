@@ -2145,8 +2145,10 @@
 
   /* ФИКСИРОВАННЫЙ РАЗМЕР МЕНЮ МАГАЗИНА И ЕДИНЫЕ КАРТОЧКИ */
   #shopModal .modal-box {
-    height:min(620px, calc(100dvh - 32px));
-    min-height:min(620px, calc(100dvh - 32px));
+    /* Окно магазина уменьшено по высоте примерно на 40%: 620px → 372px. */
+    height:min(372px, calc(100dvh - 32px));
+    min-height:min(372px, calc(100dvh - 32px));
+    max-height:min(372px, calc(100dvh - 32px));
     display:flex;
     flex-direction:column;
     overflow:hidden;
@@ -2198,8 +2200,10 @@
 
   @media (orientation:landscape) and (max-height:600px) {
     #shopModal .modal-box {
-      height:calc(100dvh - 12px);
-      min-height:calc(100dvh - 12px);
+      /* В горизонтальном режиме сохраняем то же уменьшение по высоте. */
+      height:60dvh;
+      min-height:60dvh;
+      max-height:60dvh;
     }
     #shopModal #products-list > * {
       height:70px;
