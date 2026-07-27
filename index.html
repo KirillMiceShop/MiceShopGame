@@ -1172,6 +1172,59 @@
     text-align:center;
   }
 
+
+
+  /* ПОМОЩЬ ПО КВЕСТАМ — без затемнения экрана */
+  .quest-show-btn {
+    width:100%;
+    margin-top:9px;
+    padding:9px 11px;
+    border:none;
+    border-radius:11px;
+    background:var(--menu-secondary, #687487);
+    color:var(--menu-secondary-text, #fff);
+    font-size:12px;
+    font-weight:900;
+    cursor:pointer;
+  }
+  .quest-show-btn:active { transform:scale(.97); }
+  #quest-help-highlight {
+    position:fixed;
+    z-index:79;
+    display:none;
+    pointer-events:none;
+    border:3px solid #f5c518;
+    border-radius:16px;
+    box-shadow:0 0 0 2px rgba(245,197,24,.18), 0 0 22px rgba(245,197,24,.85);
+    animation:questHelpPulse 1.05s ease-in-out infinite;
+    transition:left .2s ease, top .2s ease, width .2s ease, height .2s ease;
+  }
+  @keyframes questHelpPulse {
+    0%,100% { transform:scale(1); opacity:.9; }
+    50% { transform:scale(1.025); opacity:1; }
+  }
+  #quest-help-card {
+    position:fixed;
+    z-index:80;
+    display:none;
+    width:min(260px, calc(100vw - 24px));
+    padding:11px 38px 11px 12px;
+    border-radius:14px;
+    background:var(--menu-bg, #15152e);
+    border:1px solid var(--menu-border, rgba(255,255,255,.16));
+    color:var(--menu-text, #fff);
+    box-shadow:0 9px 26px rgba(0,0,0,.34);
+    font-size:11px;
+    line-height:1.4;
+    font-weight:800;
+  }
+  #quest-help-card .quest-help-title { font-size:12px; font-weight:900; margin-bottom:3px; }
+  #quest-help-card .quest-help-close {
+    position:absolute; top:7px; right:7px; width:26px; height:26px;
+    border:none; border-radius:50%; background:var(--menu-card, rgba(255,255,255,.08));
+    color:var(--menu-close, #aaa); font-weight:900; cursor:pointer;
+  }
+
   #tutorial-dimmer {
     position:fixed;
     inset:0;
@@ -2604,6 +2657,15 @@
   </div>
 </div>
 
+
+<!-- ПОМОЩЬ ПО КВЕСТАМ: подсветка без затемнения -->
+<div id="quest-help-highlight"></div>
+<div id="quest-help-card" role="status" aria-live="polite">
+  <button class="quest-help-close" type="button" onclick="hideQuestHelp()" aria-label="Закрыть">✕</button>
+  <div class="quest-help-title" id="quest-help-title">Что нужно сделать</div>
+  <div id="quest-help-text"></div>
+</div>
+
 <!-- НАГЛЯДНОЕ ОБУЧЕНИЕ -->
 <div id="tutorial-dimmer"></div>
 <div id="tutorial-spotlight"></div>
@@ -2647,6 +2709,7 @@ const G = {
   liftBuilt: false,
   liftPosition: null,
   totalEarned: 0, totalSold: 0,
+  deliveriesReceived: 0, shelvesCleaned: 0, decorPurchasedCount: 0,
   soldProductIds: [], // уникальные товары, проданные за всю игру
   slots: [], // новый магазин начинает обучение без установленных витрин
   storage: {}, // productId -> qty
@@ -3026,6 +3089,198 @@ function updateQuestUI() {
   if (document.getElementById('questsModal')?.classList.contains('show')) renderQuestsModal();
 }
 
+
+
+// ── ПОМОЩЬ ПО КВЕСТАМ ──
+let questHelpTimer = null;
+let questHelpResizeHandlerBound = false;
+let activeQuestHelpTargetGetter = null;
+
+function hideQuestHelp() {
+  if (questHelpTimer) clearTimeout(questHelpTimer);
+  questHelpTimer = null;
+  activeQuestHelpTargetGetter = null;
+  const highlight = document.getElementById('quest-help-highlight');
+  const card = document.getElementById('quest-help-card');
+  if (highlight) highlight.style.display = 'none';
+  if (card) card.style.display = 'none';
+}
+
+function positionQuestHelp() {
+  if (!activeQuestHelpTargetGetter) return;
+  let target = null;
+  try { target = activeQuestHelpTargetGetter(); } catch (e) {}
+  const rect = getTutorialTargetRect(target);
+  const highlight = document.getElementById('quest-help-highlight');
+  const card = document.getElementById('quest-help-card');
+  if (!highlight || !card) return;
+
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    highlight.style.display = 'none';
+    card.style.left = '12px';
+    card.style.bottom = 'calc(env(safe-area-inset-bottom, 0px) + 12px)';
+    card.style.top = 'auto';
+    return;
+  }
+
+  const pad = target?.tutorialVirtualTarget ? 5 : 7;
+  const left = Math.max(4, rect.left - pad);
+  const top = Math.max(4, rect.top - pad);
+  const width = Math.min(window.innerWidth - left - 4, rect.width + pad * 2);
+  const height = Math.min(window.innerHeight - top - 4, rect.height + pad * 2);
+  highlight.style.display = 'block';
+  highlight.style.left = left + 'px';
+  highlight.style.top = top + 'px';
+  highlight.style.width = width + 'px';
+  highlight.style.height = height + 'px';
+
+  card.style.left = Math.max(8, Math.min(window.innerWidth - 268, left)) + 'px';
+  if (top > window.innerHeight * .48) {
+    card.style.top = 'calc(env(safe-area-inset-top, 0px) + 12px)';
+    card.style.bottom = 'auto';
+  } else {
+    card.style.top = 'auto';
+    card.style.bottom = 'calc(env(safe-area-inset-bottom, 0px) + 12px)';
+  }
+}
+
+function showQuestHelpTarget(title, text, targetGetter, duration = 9000) {
+  hideQuestHelp();
+  const card = document.getElementById('quest-help-card');
+  const titleEl = document.getElementById('quest-help-title');
+  const textEl = document.getElementById('quest-help-text');
+  if (!card || !titleEl || !textEl) return;
+  titleEl.textContent = title || 'Что нужно сделать';
+  textEl.textContent = text || '';
+  card.style.display = 'block';
+  activeQuestHelpTargetGetter = typeof targetGetter === 'function' ? targetGetter : () => targetGetter;
+  requestAnimationFrame(positionQuestHelp);
+  setTimeout(positionQuestHelp, 160);
+  setTimeout(positionQuestHelp, 420);
+  questHelpTimer = setTimeout(hideQuestHelp, duration);
+  if (!questHelpResizeHandlerBound) {
+    questHelpResizeHandlerBound = true;
+    window.addEventListener('resize', positionQuestHelp);
+    window.addEventListener('scroll', positionQuestHelp, true);
+  }
+}
+
+function openShopQuestHelp(categoryId, subcategoryId = 'all') {
+  openShopModal();
+  activeCat = categoryId;
+  activeSubcatByCategory[categoryId] = subcategoryId;
+  renderCatTabs();
+  renderSubcatTabs();
+  renderProductList();
+  resetModalViewState('shopModal');
+}
+
+function getFirstVisibleProductCard() {
+  return document.querySelector('#products-list .prod-row:not(.cant), #products-list .prod-card:not(.cant), #products-list > *');
+}
+
+function showQuestHelp(questId) {
+  const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
+  if (!quest || !isQuestUnlocked(quest)) return;
+  closeQuestsModal();
+
+  const text = getQuestText(quest);
+  const id = quest.id;
+  const eventName = quest.event || '';
+  const metric = quest.metric || '';
+
+  if (metric === 'level' || id.startsWith('reach_level_')) {
+    showQuestHelpTarget(quest.title, 'Получайте XP за продажи и задания. Следите за шкалой уровня здесь.', () => document.getElementById('hud-level-box'));
+    return;
+  }
+  if (metric === 'rating' || id.includes('rating')) {
+    showQuestHelpTarget(quest.title, 'Нажмите сюда, чтобы открыть рейтинг и посмотреть, что влияет на него.', () => document.getElementById('hud-level-box'));
+    return;
+  }
+  if (metric === 'staff_cleaner' || metric === 'extra_sellers' || id.startsWith('hire_')) {
+    openShopQuestHelp('staff');
+    showQuestHelpTarget(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="staff"]') || getFirstVisibleProductCard());
+    return;
+  }
+  if (metric === 'shelf_count' || metric === 'different_stocked_shelves' || id.includes('shelf')) {
+    if (id.includes('move') || id.includes('rotate') || id.includes('storage_cycle')) {
+      showQuestHelpTarget(quest.title, 'Откройте редактор, затем выберите витрину и нужное действие.', () => document.getElementById('editor-toggle-btn'));
+    } else {
+      openShopQuestHelp('shelves');
+      showQuestHelpTarget(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="shelves"]') || getFirstVisibleProductCard());
+    }
+    return;
+  }
+  if (id.includes('cash') || eventName === 'cash_rotated') {
+    if (eventName === 'cash_rotated') {
+      showQuestHelpTarget(quest.title, 'Откройте редактор, выберите кассу и нажмите кнопку поворота.', () => document.getElementById('editor-toggle-btn'));
+    } else {
+      openShopQuestHelp('cash');
+      showQuestHelpTarget(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="cash"]') || getFirstVisibleProductCard());
+    }
+    return;
+  }
+  if (metric === 'facility_count' || id === 'install_facility') {
+    openShopQuestHelp('facilities');
+    showQuestHelpTarget(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="facilities"]') || getFirstVisibleProductCard());
+    return;
+  }
+  if (eventName === 'wall_color_changed' || id.includes('wall_color')) {
+    openShopQuestHelp('design', 'walls');
+    showQuestHelpTarget(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="walls"]') || getFirstVisibleProductCard());
+    return;
+  }
+  if (eventName === 'floor_color_changed' || id.includes('floor_color')) {
+    openShopQuestHelp('design', 'floor');
+    showQuestHelpTarget(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="floor"]') || getFirstVisibleProductCard());
+    return;
+  }
+  if (metric === 'regular_decor_count' || eventName.includes('decor') || id.includes('decor')) {
+    openShopQuestHelp('design', 'decor');
+    showQuestHelpTarget(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="decor"]') || getFirstVisibleProductCard());
+    return;
+  }
+  if (metric === 'total_earned' || eventName === 'revenue_collected' || id.includes('earn_')) {
+    showQuestHelpTarget(quest.title, 'После продаж нажмите на кассу в магазине и заберите накопленную выручку.', () => {
+      const cash = cashRegisters?.[0];
+      return makeTutorialObjectTarget(cash && (cash.hitZone || cash.group), 14);
+    });
+    return;
+  }
+  if (eventName === 'product_ordered') {
+    openShopQuestHelp('products');
+    showQuestHelpTarget(quest.title, 'Выберите любой доступный товар, откройте его карточку и нажмите покупку.', () => getFirstVisibleProductCard());
+    return;
+  }
+  if (eventName === 'delivery_arrived') {
+    openWarehouseModal();
+    warehouseTab = 'products'; warehouseProductTab = 'transit'; renderWarehouseModal();
+    showQuestHelpTarget(quest.title, 'Следите за таймером доставки во вкладке «В пути».', () => document.querySelector('#warehouse-product-tabs [data-product-tab="transit"]') || document.getElementById('warehouse-main-btn'));
+    return;
+  }
+  if (eventName === 'product_stocked') {
+    openWarehouseModal();
+    warehouseTab = 'products'; warehouseProductTab = 'stock'; renderWarehouseModal();
+    showQuestHelpTarget(quest.title, 'Нажмите «Поставить» у товара на складе, затем выберите подходящую витрину.', () => [...document.querySelectorAll('#warehouse-list button')].find(btn => btn.textContent.includes('Поставить')) || document.querySelector('#warehouse-product-tabs [data-product-tab="stock"]'));
+    return;
+  }
+  if (eventName === 'editor_opened') {
+    showQuestHelpTarget(quest.title, text, () => document.getElementById('editor-toggle-btn'));
+    return;
+  }
+  if (metric === 'total_sold' || metric === 'distinct_products_sold' || eventName === 'product_sold') {
+    showQuestHelpTarget(quest.title, 'Закажите товар, поставьте его на витрину и дождитесь продажи покупателю.', () => document.getElementById('shop-main-btn'));
+    return;
+  }
+  if (id.includes('expansion')) {
+    openShopQuestHelp('expansion');
+    showQuestHelpTarget(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="expansion"]') || getFirstVisibleProductCard());
+    return;
+  }
+
+  showQuestHelpTarget(quest.title, text, () => document.getElementById('shop-main-btn'));
+}
+
 function createQuestCard(quest, isActive = false, forceLocked = false) {
   const state = questState[quest.id] || { progress:0, completed:false, claimed:false };
   const ratio = state.completed ? 100 : Math.min(100, ((state.progress || 0) / quest.target) * 100);
@@ -3045,7 +3300,13 @@ function createQuestCard(quest, isActive = false, forceLocked = false) {
       <span>${state.completed ? 'Выполнено — заберите награду' : (lockedByLevel ? ('Откроется на ' + (quest.minLevel || 1) + ' уровне') : (Math.min(state.progress || 0, quest.target) + ' / ' + quest.target))}</span>
       <span class="quest-reward">${rewardText(quest.reward)}</span>
     </div>
-    ${state.completed && canClaimQuestReward(quest, state) ? '<button type="button" class="quest-claim-btn">🎁 Забрать награду</button>' : ''}`;
+    ${state.completed && canClaimQuestReward(quest, state) ? '<button type="button" class="quest-claim-btn">🎁 Забрать награду</button>' : ''}
+    ${!state.completed && !lockedByLevel && isActive ? '<button type="button" class="quest-show-btn">👁 Показать</button>' : ''}`;
+
+  card.querySelector('.quest-show-btn')?.addEventListener('click', event => {
+    event.stopPropagation();
+    showQuestHelp(quest.id);
+  });
 
   if (state.completed && canClaimQuestReward(quest, state)) {
     const claim = () => claimQuestReward(quest.id);
@@ -3136,6 +3397,7 @@ function resetModalViewState(modalId) {
 }
 
 function openQuestsModal() {
+  hideQuestHelp();
   initQuestSystem();
   syncActiveQuestProgress();
   renderQuestsModal();
@@ -7802,7 +8064,10 @@ function placeDecorFromTap(clientX, clientY) {
   if (placedDecor) {
     notifyGameEvent('decor_installed', 1, { type:def.id, facility:!!def.facility, fromStorage });
     if (fromStorage) notifyGameEvent('decor_restored_from_storage', 1, { type:def.id });
-    else notifyGameEvent('decor_purchased', 1, { type:def.id });
+    else {
+      G.decorPurchasedCount = Math.max(0, Number(G.decorPurchasedCount) || 0) + 1;
+      notifyGameEvent('decor_purchased', 1, { type:def.id });
+    }
   }
   stopDecorPlaceMode();
   enterEditorMode();
@@ -11648,39 +11913,116 @@ if (ratingModalEl) {
 
 
 
+const ACHIEVEMENT_MONEY_REWARDS = [1000, 2500, 5000, 10000, 20000];
+const ACHIEVEMENT_CRYSTAL_REWARDS = [1, 2, 3, 4, 5];
+
+function getAllFloorStatesForAchievements() {
+  const states = [];
+  if (typeof shopFloorStates !== 'undefined') {
+    Object.values(shopFloorStates).forEach(state => { if (state) states.push(state); });
+  }
+  if (!states.some(state => state.floorNumber === (G.currentFloor || 1))) {
+    states.push({
+      floorNumber:G.currentFloor || 1,
+      shelfPositions:Array.isArray(SHELF_POSITIONS) ? SHELF_POSITIONS : [],
+      staff:G.staff || {},
+      shopStage:G.shopStage || 1,
+      decorations:Array.isArray(decorations) ? decorations : []
+    });
+  }
+  return states;
+}
+
+function getAchievementShelfCount() {
+  return getAllFloorStatesForAchievements().reduce((sum, state) => sum + (Array.isArray(state.shelfPositions) ? state.shelfPositions.length : 0), 0);
+}
+
+function getAchievementStaffCount() {
+  return getAllFloorStatesForAchievements().reduce((sum, state) => {
+    const staff = state.staff || {};
+    return sum + ['cashier','seller','cleaner','guard'].reduce((n, type) => n + Math.max(0, Number(staff[type]) || 0), 0);
+  }, 0);
+}
+
+function getAchievementExpansionCount() {
+  return getAllFloorStatesForAchievements().reduce((sum, state) => sum + Math.max(0, (Number(state.shopStage) || 1) - 1), 0);
+}
+
 const ACHIEVEMENT_DEFINITIONS = [
   {
-    id:'sales', icon:'🛍️', name:'Мастер продаж', unit:'товаров',
+    id:'sales', icon:'🛍️', name:'Мастер продаж',
     thresholds:[20,40,80,160,320],
     value:() => Math.max(0, Number(G.totalSold) || 0),
     targetText:value => 'Продать ' + fmtFull(value) + ' товаров'
   },
   {
-    id:'revenue', icon:'💰', name:'Большая выручка', unit:'денег',
+    id:'revenue', icon:'💰', name:'Большая выручка',
     thresholds:[10000,30000,75000,150000,300000],
     value:() => Math.max(0, Number(G.totalEarned) || 0),
     targetText:value => 'Получить ' + fmtFull(value) + ' общей выручки'
   },
   {
-    id:'level', icon:'⭐', name:'Опытный владелец', unit:'уровень',
+    id:'level', icon:'⭐', name:'Опытный владелец',
     thresholds:[5,10,20,35,50],
     value:() => Math.max(1, Number(G.level) || 1),
     targetText:value => 'Достичь ' + value + ' уровня'
   },
   {
-    id:'rating', icon:'💖', name:'Любимый магазин', unit:'рейтинга',
+    id:'rating', icon:'💖', name:'Любимый магазин',
     thresholds:[20,40,60,80,100],
     value:() => Math.max(0, Number(getDisplayedStoreRating(getStoreRatingDetails().rating)) || 0),
     targetText:value => 'Достичь рейтинга ' + value + '%'
   },
   {
-    id:'decor', icon:'🪴', name:'Дизайнер магазина', unit:'объектов',
+    id:'decor', icon:'🪴', name:'Дизайнер магазина',
     thresholds:[1,3,5,8,12],
     value:() => getAllInstalledDecorationsForProgress().filter(item => {
       const def = getDecorDef(item.type);
       return !!(def && !def.special);
     }).length,
     targetText:value => 'Установить ' + value + ' объектов оформления'
+  },
+  {
+    id:'assortment', icon:'🧺', name:'Широкий ассортимент',
+    thresholds:[3,6,10,15,20],
+    value:() => new Set((Array.isArray(G.soldProductIds) ? G.soldProductIds : []).filter(Boolean)).size,
+    targetText:value => 'Продать ' + value + ' разных видов товаров'
+  },
+  {
+    id:'shelves', icon:'🪟', name:'Владелец витрин',
+    thresholds:[2,4,6,9,12],
+    value:() => getAchievementShelfCount(),
+    targetText:value => 'Установить ' + value + ' витрин'
+  },
+  {
+    id:'team', icon:'👥', name:'Команда мечты',
+    thresholds:[3,4,5,6,7],
+    value:() => getAchievementStaffCount(),
+    targetText:value => 'Иметь ' + value + ' работников'
+  },
+  {
+    id:'expansion', icon:'🏗️', name:'Расширение бизнеса',
+    thresholds:[1,2,3,5,6],
+    value:() => getAchievementExpansionCount(),
+    targetText:value => 'Купить ' + value + ' расширений магазина'
+  },
+  {
+    id:'deliveries', icon:'🚚', name:'Надёжный поставщик',
+    thresholds:[5,15,30,60,100],
+    value:() => Math.max(0, Number(G.deliveriesReceived) || 0),
+    targetText:value => 'Получить ' + value + ' поставок'
+  },
+  {
+    id:'cleaning', icon:'🧹', name:'Чистый магазин',
+    thresholds:[10,30,75,150,300],
+    value:() => Math.max(0, Number(G.shelvesCleaned) || 0),
+    targetText:value => 'Убрать ' + value + ' загрязнённых витрин'
+  },
+  {
+    id:'decor_purchases', icon:'🎨', name:'Мастер интерьера',
+    thresholds:[1,3,5,10,15],
+    value:() => Math.max(0, Number(G.decorPurchasedCount) || 0),
+    targetText:value => 'Купить ' + value + ' объектов оформления'
   }
 ];
 
@@ -11706,12 +12048,14 @@ function claimAchievementTier(id) {
   const target = achievement.thresholds[claimed];
   if (currentValue < target) return;
 
-  const reward = claimed + 1;
+  const crystalReward = ACHIEVEMENT_CRYSTAL_REWARDS[claimed] || (claimed + 1);
+  const moneyReward = ACHIEVEMENT_MONEY_REWARDS[claimed] || 1000;
   claims[id] = claimed + 1;
-  G.crystals += reward;
+  G.crystals += crystalReward;
+  G.money += moneyReward;
   updateHUD();
-  showToast('🏆 Достижение: ' + achievement.name + ' · +' + reward + ' 💎', '#23c483');
-  logEvent('🏆 ' + achievement.name + ' ' + (claimed + 1) + '/5: +' + reward + ' 💎');
+  showToast('🏆 ' + achievement.name + ' · +' + fmtFull(moneyReward) + ' 💰 · +' + crystalReward + ' 💎', '#23c483');
+  logEvent('🏆 ' + achievement.name + ' ' + (claimed + 1) + '/5: +' + fmtFull(moneyReward) + ' 💰 · +' + crystalReward + ' 💎');
   renderAchievementsModal();
 }
 
@@ -11729,7 +12073,8 @@ function renderAchievementsModal() {
     const current = achievement.value();
     const tierProgress = complete ? 1 : Math.max(0, Math.min(1, (current - previousTarget) / Math.max(1, target - previousTarget)));
     const ready = !complete && current >= target;
-    const reward = Math.min(5, tierIndex + 1);
+    const crystalReward = ACHIEVEMENT_CRYSTAL_REWARDS[tierIndex] || Math.min(5, tierIndex + 1);
+    const moneyReward = ACHIEVEMENT_MONEY_REWARDS[tierIndex] || 1000;
 
     const card = document.createElement('div');
     card.className = 'achievement-card' + (ready ? ' ready' : '') + (complete ? ' complete' : '');
@@ -11745,7 +12090,7 @@ function renderAchievementsModal() {
       <div class="achievement-progress-bar"><div class="achievement-progress-fill" style="width:${Math.round(tierProgress * 100)}%"></div></div>
       <div class="achievement-foot">
         <span>${complete ? fmtFull(current) : (fmtFull(Math.min(current, target)) + ' / ' + fmtFull(target))}</span>
-        <span class="achievement-reward">${complete ? 'Получено 15 💎' : ('Награда: ' + reward + ' 💎')}</span>
+        <span class="achievement-reward">${complete ? 'Получено 38 500 💰 · 15 💎' : ('Награда: ' + fmtFull(moneyReward) + ' 💰 · ' + crystalReward + ' 💎')}</span>
       </div>
       ${ready ? '<button type="button" class="achievement-claim-btn">Забрать награду</button>' : ''}`;
 
@@ -12538,6 +12883,7 @@ function updateDeliveries() {
     addProductToStorage(d.productId, d.qty);
     showToast('📦 Доставка приехала: ' + p.name + ' ×' + d.qty);
     logEvent('🚚 Доставка: ' + p.emoji + ' ' + p.name + ' ×' + d.qty + ' → склад');
+    G.deliveriesReceived = Math.max(0, Number(G.deliveriesReceived) || 0) + 1;
     notifyGameEvent('delivery_arrived', 1, { productId:d.productId, qty:d.qty });
   });
   // Во время обучения не переключаем вкладку автоматически.
@@ -15806,6 +16152,7 @@ function finishShelfCleanup(slotIdx) {
   }
   cleanupTask = null;
   showToast('✅ Витрина убрана и снова свободна');
+  G.shelvesCleaned = Math.max(0, Number(G.shelvesCleaned) || 0) + 1;
   notifyGameEvent('shelf_cleaned', 1, { slotIdx });
 }
 
