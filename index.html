@@ -147,6 +147,50 @@
   .style-color { width:18px; height:18px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); }
 
 
+  /* ДОСТИЖЕНИЯ */
+  #achievementsList {
+    display:flex;
+    gap:10px;
+    overflow-x:auto;
+    overflow-y:hidden;
+    padding:2px 2px 12px;
+    scroll-snap-type:x proximity;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  #achievementsList::-webkit-scrollbar { display:none; }
+  .achievement-card {
+    flex:0 0 min(78vw, 286px);
+    min-height:174px;
+    scroll-snap-align:start;
+    border-radius:16px;
+    padding:13px;
+    background:var(--menu-card, rgba(255,255,255,.055));
+    border:1px solid var(--menu-border, rgba(255,255,255,.10));
+    color:var(--menu-text, #fff);
+  }
+  .achievement-card.ready {
+    border-color:var(--menu-profit, #23c483);
+    box-shadow:0 0 0 1px color-mix(in srgb, var(--menu-profit, #23c483) 25%, transparent) inset;
+  }
+  .achievement-card.complete { opacity:.72; }
+  .achievement-head { display:flex; align-items:flex-start; gap:10px; }
+  .achievement-icon { flex:0 0 34px; font-size:27px; line-height:1; text-align:center; }
+  .achievement-copy { min-width:0; flex:1; }
+  .achievement-name { font-size:14px; line-height:1.2; font-weight:900; }
+  .achievement-tier { margin-top:3px; font-size:10px; color:var(--menu-muted, #999); font-weight:800; }
+  .achievement-target { margin-top:12px; font-size:12px; line-height:1.35; font-weight:800; }
+  .achievement-progress-bar { height:8px; margin-top:10px; border-radius:8px; overflow:hidden; background:var(--menu-card-strong, rgba(255,255,255,.10)); }
+  .achievement-progress-fill { height:100%; border-radius:8px; background:linear-gradient(90deg,var(--menu-accent,#e94560),var(--menu-secondary,#f5c518)); }
+  .achievement-foot { display:flex; justify-content:space-between; gap:8px; margin-top:8px; font-size:10px; color:var(--menu-muted,#999); }
+  .achievement-reward { color:var(--menu-secondary,#f5c518); font-weight:900; white-space:nowrap; }
+  .achievement-claim-btn {
+    width:100%; margin-top:11px; padding:9px 10px; border:none; border-radius:11px;
+    background:var(--menu-profit,#23c483); color:#fff; font-size:12px; font-weight:900; cursor:pointer;
+  }
+  .achievement-claim-btn:active { transform:scale(.97); }
+
+
   /* ПЕРВЫЙ ЗАПУСК — ВЫБОР ТИПА МАГАЗИНА */
   #shop-type-screen {
     position:fixed;
@@ -2465,10 +2509,24 @@
       <div class="rating-action-grid">
         <button class="rating-action-btn" onclick="openRatingStatsModal()">📊 Статистика</button>
         <button class="rating-action-btn" onclick="openWorkersModal()">👥 Работники</button>
+        <button class="rating-action-btn" onclick="openAchievementsModal()">🏆 Достижения</button>
         <button class="rating-action-btn menu-style-entry" onclick="openMenuStyleModal()">🎨 Стиль меню</button>
       </div>
     </div>
     <button type="button" class="modal-close" onclick="closeRatingModal()" aria-label="Закрыть">✕</button>
+  </div>
+</div>
+
+<!-- МОДАЛКА ДОСТИЖЕНИЙ -->
+<div class="modal-bg" id="achievementsModal">
+  <div class="modal-box">
+    <h3>🏆 Достижения</h3>
+    <div class="worker-sub" style="margin:-4px 0 12px">Выполняйте ступени и забирайте кристаллы. Награда растёт от 1 до 5 💎.</div>
+    <div id="achievementsList"></div>
+    <div class="rating-action-grid" style="grid-template-columns:1fr">
+      <button class="rating-action-btn" onclick="openRatingModal(); closeAchievementsModal();">↩ Рейтинг</button>
+    </div>
+    <button type="button" class="modal-close" onclick="closeAchievementsModal()" aria-label="Закрыть">✕</button>
   </div>
 </div>
 
@@ -2611,6 +2669,7 @@ const G = {
   workerSalaryHires: [], // купленные работники и их индивидуальные зарплаты
   decorXPMilestones: {}, // одноразовые награды XP за развитие декора и рейтинга
   claimedLevelRewards: [], // уровни, за которые награда уже была получена
+  achievementClaims: {}, // полученные ступени достижений: achievementId -> количество ступеней
 };
 
 // Перемещаемый декор внутри магазина увеличен в 1,5 раза.
@@ -2625,7 +2684,7 @@ const SHOP_TYPES = {
     icon: '👕',
     productCats: ['Одежда', 'Обувь', 'Аксессуары', 'Красота'],
     categoryIds: ['products', 'shelves', 'cash', 'facilities', 'design', 'staff', 'expansion'],
-    shelfVariants: ['shelf_brown', 'shoe_cubby', 'rack_simple', 'rack_wardrobe', 'glass_case'],
+    shelfVariants: ['shelf_brown', 'rack_simple', 'shoe_cubby', 'rack_wardrobe', 'glass_case'],
     starterShelf: 'shelf_brown'
   },
   electronics: {
@@ -2633,7 +2692,7 @@ const SHOP_TYPES = {
     icon: '📱',
     productCats: ['Техника'],
     categoryIds: ['products', 'shelves', 'cash', 'facilities', 'design', 'staff', 'expansion'],
-    shelfVariants: ['tech_island', 'tv_low_stand', 'appliance_pedestal', 'tech_backstand'],
+    shelfVariants: ['tech_island', 'tech_backstand', 'tv_low_stand', 'appliance_pedestal'],
     starterShelf: 'tech_island'
   }
 };
@@ -4230,7 +4289,7 @@ setTimeout(updateRatingUI, 0);
 
 
 function bindHorizontalMenuWheel() {
-  const selector = '#cat-tabs, #subcat-tabs, #products-list, #warehouse-list, #shelves-info-list, #workersList, #workerStyleList';
+  const selector = '#cat-tabs, #subcat-tabs, #products-list, #warehouse-list, #shelves-info-list, #workersList, #workerStyleList, #achievementsList';
   document.addEventListener('wheel', e => {
     const list = e.target && e.target.closest ? e.target.closest(selector) : null;
     if (!list || list.scrollWidth <= list.clientWidth) return;
@@ -4621,11 +4680,11 @@ const PRODUCT_UNLOCK_LEVELS = {
 
 const SHELF_UNLOCK_LEVELS = {
   clothing: {
-    shelf_brown: 1,
-    rack_simple: 2,
-    shoe_cubby: 3,
-    glass_case: 5,
-    rack_wardrobe: 7,
+    shelf_brown: 1,      // шорты доступны с 1 уровня
+    rack_simple: 2,      // футболка доступна со 2 уровня
+    shoe_cubby: 3,       // обувь доступна с 3 уровня
+    rack_wardrobe: 4,    // куртка и платье доступны с 4 уровня
+    glass_case: 5,       // кошелёк доступен с 5 уровня
   },
   electronics: {
     tech_island: 1,
@@ -11564,6 +11623,7 @@ function updateRatingUI() {
 }
 
 function openRatingModal() {
+  closeAchievementsModal();
   closeMenuStyleModal();
   closeRatingStatsModal();
   closeWorkersModal();
@@ -11586,6 +11646,136 @@ if (ratingModalEl) {
   });
 }
 
+
+
+const ACHIEVEMENT_DEFINITIONS = [
+  {
+    id:'sales', icon:'🛍️', name:'Мастер продаж', unit:'товаров',
+    thresholds:[20,40,80,160,320],
+    value:() => Math.max(0, Number(G.totalSold) || 0),
+    targetText:value => 'Продать ' + fmtFull(value) + ' товаров'
+  },
+  {
+    id:'revenue', icon:'💰', name:'Большая выручка', unit:'денег',
+    thresholds:[10000,30000,75000,150000,300000],
+    value:() => Math.max(0, Number(G.totalEarned) || 0),
+    targetText:value => 'Получить ' + fmtFull(value) + ' общей выручки'
+  },
+  {
+    id:'level', icon:'⭐', name:'Опытный владелец', unit:'уровень',
+    thresholds:[5,10,20,35,50],
+    value:() => Math.max(1, Number(G.level) || 1),
+    targetText:value => 'Достичь ' + value + ' уровня'
+  },
+  {
+    id:'rating', icon:'💖', name:'Любимый магазин', unit:'рейтинга',
+    thresholds:[20,40,60,80,100],
+    value:() => Math.max(0, Number(getDisplayedStoreRating(getStoreRatingDetails().rating)) || 0),
+    targetText:value => 'Достичь рейтинга ' + value + '%'
+  },
+  {
+    id:'decor', icon:'🪴', name:'Дизайнер магазина', unit:'объектов',
+    thresholds:[1,3,5,8,12],
+    value:() => getAllInstalledDecorationsForProgress().filter(item => {
+      const def = getDecorDef(item.type);
+      return !!(def && !def.special);
+    }).length,
+    targetText:value => 'Установить ' + value + ' объектов оформления'
+  }
+];
+
+function ensureAchievementState() {
+  if (!G.achievementClaims || typeof G.achievementClaims !== 'object' || Array.isArray(G.achievementClaims)) {
+    G.achievementClaims = {};
+  }
+  return G.achievementClaims;
+}
+
+function getAchievementClaimedTiers(id) {
+  const claims = ensureAchievementState();
+  return Math.max(0, Math.min(5, Math.floor(Number(claims[id]) || 0)));
+}
+
+function claimAchievementTier(id) {
+  const achievement = ACHIEVEMENT_DEFINITIONS.find(item => item.id === id);
+  if (!achievement) return;
+  const claims = ensureAchievementState();
+  const claimed = getAchievementClaimedTiers(id);
+  if (claimed >= achievement.thresholds.length) return;
+  const currentValue = achievement.value();
+  const target = achievement.thresholds[claimed];
+  if (currentValue < target) return;
+
+  const reward = claimed + 1;
+  claims[id] = claimed + 1;
+  G.crystals += reward;
+  updateHUD();
+  showToast('🏆 Достижение: ' + achievement.name + ' · +' + reward + ' 💎', '#23c483');
+  logEvent('🏆 ' + achievement.name + ' ' + (claimed + 1) + '/5: +' + reward + ' 💎');
+  renderAchievementsModal();
+}
+
+function renderAchievementsModal() {
+  const list = document.getElementById('achievementsList');
+  if (!list) return;
+  list.innerHTML = '';
+
+  ACHIEVEMENT_DEFINITIONS.forEach(achievement => {
+    const claimed = getAchievementClaimedTiers(achievement.id);
+    const complete = claimed >= achievement.thresholds.length;
+    const tierIndex = complete ? achievement.thresholds.length - 1 : claimed;
+    const target = achievement.thresholds[tierIndex];
+    const previousTarget = tierIndex > 0 ? achievement.thresholds[tierIndex - 1] : 0;
+    const current = achievement.value();
+    const tierProgress = complete ? 1 : Math.max(0, Math.min(1, (current - previousTarget) / Math.max(1, target - previousTarget)));
+    const ready = !complete && current >= target;
+    const reward = Math.min(5, tierIndex + 1);
+
+    const card = document.createElement('div');
+    card.className = 'achievement-card' + (ready ? ' ready' : '') + (complete ? ' complete' : '');
+    card.innerHTML = `
+      <div class="achievement-head">
+        <div class="achievement-icon">${complete ? '✅' : achievement.icon}</div>
+        <div class="achievement-copy">
+          <div class="achievement-name">${achievement.name}</div>
+          <div class="achievement-tier">${complete ? 'Все ступени выполнены' : ('Ступень ' + (tierIndex + 1) + '/5')}</div>
+        </div>
+      </div>
+      <div class="achievement-target">${complete ? 'Достижение полностью завершено' : achievement.targetText(target)}</div>
+      <div class="achievement-progress-bar"><div class="achievement-progress-fill" style="width:${Math.round(tierProgress * 100)}%"></div></div>
+      <div class="achievement-foot">
+        <span>${complete ? fmtFull(current) : (fmtFull(Math.min(current, target)) + ' / ' + fmtFull(target))}</span>
+        <span class="achievement-reward">${complete ? 'Получено 15 💎' : ('Награда: ' + reward + ' 💎')}</span>
+      </div>
+      ${ready ? '<button type="button" class="achievement-claim-btn">Забрать награду</button>' : ''}`;
+
+    card.querySelector('.achievement-claim-btn')?.addEventListener('click', () => claimAchievementTier(achievement.id));
+    list.appendChild(card);
+  });
+}
+
+function openAchievementsModal() {
+  closeRatingModal();
+  closeRatingStatsModal();
+  closeWorkersModal();
+  closeMenuStyleModal();
+  closeWorkerStyleModal();
+  renderAchievementsModal();
+  const modal = document.getElementById('achievementsModal');
+  if (modal) modal.classList.add('show');
+  resetModalViewState('achievementsModal');
+}
+
+function closeAchievementsModal() {
+  document.getElementById('achievementsModal')?.classList.remove('show');
+}
+
+const achievementsModalEl = document.getElementById('achievementsModal');
+if (achievementsModalEl) {
+  achievementsModalEl.addEventListener('click', event => {
+    if (event.target === achievementsModalEl) closeAchievementsModal();
+  });
+}
 
 function recordRatingHistory(rating) {
   if (!G.ratingHistory) G.ratingHistory = [];
@@ -12003,19 +12193,51 @@ function getShelfHitForPlacement(hits, product) {
 }
 
 // Абсолютный технический максимум витрин на одном этаже.
-// Доступный игроку лимит растёт на 1 каждые 5 уровней:
-// 1–4 ур. — 1, 5–9 ур. — 2, 10–14 ур. — 3 и так далее.
+// Для каждого вида сначала доступна одна витрина. Вторая копия открывается
+// отдельно: для первого вида на 5 уровне, второго — на 7, затем каждые 2 уровня.
 const MAX_SHELVES = 12;
+
+function getShelfVariantOrder(shopType = G.shopType) {
+  return [...(SHOP_TYPES[shopType]?.shelfVariants || [])];
+}
+
+function getShelfVariantSecondUnlockLevel(variantOrId, shopType = G.shopType, floorNumber = G.currentFloor || 1) {
+  const id = typeof variantOrId === 'string' ? variantOrId : variantOrId?.id;
+  const order = getShelfVariantOrder(shopType);
+  const index = Math.max(0, order.indexOf(id));
+  const baseLevel = 5 + index * 2;
+  return getFloorAdjustedUnlockLevel(baseLevel, floorNumber);
+}
+
+function getOwnedShelfVariantCount(variantOrId) {
+  const id = typeof variantOrId === 'string' ? variantOrId : variantOrId?.id;
+  if (!id || !Array.isArray(G.shelfVariants)) return 0;
+  return G.shelfVariants.slice(0, SHELF_POSITIONS.length).filter(variantId => variantId === id).length;
+}
+
+function getShelfVariantPurchaseLimit(variantOrId, level = G.level) {
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+  return safeLevel >= getShelfVariantSecondUnlockLevel(variantOrId) ? 2 : 1;
+}
 
 function getMaxShelvesForLevel(level = G.level) {
   const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
-  return Math.min(MAX_SHELVES, 1 + Math.floor(safeLevel / 5));
+  const available = getShelfVariantOrder().filter(id => safeLevel >= getShelfUnlockLevel(id));
+  const total = available.reduce((sum, id) => sum + getShelfVariantPurchaseLimit(id, safeLevel), 0);
+  return Math.min(MAX_SHELVES, total);
 }
 
 function getNextShelfLimitLevel(level = G.level) {
-  const currentLimit = getMaxShelvesForLevel(level);
-  if (currentLimit >= MAX_SHELVES) return null;
-  return currentLimit * 5;
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+  const futureLevels = getShelfVariantOrder().flatMap(id => {
+    const levels = [];
+    const first = getShelfUnlockLevel(id);
+    const second = getShelfVariantSecondUnlockLevel(id);
+    if (first > safeLevel) levels.push(first);
+    if (second > safeLevel) levels.push(second);
+    return levels;
+  });
+  return futureLevels.length ? Math.min(...futureLevels) : null;
 }
 
 function getShelfLimitText(level = G.level) {
@@ -12686,15 +12908,20 @@ function renderProductList() {
     ];
 
     if (showSubcat('walls')) {
-      const wallGrid = document.createElement('div');
-      wallGrid.style.cssText = 'display:flex;flex-wrap:nowrap;gap:6px;margin-bottom:14px;overflow-x:auto;overflow-y:hidden;padding-bottom:6px;width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch';
       WALL_COLORS.forEach((c, colorIndex) => {
-        const btn = document.createElement('div');
         const unlockLevel = getSurfaceUnlockLevel(colorIndex);
         const unlocked = (G.level || 1) >= unlockLevel;
-        btn.style.cssText = `flex:0 0 108px;background:#${c.hex.toString(16).padStart(6,'0')};border-radius:10px;padding:10px 4px;text-align:center;cursor:${unlocked ? 'pointer' : 'default'};border:2px solid rgba(255,255,255,0.1);opacity:${unlocked ? '1' : '.42'}`;
-        btn.innerHTML = `<div style="font-size:10px;color:#000;font-weight:700;text-shadow:0 0 4px rgba(255,255,255,0.8)">Стены · ${c.name}${c.default ? ' (по умолч.)' : ''}<br>${unlocked ? '100₽' : '🔒 Уровень ' + unlockLevel}</div>`;
-        btn.onclick = () => {
+        const selected = Number(WALL) === Number(c.hex);
+        const el = document.createElement('div');
+        el.className = 'prod-row' + (unlocked ? '' : ' cant');
+        el.innerHTML = `
+          <div class="pr-emoji" style="width:38px;height:38px;border-radius:10px;background:#${c.hex.toString(16).padStart(6,'0')};border:2px solid rgba(255,255,255,.55);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></div>
+          <div class="pr-info">
+            <div class="pr-name">Стены · ${c.name}${c.default ? ' (по умолч.)' : ''}</div>
+            <div class="pr-sub">${selected ? 'Выбрано' : (unlocked ? 'Нажмите, чтобы применить' : 'Откроется на уровне ' + unlockLevel)}</div>
+          </div>
+          <div class="pr-right"><div class="pr-price">${selected ? '✓' : (unlocked ? '100₽' : '🔒')}</div></div>`;
+        el.onclick = () => {
           if (!unlocked) { showToast('🔒 Цвет откроется на уровне ' + unlockLevel, '#e94560'); return; }
           if (Number(WALL) === Number(c.hex)) { showToast('ℹ️ Этот цвет стен уже выбран'); return; }
           if (G.money < 100) { showToast('❌ Нужно 100₽'); return; }
@@ -12704,22 +12931,27 @@ function renderProductList() {
           if (floorState) floorState.wallColor = c.hex;
           notifyGameEvent('wall_color_changed', 1, { color:c.hex });
           showToast('🎨 Цвет стен изменён!');
+          renderProductList();
         };
-        wallGrid.appendChild(btn);
+        list.appendChild(el);
       });
-      list.appendChild(wallGrid);
     }
 
     if (showSubcat('floor')) {
-      const floorGrid = document.createElement('div');
-      floorGrid.style.cssText = 'display:flex;flex-wrap:nowrap;gap:6px;margin-bottom:14px;overflow-x:auto;overflow-y:hidden;padding-bottom:6px;width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch';
       FLOOR_COLORS.forEach((c, colorIndex) => {
-        const btn = document.createElement('div');
         const unlockLevel = getSurfaceUnlockLevel(colorIndex);
         const unlocked = (G.level || 1) >= unlockLevel;
-        btn.style.cssText = `flex:0 0 108px;background:#${c.hex.toString(16).padStart(6,'0')};border-radius:10px;padding:10px 4px;text-align:center;cursor:${unlocked ? 'pointer' : 'default'};border:2px solid rgba(255,255,255,0.1);opacity:${unlocked ? '1' : '.42'}`;
-        btn.innerHTML = `<div style="font-size:10px;color:#000;font-weight:700;text-shadow:0 0 4px rgba(255,255,255,0.8)">Пол · ${c.name}${c.default ? ' (по умолч.)' : ''}<br>${unlocked ? '50₽' : '🔒 Уровень ' + unlockLevel}</div>`;
-        btn.onclick = () => {
+        const selected = floorMat.color.getHex() === c.hex;
+        const el = document.createElement('div');
+        el.className = 'prod-row' + (unlocked ? '' : ' cant');
+        el.innerHTML = `
+          <div class="pr-emoji" style="width:38px;height:38px;border-radius:10px;background:#${c.hex.toString(16).padStart(6,'0')};border:2px solid rgba(255,255,255,.55);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></div>
+          <div class="pr-info">
+            <div class="pr-name">Пол · ${c.name}${c.default ? ' (по умолч.)' : ''}</div>
+            <div class="pr-sub">${selected ? 'Выбрано' : (unlocked ? 'Нажмите, чтобы применить' : 'Откроется на уровне ' + unlockLevel)}</div>
+          </div>
+          <div class="pr-right"><div class="pr-price">${selected ? '✓' : (unlocked ? '50₽' : '🔒')}</div></div>`;
+        el.onclick = () => {
           if (!unlocked) { showToast('🔒 Цвет откроется на уровне ' + unlockLevel, '#e94560'); return; }
           if (floorMat.color.getHex() === c.hex) { showToast('ℹ️ Этот цвет пола уже выбран'); return; }
           if (G.money < 50) { showToast('❌ Нужно 50₽'); return; }
@@ -12730,10 +12962,10 @@ function renderProductList() {
           if (floorState) floorState.floorColor = c.hex;
           notifyGameEvent('floor_color_changed', 1, { color:c.hex });
           showToast('🟫 Цвет пола изменён!');
+          renderProductList();
         };
-        floorGrid.appendChild(btn);
+        list.appendChild(el);
       });
-      list.appendChild(floorGrid);
     }
 
     if (showSubcat('innerWalls')) {
@@ -12910,16 +13142,19 @@ function renderProductList() {
       const currentCount = SHELF_POSITIONS.length;
       const currentLimit = getMaxShelvesForLevel();
       const nextLimitLevel = getNextShelfLimitLevel();
-      SHELF_VARIANTS.filter(isShelfVariantAllowedForShop).forEach(sv => {
+      SHELF_VARIANTS.filter(isShelfVariantAllowedForShop).sort((a,b) => getShelfVariantOrder().indexOf(a.id) - getShelfVariantOrder().indexOf(b.id)).forEach(sv => {
         const unlockLevel = getShelfUnlockLevel(sv);
         const capacity = getShelfVariantCapacity(sv);
         const tutorialFree = isTutorialFreeStarterShelfPurchase(sv);
         const unlocked = tutorialFree || isShelfVariantUnlocked(sv);
-        const limitReached = !tutorialFree && currentCount >= currentLimit;
-        const can = unlocked && !limitReached && (tutorialFree || G.money >= sv.price);
-        const limitHint = nextLimitLevel === null
-          ? ('достигнут максимальный лимит ' + currentLimit)
-          : ('следующая витрина откроется на уровне ' + nextLimitLevel);
+        const ownedOfType = getOwnedShelfVariantCount(sv);
+        const typeLimit = tutorialFree ? 1 : getShelfVariantPurchaseLimit(sv);
+        const secondUnlockLevel = getShelfVariantSecondUnlockLevel(sv);
+        const limitReached = !tutorialFree && ownedOfType >= typeLimit;
+        const can = unlocked && !limitReached && currentCount < MAX_SHELVES && (tutorialFree || G.money >= sv.price);
+        const limitHint = typeLimit < 2
+          ? ('вторая витрина этого вида откроется на уровне ' + secondUnlockLevel)
+          : 'достигнут лимит 2 витрины этого вида';
         const el = document.createElement('div');
         el.dataset.shelfVariantId = sv.id;
         el.className = 'prod-row' + (can ? '' : ' cant');
@@ -12930,12 +13165,12 @@ function renderProductList() {
             <div class="pr-sub">${tutorialFree
               ? ('Стартовая витрина для обучения · вместимость ' + capacity + ' шт · установлено 0/' + currentLimit)
               : (unlocked
-                ? ((sv.desc || 'Новая витрина') + ' · вместимость ' + capacity + ' шт · установлено ' + currentCount + '/' + currentLimit + (limitReached ? ' · ' + limitHint : ''))
-                : ('Откроется на уровне ' + unlockLevel))}</div>
+                ? ((sv.desc || 'Новая витрина') + ' · вместимость ' + capacity + ' шт · этого вида ' + ownedOfType + '/' + typeLimit + (limitReached ? ' · ' + limitHint : ''))
+                : ('Откроется вместе с подходящим товаром на уровне ' + unlockLevel))}</div>
           </div>
           <div class="pr-right">
-            <div class="pr-price">${tutorialFree ? 'Бесплатно' : (limitReached ? 'Лимит' : (unlocked ? ('💰' + fmt(sv.price)) : ('🔒 Ур.' + unlockLevel)))}</div>
-            <div class="pr-profit" style="color:#aaa">${unlocked ? (currentCount + '/' + currentLimit) : ''}</div>
+            <div class="pr-price">${tutorialFree ? 'Бесплатно' : (limitReached ? (typeLimit < 2 ? ('🔒 Ур.' + secondUnlockLevel) : 'Лимит') : (unlocked ? ('💰' + fmt(sv.price)) : ('🔒 Ур.' + unlockLevel)))}</div>
+            <div class="pr-profit" style="color:#aaa">${unlocked ? (ownedOfType + '/' + typeLimit) : ''}</div>
           </div>`;
         if (unlocked && !limitReached) el.onclick = () => buyShelf(sv);
         list.appendChild(el);
@@ -13349,11 +13584,17 @@ function buyShelf(sv) {
   }
   const price = tutorialFree ? 0 : sv.price;
   if (G.money < price) { showToast('❌ Недостаточно денег'); return; }
-  if (SHELF_POSITIONS.length >= getMaxShelvesForLevel()) {
-    const nextLevel = getNextShelfLimitLevel();
-    showToast(nextLevel === null
-      ? '❌ Достигнут максимальный лимит витрин'
-      : ('🔒 Следующая витрина откроется на уровне ' + nextLevel), '#6b6b86');
+  const ownedOfType = getOwnedShelfVariantCount(sv);
+  const typeLimit = tutorialFree ? 1 : getShelfVariantPurchaseLimit(sv);
+  if (!tutorialFree && ownedOfType >= typeLimit) {
+    const secondUnlockLevel = getShelfVariantSecondUnlockLevel(sv);
+    showToast(typeLimit < 2
+      ? ('🔒 Вторая витрина «' + sv.name + '» откроется на уровне ' + secondUnlockLevel)
+      : ('❌ Можно установить максимум 2 витрины вида «' + sv.name + '»'), '#6b6b86');
+    return;
+  }
+  if (SHELF_POSITIONS.length >= MAX_SHELVES) {
+    showToast('❌ Достигнут общий технический лимит витрин', '#6b6b86');
     return;
   }
   G.money -= price;
