@@ -3069,6 +3069,19 @@ function notifyGameEvent(eventName, amount = 1, data = {}) {
     }
   }
 
+  if (activeQuestHelpQuestId) {
+    const helpQuest = QUEST_DEFINITIONS.find(item => item.id === activeQuestHelpQuestId);
+    const helpState = helpQuest ? questState[helpQuest.id] : null;
+    const helpQuestId = activeQuestHelpQuestId;
+    hideQuestHelp();
+    if (helpQuest && !helpState?.completed && !helpState?.claimed) {
+      questHelpAdvanceTimer = setTimeout(() => {
+        questHelpAdvanceTimer = null;
+        showQuestHelp(helpQuestId);
+      }, 350);
+    }
+  }
+
   tutorialNotify(eventName, data);
 }
 
@@ -3095,11 +3108,16 @@ function updateQuestUI() {
 let questHelpTimer = null;
 let questHelpResizeHandlerBound = false;
 let activeQuestHelpTargetGetter = null;
+let activeQuestHelpQuestId = null;
+let questHelpAdvanceTimer = null;
 
 function hideQuestHelp() {
   if (questHelpTimer) clearTimeout(questHelpTimer);
   questHelpTimer = null;
   activeQuestHelpTargetGetter = null;
+  activeQuestHelpQuestId = null;
+  if (questHelpAdvanceTimer) clearTimeout(questHelpAdvanceTimer);
+  questHelpAdvanceTimer = null;
   const highlight = document.getElementById('quest-help-highlight');
   const card = document.getElementById('quest-help-card');
   if (highlight) highlight.style.display = 'none';
@@ -3144,7 +3162,7 @@ function positionQuestHelp() {
   }
 }
 
-function showQuestHelpTarget(title, text, targetGetter, duration = 9000) {
+function showQuestHelpTarget(title, text, targetGetter, duration = 9000, questId = null) {
   hideQuestHelp();
   const card = document.getElementById('quest-help-card');
   const titleEl = document.getElementById('quest-help-title');
@@ -3154,6 +3172,7 @@ function showQuestHelpTarget(title, text, targetGetter, duration = 9000) {
   textEl.textContent = text || '';
   card.style.display = 'block';
   activeQuestHelpTargetGetter = typeof targetGetter === 'function' ? targetGetter : () => targetGetter;
+  activeQuestHelpQuestId = questId;
   requestAnimationFrame(positionQuestHelp);
   setTimeout(positionQuestHelp, 160);
   setTimeout(positionQuestHelp, 420);
@@ -3188,98 +3207,144 @@ function showQuestHelp(questId) {
   const id = quest.id;
   const eventName = quest.event || '';
   const metric = quest.metric || '';
+  const showStep = (title, helpText, targetGetter, duration = 15000) =>
+    showQuestHelpTarget(title, helpText, targetGetter, duration, quest.id);
 
   if (metric === 'level' || id.startsWith('reach_level_')) {
-    showQuestHelpTarget(quest.title, 'Получайте XP за продажи и задания. Следите за шкалой уровня здесь.', () => document.getElementById('hud-level-box'));
+    showStep(quest.title, 'Получайте XP за продажи и задания. Следите за шкалой уровня здесь.', () => document.getElementById('hud-level-box'));
     return;
   }
   if (metric === 'rating' || id.includes('rating')) {
-    showQuestHelpTarget(quest.title, 'Нажмите сюда, чтобы открыть рейтинг и посмотреть, что влияет на него.', () => document.getElementById('hud-level-box'));
+    showStep(quest.title, 'Нажмите сюда, чтобы открыть рейтинг и посмотреть, что влияет на него.', () => document.getElementById('hud-level-box'));
     return;
   }
   if (metric === 'staff_cleaner' || metric === 'extra_sellers' || id.startsWith('hire_')) {
     openShopQuestHelp('staff');
-    showQuestHelpTarget(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="staff"]') || getFirstVisibleProductCard());
+    showStep(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="staff"]') || getFirstVisibleProductCard());
     return;
   }
   if (metric === 'shelf_count' || metric === 'different_stocked_shelves' || id.includes('shelf')) {
     if (id.includes('move') || id.includes('rotate') || id.includes('storage_cycle')) {
-      showQuestHelpTarget(quest.title, 'Откройте редактор, затем выберите витрину и нужное действие.', () => document.getElementById('editor-toggle-btn'));
+      showStep(quest.title, 'Откройте редактор, затем выберите витрину и нужное действие.', () => document.getElementById('editor-toggle-btn'));
     } else {
       openShopQuestHelp('shelves');
-      showQuestHelpTarget(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="shelves"]') || getFirstVisibleProductCard());
+      showStep(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="shelves"]') || getFirstVisibleProductCard());
     }
     return;
   }
   if (id.includes('cash') || eventName === 'cash_rotated') {
     if (eventName === 'cash_rotated') {
-      showQuestHelpTarget(quest.title, 'Откройте редактор, выберите кассу и нажмите кнопку поворота.', () => document.getElementById('editor-toggle-btn'));
+      showStep(quest.title, 'Откройте редактор, выберите кассу и нажмите кнопку поворота.', () => document.getElementById('editor-toggle-btn'));
     } else {
       openShopQuestHelp('cash');
-      showQuestHelpTarget(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="cash"]') || getFirstVisibleProductCard());
+      showStep(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="cash"]') || getFirstVisibleProductCard());
     }
     return;
   }
   if (metric === 'facility_count' || id === 'install_facility') {
     openShopQuestHelp('facilities');
-    showQuestHelpTarget(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="facilities"]') || getFirstVisibleProductCard());
+    showStep(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="facilities"]') || getFirstVisibleProductCard());
     return;
   }
   if (eventName === 'wall_color_changed' || id.includes('wall_color')) {
     openShopQuestHelp('design', 'walls');
-    showQuestHelpTarget(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="walls"]') || getFirstVisibleProductCard());
+    showStep(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="walls"]') || getFirstVisibleProductCard());
     return;
   }
   if (eventName === 'floor_color_changed' || id.includes('floor_color')) {
     openShopQuestHelp('design', 'floor');
-    showQuestHelpTarget(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="floor"]') || getFirstVisibleProductCard());
+    showStep(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="floor"]') || getFirstVisibleProductCard());
     return;
   }
   if (metric === 'regular_decor_count' || eventName.includes('decor') || id.includes('decor')) {
     openShopQuestHelp('design', 'decor');
-    showQuestHelpTarget(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="decor"]') || getFirstVisibleProductCard());
+    showStep(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="decor"]') || getFirstVisibleProductCard());
     return;
   }
   if (metric === 'total_earned' || eventName === 'revenue_collected' || id.includes('earn_')) {
-    showQuestHelpTarget(quest.title, 'После продаж нажмите на кассу в магазине и заберите накопленную выручку.', () => {
+    showStep(quest.title, 'После продаж нажмите на кассу в магазине и заберите накопленную выручку.', () => {
       const cash = cashRegisters?.[0];
       return makeTutorialObjectTarget(cash && (cash.hitZone || cash.group), 14);
     });
     return;
   }
   if (eventName === 'product_ordered') {
-    openShopQuestHelp('products');
-    showQuestHelpTarget(quest.title, 'Выберите любой доступный товар, откройте его карточку и нажмите покупку.', () => getFirstVisibleProductCard());
+    const shopOpen = document.getElementById('shopModal')?.classList.contains('show');
+    const itemOpen = document.getElementById('itemModal')?.classList.contains('show');
+    if (!shopOpen && !itemOpen) {
+      showStep(quest.title, 'Сначала откройте магазин.', () => document.getElementById('shop-main-btn'));
+      return;
+    }
+    if (shopOpen && activeCat !== 'products') {
+      showStep(quest.title, 'Откройте вкладку «Товары».', () => document.querySelector('#cat-tabs [data-category-id="products"]'));
+      return;
+    }
+    if (!itemOpen) {
+      showStep(quest.title, 'Теперь выберите любой доступный товар.', () => getFirstVisibleProductCard());
+      return;
+    }
+    showStep(quest.title, 'Укажите количество и нажмите кнопку покупки.', () => document.querySelector('#itemModalBox .btn-buy'));
     return;
   }
   if (eventName === 'delivery_arrived') {
     openWarehouseModal();
     warehouseTab = 'products'; warehouseProductTab = 'transit'; renderWarehouseModal();
-    showQuestHelpTarget(quest.title, 'Следите за таймером доставки во вкладке «В пути».', () => document.querySelector('#warehouse-product-tabs [data-product-tab="transit"]') || document.getElementById('warehouse-main-btn'));
+    showStep(quest.title, 'Следите за таймером доставки во вкладке «В пути».', () => document.querySelector('#warehouse-product-tabs [data-product-tab="transit"]') || document.getElementById('warehouse-main-btn'));
     return;
   }
   if (eventName === 'product_stocked') {
     openWarehouseModal();
     warehouseTab = 'products'; warehouseProductTab = 'stock'; renderWarehouseModal();
-    showQuestHelpTarget(quest.title, 'Нажмите «Поставить» у товара на складе, затем выберите подходящую витрину.', () => [...document.querySelectorAll('#warehouse-list button')].find(btn => btn.textContent.includes('Поставить')) || document.querySelector('#warehouse-product-tabs [data-product-tab="stock"]'));
+    showStep(quest.title, 'Нажмите «Поставить» у товара на складе, затем выберите подходящую витрину.', () => [...document.querySelectorAll('#warehouse-list button')].find(btn => btn.textContent.includes('Поставить')) || document.querySelector('#warehouse-product-tabs [data-product-tab="stock"]'));
     return;
   }
   if (eventName === 'editor_opened') {
-    showQuestHelpTarget(quest.title, text, () => document.getElementById('editor-toggle-btn'));
+    showStep(quest.title, text, () => document.getElementById('editor-toggle-btn'));
     return;
   }
   if (metric === 'total_sold' || metric === 'distinct_products_sold' || eventName === 'product_sold') {
-    showQuestHelpTarget(quest.title, 'Закажите товар, поставьте его на витрину и дождитесь продажи покупателю.', () => document.getElementById('shop-main-btn'));
+    showStep(quest.title, 'Закажите товар, поставьте его на витрину и дождитесь продажи покупателю.', () => document.getElementById('shop-main-btn'));
     return;
   }
   if (id.includes('expansion')) {
     openShopQuestHelp('expansion');
-    showQuestHelpTarget(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="expansion"]') || getFirstVisibleProductCard());
+    showStep(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="expansion"]') || getFirstVisibleProductCard());
     return;
   }
 
-  showQuestHelpTarget(quest.title, text, () => document.getElementById('shop-main-btn'));
+  showStep(quest.title, text, () => document.getElementById('shop-main-btn'));
 }
+
+
+function getQuestHelpTargetRectSafe() {
+  if (!activeQuestHelpTargetGetter) return null;
+  try { return getTutorialTargetRect(activeQuestHelpTargetGetter()); } catch (e) { return null; }
+}
+
+function advanceQuestHelpAfterInteraction(event) {
+  if (!activeQuestHelpQuestId || !activeQuestHelpTargetGetter) return;
+  const point = getTutorialEventPoint(event);
+  const rect = getQuestHelpTargetRectSafe();
+  const element = event.target && event.target.nodeType === 1 ? event.target : null;
+  let target = null;
+  try { target = activeQuestHelpTargetGetter(); } catch (e) {}
+  const hitElement = !!(target?.nodeType === 1 && element && (target === element || target.contains(element)));
+  const hitRect = !!(point && rect && point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom);
+  if (!hitElement && !hitRect) return;
+
+  const questId = activeQuestHelpQuestId;
+  const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
+  hideQuestHelp();
+  questHelpAdvanceTimer = setTimeout(() => {
+    questHelpAdvanceTimer = null;
+    const state = quest ? questState[quest.id] : null;
+    if (!quest || state?.completed || state?.claimed) return;
+    showQuestHelp(questId);
+  }, 320);
+}
+
+document.addEventListener('click', advanceQuestHelpAfterInteraction, true);
+document.addEventListener('pointerup', advanceQuestHelpAfterInteraction, true);
 
 function createQuestCard(quest, isActive = false, forceLocked = false) {
   const state = questState[quest.id] || { progress:0, completed:false, claimed:false };
