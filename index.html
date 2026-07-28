@@ -398,10 +398,33 @@
     margin-left:6px;
   }
   #quest-hud-row {
+    position:relative;
     display:flex;
     align-items:center;
     gap:10px;
   }
+  #quest-new-badge {
+    display:none;
+    position:absolute;
+    top:-7px;
+    right:36px;
+    min-width:19px;
+    height:19px;
+    padding:0 5px;
+    align-items:center;
+    justify-content:center;
+    border-radius:999px;
+    background:#e94560;
+    color:#fff;
+    border:2px solid rgba(20,20,40,.96);
+    box-shadow:0 4px 10px rgba(233,69,96,.42);
+    font-size:11px;
+    line-height:1;
+    font-weight:900;
+    pointer-events:none;
+    z-index:14;
+  }
+  #quest-new-badge.show { display:flex; }
   #quest-complete-check {
     display:none;
     align-items:center;
@@ -2364,6 +2387,7 @@
     <!-- КВЕСТЫ -->
     <div id="quest-hud-row">
       <button id="quest-btn" onclick="openQuestsModal()" aria-label="Квесты">📋</button>
+      <div id="quest-new-badge" aria-label="Новый квест">1</div>
       <div id="quest-complete-check" aria-label="Квест выполнен">✓</div>
     </div>
 
@@ -2833,6 +2857,9 @@ const QUEST_DEFINITIONS = [
 
 const questState = {};
 let questSystemReady = false;
+let questHudTrackedQuestId = null;
+let questHudTrackingReady = false;
+let questHudHasNewQuest = false;
 
 function getQuestText(quest) {
   if (!quest) return '';
@@ -2895,6 +2922,10 @@ function initQuestSystem() {
     };
   });
   questSystemReady = true;
+  const initialHudQuest = tutorialActive ? getQuestProgressTarget() : getActiveQuest();
+  questHudTrackedQuestId = initialHudQuest?.id || null;
+  questHudTrackingReady = true;
+  questHudHasNewQuest = false;
   const btn = document.getElementById('quest-btn');
   if (btn) btn.style.display = 'flex';
   syncActiveQuestProgress();
@@ -3085,10 +3116,35 @@ function notifyGameEvent(eventName, amount = 1, data = {}) {
   tutorialNotify(eventName, data);
 }
 
+function updateQuestNewBadge() {
+  const badge = document.getElementById('quest-new-badge');
+  const hudQuest = tutorialActive && !tutorialReplayMode ? getQuestProgressTarget() : getActiveQuest();
+  const currentId = hudQuest?.id || null;
+
+  if (!questHudTrackingReady) {
+    questHudTrackedQuestId = currentId;
+    questHudTrackingReady = true;
+  } else if (currentId && currentId !== questHudTrackedQuestId) {
+    questHudTrackedQuestId = currentId;
+    questHudHasNewQuest = true;
+  } else if (!currentId) {
+    questHudTrackedQuestId = null;
+  }
+
+  if (badge) badge.classList.toggle('show', questHudHasNewQuest);
+}
+
+function markQuestHudSeen() {
+  questHudHasNewQuest = false;
+  const badge = document.getElementById('quest-new-badge');
+  if (badge) badge.classList.remove('show');
+}
+
 function updateQuestUI() {
   if (!questSystemReady) return;
   const btn = document.getElementById('quest-btn');
   if (btn) btn.style.display = 'flex';
+  updateQuestNewBadge();
 
   const completedCheck = document.getElementById('quest-complete-check');
   if (completedCheck) {
@@ -3463,6 +3519,7 @@ function resetModalViewState(modalId) {
 
 function openQuestsModal() {
   hideQuestHelp();
+  markQuestHudSeen();
   initQuestSystem();
   syncActiveQuestProgress();
   renderQuestsModal();
@@ -10898,17 +10955,19 @@ function sellOneUnitFromShelf(slotIdx, reason = 'timer') {
   if (now < item.nextSaleAt) return false;
 
   const isDiscounted = (item.discountedQty || 0) > 0;
+  const isDefective = (item.defectiveQty || 0) > 0;
   const saleAmount = getShelfCurrentSaleAmount(item);
 
   item.qty -= 1;
   if (isDiscounted) item.discountedQty = Math.max(0, (item.discountedQty || 0) - 1);
+  if (isDefective) item.defectiveQty = Math.max(0, (item.defectiveQty || 0) - 1);
   G.pendingRevenue += saleAmount;
   G.pendingItems.push({ name: item.product.name, emoji: item.product.emoji, amount: saleAmount });
   G.totalSold++;
   if (!Array.isArray(G.soldProductIds)) G.soldProductIds = [];
   if (!G.soldProductIds.includes(item.product.id)) G.soldProductIds.push(item.product.id);
   addXP(item.product.xp);
-  showToast('🛍 Товар продан: ' + item.product.name + ' ×1 · ' + fmtFull(saleAmount) + '₽');
+  showToast((isDefective ? '⚠️ Продан товар с браком: ' : '🛍 Товар продан: ') + item.product.name + ' ×1 · ' + fmtFull(saleAmount) + '₽' + (isDefective ? ' (−50%)' : ''));
   // Продажа по таймеру не управляет покупателями. Покупатели — только визуальная жизнь магазина.
 
   if (item.qty <= 0) {
@@ -10923,7 +10982,7 @@ function sellOneUnitFromShelf(slotIdx, reason = 'timer') {
     item.nextSaleAt = now + item.product.time * 1000;
     item.activeSalePrice = getSeasonalSellPrice(item.product);
     refreshShelfItemVisual(slotIdx);
-    logEvent('🛒 ' + item.product.emoji + ' ' + item.product.name + (isDiscounted ? ' продан со скидкой 50%' : ' продан') + ' · осталось ' + item.qty + ' шт');
+    logEvent('🛒 ' + item.product.emoji + ' ' + item.product.name + (isDefective ? ' продан с браком −50%' : (isDiscounted ? ' продан со скидкой 50%' : ' продан')) + ' · осталось ' + item.qty + ' шт');
   }
 
   updateHUD();
@@ -12861,6 +12920,17 @@ const DELIVERY_STEP_SECONDS = 15;
 const CRYSTAL_ACCEL_DELIVERY_COST = 1;
 const CRYSTAL_ACCEL_SALE_COST = 1;
 const STORAGE_EXPIRY_MS = 60 * 60 * 1000; // 1 час на складе до уценки
+const DEFECT_UNLOCK_LEVEL = 5;
+const DEFECT_CHANCE = 0.005; // 0,5% на каждую доставленную единицу
+
+function rollDefectiveUnits(qty) {
+  if ((G.level || 1) < DEFECT_UNLOCK_LEVEL) return 0;
+  let defective = 0;
+  for (let i = 0; i < Math.max(0, qty || 0); i++) {
+    if (Math.random() < DEFECT_CHANCE) defective++;
+  }
+  return defective;
+}
 let nextDeliveryId = 0;
 
 function spendCrystals(amount, reason = '') {
@@ -12945,8 +13015,15 @@ function updateDeliveries() {
   arrived.forEach(d => {
     const p = PRODUCTS.find(x => x.id === d.productId);
     if (!p) return;
-    addProductToStorage(d.productId, d.qty);
+    const defectiveQty = rollDefectiveUnits(d.qty);
+    const normalQty = Math.max(0, d.qty - defectiveQty);
+    if (normalQty > 0) addProductToStorage(d.productId, normalQty);
+    if (defectiveQty > 0) addProductToStorage(d.productId, defectiveQty, { defective:true, multiplier:0.5 });
     showToast('📦 Доставка приехала: ' + p.name + ' ×' + d.qty);
+    if (defectiveQty > 0) {
+      showToast('⚠️ Обнаружен брак: ' + p.name + ' ×' + defectiveQty + ' · продажа −50%', '#e94560ee');
+      logEvent('⚠️ Брак в доставке: ' + p.emoji + ' ' + p.name + ' ×' + defectiveQty + ' · цена продажи −50%');
+    }
     logEvent('🚚 Доставка: ' + p.emoji + ' ' + p.name + ' ×' + d.qty + ' → склад');
     G.deliveriesReceived = Math.max(0, Number(G.deliveriesReceived) || 0) + 1;
     notifyGameEvent('delivery_arrived', 1, { productId:d.productId, qty:d.qty });
@@ -12968,7 +13045,8 @@ function ensureStorageBatches(productId) {
       qty: total - tracked,
       storedAt: Date.now(),
       displayed: false,
-      multiplier: 1
+      multiplier: 1,
+      defective: false
     });
   }
   return G.storageBatches[productId];
@@ -12988,6 +13066,7 @@ function refreshStorageExpiry(productId, now = Date.now()) {
 function getStorageFreshnessInfo(productId, now = Date.now()) {
   const batches = refreshStorageExpiry(productId, now);
   let discountedQty = 0;
+  let defectiveQty = 0;
   let freshPendingQty = 0;
   let protectedQty = 0;
   let returnedQty = 0;
@@ -12998,6 +13077,7 @@ function getStorageFreshnessInfo(productId, now = Date.now()) {
     if (batch.returnedFromShelf || batch.displayed) returnedQty += qty;
     if ((batch.multiplier || 1) <= 0.5) {
       discountedQty += qty;
+      if (batch.defective) defectiveQty += qty;
     } else if (batch.displayed) {
       protectedQty += qty;
     } else {
@@ -13007,7 +13087,7 @@ function getStorageFreshnessInfo(productId, now = Date.now()) {
     }
   });
 
-  return { discountedQty, freshPendingQty, protectedQty, returnedQty, nextExpireAt };
+  return { discountedQty, defectiveQty, freshPendingQty, protectedQty, returnedQty, nextExpireAt };
 }
 
 function addProductToStorage(productId, qty, options = {}) {
@@ -13021,11 +13101,12 @@ function addProductToStorage(productId, qty, options = {}) {
     storedAt: options.storedAt || Date.now(),
     displayed: !!options.displayed,
     returnedFromShelf: !!options.returnedFromShelf,
-    multiplier: options.multiplier === 0.5 ? 0.5 : 1
+    multiplier: options.multiplier === 0.5 ? 0.5 : 1,
+    defective: !!options.defective
   };
 
   const last = batches[batches.length - 1];
-  if (last && last.displayed === batch.displayed && !!last.returnedFromShelf === batch.returnedFromShelf && last.multiplier === batch.multiplier && Math.abs((last.storedAt || 0) - batch.storedAt) < 1000) {
+  if (last && last.displayed === batch.displayed && !!last.returnedFromShelf === batch.returnedFromShelf && last.multiplier === batch.multiplier && !!last.defective === batch.defective && Math.abs((last.storedAt || 0) - batch.storedAt) < 1000) {
     last.qty += qty;
   } else {
     batches.push(batch);
@@ -13035,11 +13116,12 @@ function addProductToStorage(productId, qty, options = {}) {
 function takeProductFromStorage(productId, qty) {
   const cur = G.storage[productId] || 0;
   const requested = Math.max(0, Math.min(cur, qty || 0));
-  if (requested <= 0) return { qty: 0, discountedQty: 0 };
+  if (requested <= 0) return { qty: 0, discountedQty: 0, defectiveQty: 0 };
 
   const batches = refreshStorageExpiry(productId).sort((a, b) => (a.storedAt || 0) - (b.storedAt || 0));
   let remaining = requested;
   let discountedQty = 0;
+  let defectiveQty = 0;
 
   for (const batch of batches) {
     if (remaining <= 0) break;
@@ -13048,6 +13130,7 @@ function takeProductFromStorage(productId, qty) {
     batch.qty -= taken;
     remaining -= taken;
     if ((batch.multiplier || 1) <= 0.5) discountedQty += taken;
+    if (batch.defective) defectiveQty += taken;
   }
 
   const takenQty = requested - remaining;
@@ -13058,7 +13141,7 @@ function takeProductFromStorage(productId, qty) {
     delete G.storageBatches[productId];
   }
 
-  return { qty: takenQty, discountedQty };
+  return { qty: takenQty, discountedQty, defectiveQty };
 }
 
 function removeProductFromStorage(productId, qty) {
@@ -14399,9 +14482,11 @@ function processPassiveFloorSales(state, now = Date.now()) {
     while (item.qty > 0 && !item.soldOut && item.nextSaleAt && now >= item.nextSaleAt && safety < 8) {
       safety++;
       const isDiscounted = (item.discountedQty || 0) > 0;
+      const isDefective = (item.defectiveQty || 0) > 0;
       const saleAmount = getShelfCurrentSaleAmount(item);
       item.qty -= 1;
       if (isDiscounted) item.discountedQty = Math.max(0, (item.discountedQty || 0) - 1);
+      if (isDefective) item.defectiveQty = Math.max(0, (item.defectiveQty || 0) - 1);
       G.pendingRevenue += saleAmount;
       G.pendingItems.push({ name:item.product.name, emoji:item.product.emoji, amount:saleAmount });
       G.totalSold++;
@@ -16037,7 +16122,7 @@ function placeItem(productId, slotIdx, qty = 1, fromStorage = false) {
   if (freeSpace <= 0) { showToast('❌ Витрина уже заполнена'); return; }
   qty = Math.min(qty, freeSpace);
 
-  let storageTake = { qty, discountedQty: 0 };
+  let storageTake = { qty, discountedQty: 0, defectiveQty: 0 };
   if (fromStorage) {
     if ((G.storage[productId] || 0) < qty) {
       showToast('❌ На складе недостаточно товара', '#e94560ee');
@@ -16057,6 +16142,7 @@ function placeItem(productId, slotIdx, qty = 1, fromStorage = false) {
   if (existing && existing.product.id === p.id) {
     existing.qty += qty;
     existing.discountedQty = (existing.discountedQty || 0) + (storageTake.discountedQty || 0);
+    existing.defectiveQty = (existing.defectiveQty || 0) + (storageTake.defectiveQty || 0);
     existing.maxQty = Math.max(shelfCapacity, existing.qty);
     existing.soldOut = false;
     if (!existing.nextSaleAt) {
@@ -16076,7 +16162,8 @@ function placeItem(productId, slotIdx, qty = 1, fromStorage = false) {
       nextSaleAt: Date.now() + p.time * 1000,
       activeSalePrice: getSeasonalSellPrice(p),
       soldOut: false,
-      discountedQty: storageTake.discountedQty || 0
+      discountedQty: storageTake.discountedQty || 0,
+      defectiveQty: storageTake.defectiveQty || 0
     };
     createItemMesh(p, slotIdx);
     showToast('📦 Товар выставлен: ' + p.name + ' ×' + qty + ' → витрина ' + (slotIdx+1));
@@ -16145,7 +16232,8 @@ function renderShelfDetailModal() {
       <div class="item-stat"><div class="item-stat-val" style="color:#00c896">+${fmt(nextSalePrice)}</div><div class="item-stat-lbl">за след. шт</div></div>
       <div class="item-stat"><div class="item-stat-val">📦${G.storage[item.product.id] || 0}</div><div class="item-stat-lbl">на складе</div></div>
     </div>
-    ${(item.discountedQty || 0) > 0 ? `<div style="margin:-4px 0 10px;padding:9px 11px;border-radius:12px;background:rgba(233,69,96,0.14);color:#ff9aaa;font-size:12px">⚠️ Уценено на 50%: ${item.discountedQty} шт</div>` : ''}
+    ${(item.defectiveQty || 0) > 0 ? `<div style="margin:-4px 0 10px;padding:9px 11px;border-radius:12px;background:rgba(233,69,96,0.14);color:#ff9aaa;font-size:12px">🔧 Брак — продажа дешевле на 50%: ${item.defectiveQty} шт</div>` : ''}
+    ${Math.max(0, (item.discountedQty || 0) - (item.defectiveQty || 0)) > 0 ? `<div style="margin:-4px 0 10px;padding:9px 11px;border-radius:12px;background:rgba(233,69,96,0.14);color:#ff9aaa;font-size:12px">⚠️ Уценено после хранения: ${Math.max(0, (item.discountedQty || 0) - (item.defectiveQty || 0))} шт</div>` : ''}
     ${canMove ? `
       <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:12px;margin:12px 0">
         <div style="font-size:12px;color:#888;text-align:center;margin-bottom:8px">Убрать на склад, оставив 1 шт продаваться</div>
@@ -16175,13 +16263,16 @@ function moveShelfQtyToStorage(slotIdx) {
   if (!item || item.qty <= 1) return;
   const maxMove = item.qty - 1;
   const qty = Math.max(1, Math.min(maxMove, shelfMoveQty));
-  const discountedMoved = Math.min(item.discountedQty || 0, qty);
-  const normalMoved = qty - discountedMoved;
+  const defectiveMoved = Math.min(item.defectiveQty || 0, qty);
+  const discountedMoved = Math.min(Math.max(0, (item.discountedQty || 0) - defectiveMoved), qty - defectiveMoved);
+  const normalMoved = qty - defectiveMoved - discountedMoved;
   item.qty -= qty;
-  item.discountedQty = Math.max(0, (item.discountedQty || 0) - discountedMoved);
+  item.defectiveQty = Math.max(0, (item.defectiveQty || 0) - defectiveMoved);
+  item.discountedQty = Math.max(0, (item.discountedQty || 0) - defectiveMoved - discountedMoved);
   item.maxQty = Math.max(getShelfStockCapacity(slotIdx), item.qty);
   if (normalMoved > 0) addProductToStorage(item.product.id, normalMoved, { displayed: true, returnedFromShelf: true, multiplier: 1 });
   if (discountedMoved > 0) addProductToStorage(item.product.id, discountedMoved, { displayed: true, returnedFromShelf: true, multiplier: 0.5 });
+  if (defectiveMoved > 0) addProductToStorage(item.product.id, defectiveMoved, { displayed: true, returnedFromShelf: true, multiplier: 0.5, defective:true });
   refreshShelfItemVisual(slotIdx);
   showToast('📦 ' + qty + ' шт ' + item.product.name + ' убрано на склад');
   renderShelfDetailModal();
@@ -16342,7 +16433,9 @@ function renderWarehouseModal() {
     const freshness = getStorageFreshnessInfo(productId);
     const freshnessParts = [];
     if (freshness.returnedQty > 0) freshnessParts.push('↩️ с витрины: ' + freshness.returnedQty + ' шт');
-    if (freshness.discountedQty > 0) freshnessParts.push('⚠️ уценено 50%: ' + freshness.discountedQty + ' шт');
+    if (freshness.defectiveQty > 0) freshnessParts.push('🔧 брак −50%: ' + freshness.defectiveQty + ' шт');
+    const agedDiscountQty = Math.max(0, freshness.discountedQty - freshness.defectiveQty);
+    if (agedDiscountQty > 0) freshnessParts.push('⚠️ уценено 50%: ' + agedDiscountQty + ' шт');
     if (freshness.freshPendingQty > 0 && freshness.nextExpireAt) {
       const left = Math.max(0, Math.ceil((freshness.nextExpireAt - Date.now()) / 1000));
       freshnessParts.push('⏳ до уценки: ' + fmtTime(left));
