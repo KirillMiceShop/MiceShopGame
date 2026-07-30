@@ -2713,7 +2713,7 @@
 <div class="modal-bg" id="questsModal">
   <div class="modal-box">
     <h3>📋 Квесты</h3>
-    <div id="quests-modal-help" style="font-size:11px;color:#888;margin:-4px 0 12px">Выполните текущее задание и нажмите «Забрать награду». После этого появится следующий квест.</div>
+    <div id="quests-modal-help" style="font-size:11px;color:#888;margin:-4px 0 12px">После обучения квесты появляются группами по 2–3. Следующая группа открывается после выполнения текущей.</div>
     <div id="quests-list"></div>
     <button class="btn-back" style="margin-top:4px" onclick="restartTutorial()">🎓 Повторить обучение</button>
     <button type="button" class="modal-close" onclick="closeQuestsModal()" aria-label="Закрыть">✕</button>
@@ -2848,38 +2848,55 @@ G.shopType = null; // тип магазина выбирается заново 
 // ══════════════════════════════════════
 //  ОБУЧЕНИЕ И СТАРТОВЫЕ КВЕСТЫ
 // ══════════════════════════════════════
-const QUEST_DEFINITIONS = [
-  // Учебные квесты. Только они могут накапливаться во время первого обучения.
-  { id:'first_order', tutorial:true, icon:'🚚', title:'Первая поставка', text:'Закажите любой доступный товар', event:'product_ordered', target:1, reward:{ money:100, xp:10 } },
-  { id:'first_delivery', tutorial:true, icon:'📦', title:'Товар приехал', text:'Дождитесь первой доставки на склад', event:'delivery_arrived', target:1, reward:{ money:100, xp:10 } },
-  { id:'first_stock', tutorial:true, icon:'🪟', title:'Заполните витрину', text:'Выставьте товар со склада на витрину', event:'product_stocked', target:1, reward:{ money:150, xp:20 } },
-  { id:'first_sale', tutorial:true, icon:'🛍️', title:'Первая продажа', text:'Продайте первый товар покупателю', event:'product_sold', target:1, reward:{ money:200, xp:30 } },
-  { id:'first_collection', tutorial:true, icon:'💰', title:'Заберите выручку', text:'Нажмите на кассу и заберите деньги', event:'revenue_collected', target:1, reward:{ money:200, xp:20 } },
-  { id:'open_editor', minLevel:1, icon:'✏️', title:'Познакомьтесь с редактором', text:'Откройте режим редактора магазина', event:'editor_opened', target:1, reward:{ money:100, xp:10 } },
-  { id:'sell_three_level_one', tutorial:true, icon:'🛍️', title:'Первые продажи', text:'Продайте 3 товара покупателям', event:'product_sold', target:3, reward:{ money:250, xp:30 } },
-  { id:'buy_first_decor', tutorial:true, icon:'🪴', title:'Первое украшение', text:'Купите и установите один объект декора', event:'decor_purchased', target:1, reward:{ money:200, xp:20 } },
-  { id:'decor_storage_cycle', tutorial:true, icon:'📦', title:'Декор на складе', text:'Уберите декор на склад, затем верните этот декор обратно в зал', kind:'decor_storage_cycle', target:2, reward:{ money:200, xp:20 } },
-  { id:'sell_one_decor', tutorial:true, icon:'💰', title:'Продажа декора', text:'Продайте один установленный объект декора', event:'decor_sold', target:1, reward:{ money:200, xp:20 } },
-  { id:'reach_level_2', tutorial:true, icon:'⭐', title:'Новый уровень', text:'Достигните 2 уровня магазина', event:'level_reached', metric:'level', target:2, absolute:true, reward:{ money:300, crystals:1 } },
+function getLevelFiveQuestShelfVariant(shopType = G.shopType) {
+  const variants = SHELF_VARIANTS.filter(variant => isShelfVariantAllowedForShop(variant));
+  const candidates = variants
+    .filter(variant => getShelfUnlockLevel(variant, shopType, 1) <= 5)
+    .sort((a, b) => getShelfUnlockLevel(b, shopType, 1) - getShelfUnlockLevel(a, shopType, 1));
+  return candidates[0] || variants[0] || null;
+}
 
-  // 2 уровень — основы редактора.
+const QUEST_DEFINITIONS = [
+  // Квесты 1 уровня. Первые пять проходят как обязательное начальное обучение.
+  { id:'first_order', tutorial:true, minLevel:1, icon:'🚚', title:'Первая поставка', text:'Закажите любой доступный товар', event:'product_ordered', target:1, reward:{ money:100, xp:10 } },
+  { id:'first_delivery', tutorial:true, minLevel:1, icon:'📦', title:'Товар приехал', text:'Дождитесь первой доставки на склад', event:'delivery_arrived', target:1, reward:{ money:100, xp:10 } },
+  { id:'first_stock', tutorial:true, minLevel:1, icon:'🪟', title:'Заполните витрину', text:'Выставьте товар со склада на витрину', event:'product_stocked', target:1, reward:{ money:150, xp:20 } },
+  { id:'first_sale', tutorial:true, minLevel:1, icon:'🛍️', title:'Первая продажа', text:'Продайте первый товар покупателю', event:'product_sold', target:1, reward:{ money:200, xp:30 } },
+  { id:'first_collection', tutorial:true, minLevel:1, icon:'💰', title:'Заберите выручку', text:'Нажмите на кассу и заберите деньги', event:'revenue_collected', target:1, reward:{ money:200, xp:20 } },
+  { id:'open_editor', minLevel:1, icon:'✏️', title:'Познакомьтесь с редактором', text:'Откройте режим редактора магазина', event:'editor_opened', target:1, reward:{ money:100, xp:10 } },
+  { id:'sell_three_level_one', minLevel:1, icon:'🛍️', title:'Первые продажи', text:'Продайте 3 товара', metric:'total_sold', target:3, absolute:true, reward:{ money:250, xp:30 } },
+  { id:'buy_first_decor', minLevel:1, icon:'🪴', title:'Первое украшение', text:'Купите и установите один объект декора', event:'decor_purchased', target:1, reward:{ money:200, xp:20 } },
+  { id:'decor_storage_cycle', minLevel:1, icon:'📦', title:'Декор на складе', text:'Уберите декор на склад, затем верните его обратно в зал', kind:'decor_storage_cycle', target:2, reward:{ money:200, xp:20 } },
+  { id:'sell_one_decor', minLevel:1, icon:'💰', title:'Продажа декора', text:'Продайте один установленный объект декора', event:'decor_sold', target:1, reward:{ money:200, xp:20 } },
+  { id:'reach_level_2', minLevel:1, icon:'⭐', title:'Новый уровень', text:'Достигните 2 уровня магазина', event:'level_reached', metric:'level', target:2, absolute:true, reward:{ money:300, crystals:1 } },
+  { id:'rotate_shelf', minLevel:1, icon:'🔄', title:'Другой ракурс', text:'Поверните витрину в редакторе', event:'shelf_rotated', target:1, reward:{ money:100, xp:40 } },
+
+  // Квесты 2 уровня.
+  { id:'change_floor_color', minLevel:2, icon:'🟫', title:'Новый пол', text:'Измените цвет пола', event:'floor_color_changed', target:1, reward:{ money:100, xp:40 } },
   { id:'change_wall_color', minLevel:2, icon:'🎨', title:'Новый интерьер', text:'Измените цвет стен', event:'wall_color_changed', target:1, reward:{ money:150, xp:40 } },
-  { id:'move_shelf', minLevel:2, icon:'↔️', title:'Новая расстановка', text:'Переместите витрину и успешно поставьте её на новом месте', event:'shelf_moved', target:1, reward:{ money:100, xp:40 } },
-  { id:'rotate_shelf', minLevel:2, icon:'🔄', title:'Другой ракурс', text:'Поверните витрину в редакторе', event:'shelf_rotated', target:1, reward:{ money:100, xp:40 } },
-  { id:'rotate_cash', minLevel:2, icon:'💵', title:'Удобная касса', text:'Поверните кассу в редакторе', event:'cash_rotated', target:1, reward:{ money:100, xp:40 } },
+  { id:'move_shelf', minLevel:2, icon:'↔️', title:'Новая расстановка', text:'Переместите витрину на новое место', event:'shelf_moved', target:1, reward:{ money:100, xp:40 } },
+  { id:'rotate_cash', minLevel:2, icon:'💵', title:'Удобная касса', text:'Поверните кассу', event:'cash_rotated', target:1, reward:{ money:100, xp:40 } },
+  { id:'sell_five_level_two', minLevel:2, icon:'🛍️', title:'Первые продажи', text:'Продайте 5 товаров', metric:'total_sold', target:5, absolute:true, reward:{ money:250, xp:40 } },
   { id:'reach_level_3', minLevel:2, icon:'⭐', title:'Следующая ступень', text:'Достигните 3 уровня магазина', event:'level_reached', metric:'level', target:3, absolute:true, reward:{ money:250, xp:100 } },
 
-  // 3–4 уровни — оформление и ассортимент.
+  // Квесты 3–4 уровней.
   { id:'install_two_decor', minLevel:3, icon:'🛋️', title:'Оформляем магазин', text:'Купите и установите 2 объекта оформления', metric:'regular_decor_count', target:2, absolute:true, reward:{ money:350, xp:60 } },
-  { id:'install_facility', minLevel:3, icon:'🚪', title:'Комфорт покупателей', text:() => G.shopType === 'electronics' ? 'Купите и установите зону проверки техники' : 'Купите и установите примерочную', metric:'facility_count', target:1, absolute:true, reward:{ money:300, xp:80 } },
-  { id:'change_floor_color', minLevel:3, icon:'🟫', title:'Новый пол', text:'Измените цвет пола', event:'floor_color_changed', target:1, reward:{ money:100, xp:40 } },
+  { id:'buy_wall_decor', minLevel:3, icon:'🖼️', title:'Новый декор', text:'Купите настенный декор', event:'decor_purchased', target:1, matchData:data => data?.place === 'wall', reward:{ money:320, xp:60 } },
+  { id:'install_facility', minLevel:3, icon:'🚪', title:'Комфорт покупателей', text:() => G.shopType === 'electronics' ? 'Установите зону проверки техники' : 'Установите примерочную', metric:'facility_count', target:1, absolute:true, reward:{ money:300, xp:80 } },
   { id:'sell_three_product_types', minLevel:3, icon:'🧺', title:'Разнообразный ассортимент', text:'Продайте товары 3 разных видов', metric:'distinct_products_sold', target:3, absolute:true, reward:{ money:400, xp:70 } },
   { id:'sell_ten_products', minLevel:3, icon:'🛍️', title:'Первые покупатели', text:'Продайте суммарно 10 товаров', metric:'total_sold', target:10, absolute:true, reward:{ money:400, xp:60 } },
   { id:'reach_level_5', minLevel:3, icon:'⭐', title:'Магазин развивается', text:'Достигните 5 уровня магазина', event:'level_reached', metric:'level', target:5, absolute:true, reward:{ money:750, xp:90 } },
 
-  // 5–7 уровни — управление магазином.
+  // Квесты 5–7 уровней.
+  { id:'buy_new_shelf', minLevel:5, icon:'🪟', title:'Новая витрина', text:() => {
+      const variant = getLevelFiveQuestShelfVariant();
+      return variant ? ('Купите витрину «' + variant.name + '»') : 'Купите новый вид витрины';
+    }, event:'shelf_installed', target:1, matchData:data => {
+      const variant = getLevelFiveQuestShelfVariant();
+      return !!variant && data?.variantId === variant.id && !data?.tutorialFree;
+    }, reward:{ money:500, xp:90 } },
   { id:'install_second_shelf', minLevel:5, icon:'🪟', title:'Больше места для товара', text:'Купите и установите вторую витрину', metric:'shelf_count', target:2, absolute:true, reward:{ money:600, xp:80 } },
-  { id:'stock_two_product_types', minLevel:5, icon:'🏬', title:'Два отдела', text:'Одновременно выставьте разные товары на двух витринах', metric:'different_stocked_shelves', target:2, absolute:true, reward:{ money:500, xp:80 } },
+  { id:'stock_two_product_types', minLevel:5, icon:'🏬', title:'Два отдела', text:'Одновременно выставьте разные товары на двух разных витринах', metric:'different_stocked_shelves', target:2, absolute:true, reward:{ money:500, xp:80 } },
   { id:'hire_cleaner', minLevel:5, icon:'🧹', title:'Чистый магазин', text:'Наймите уборщика', metric:'staff_cleaner', target:1, absolute:true, reward:{ money:500, xp:80 } },
   { id:'shelf_storage_cycle', minLevel:5, icon:'📦', title:'Перестановка оборудования', text:'Уберите витрину на склад, затем установите её обратно', kind:'shelf_storage_cycle', target:2, reward:{ money:300, xp:80 } },
   { id:'reach_rating_20', minLevel:5, icon:'💖', title:'Привлекательный магазин', text:'Достигните рейтинга магазина 20%', metric:'rating', target:20, absolute:true, reward:{ money:500, xp:80 } },
@@ -2887,18 +2904,40 @@ const QUEST_DEFINITIONS = [
   { id:'earn_fifteen_thousand', minLevel:5, icon:'💰', title:'Растущий бизнес', text:'Получите суммарную выручку 15 000 денег', metric:'total_earned', target:15000, absolute:true, reward:{ money:1000, xp:80 } },
   { id:'reach_level_8', minLevel:5, icon:'⭐', title:'Опытный владелец', text:'Достигните 8 уровня магазина', event:'level_reached', metric:'level', target:8, absolute:true, reward:{ money:1250, xp:140 } },
 
-  // 8–9 уровни — автоматизация и подготовка к 10 уровню.
+  // Квесты 8–10 уровней.
   { id:'hire_extra_seller', minLevel:8, icon:'👕', title:'Помощник в торговом зале', text:'Наймите дополнительного продавца', metric:'extra_sellers', target:1, absolute:true, reward:{ money:700, xp:90 } },
   { id:'sell_fifty_products', minLevel:8, icon:'🛍️', title:'Проверенный магазин', text:'Продайте суммарно 50 товаров', metric:'total_sold', target:50, absolute:true, reward:{ money:1500, xp:90 } },
   { id:'reach_rating_40', minLevel:8, icon:'🌟', title:'Известный магазин', text:'Достигните рейтинга магазина 40%', metric:'rating', target:40, absolute:true, reward:{ money:1500, xp:90 } },
   { id:'reach_level_10', minLevel:8, icon:'🏆', title:'Владелец развивающегося бизнеса', text:'Достигните 10 уровня магазина', event:'level_reached', metric:'level', target:10, absolute:true, reward:{ money:2500, xp:120 } },
 ];
 
+// Начальное обучение идёт строго по одному квесту. После него обычные квесты
+// открываются тематическими группами по 2–3 задания. Новая группа появляется,
+// когда выполнены все задания текущей группы — забирать награды не нужно.
+const INITIAL_TUTORIAL_QUEST_IDS = new Set([
+  'first_order', 'first_delivery', 'first_stock', 'first_sale', 'first_collection'
+]);
+
+const QUEST_BATCHES = [
+  ['open_editor', 'sell_three_level_one', 'rotate_shelf'],
+  ['buy_first_decor', 'decor_storage_cycle', 'sell_one_decor'],
+  ['reach_level_2'],
+  ['change_floor_color', 'change_wall_color', 'move_shelf'],
+  ['rotate_cash', 'sell_five_level_two', 'reach_level_3'],
+  ['install_two_decor', 'buy_wall_decor', 'install_facility'],
+  ['sell_three_product_types', 'sell_ten_products', 'reach_level_5'],
+  ['buy_new_shelf', 'install_second_shelf', 'stock_two_product_types'],
+  ['hire_cleaner', 'shelf_storage_cycle', 'reach_rating_20'],
+  ['sell_twenty_five_products', 'earn_fifteen_thousand', 'reach_level_8'],
+  ['hire_extra_seller', 'sell_fifty_products', 'reach_rating_40'],
+  ['reach_level_10']
+];
+
 const questState = {};
 let questSystemReady = false;
-let questHudTrackedQuestId = null;
+let questHudTrackedQuestIds = [];
 let questHudTrackingReady = false;
-let questHudHasNewQuest = false;
+let questHudNewQuestCount = 0;
 
 function getQuestText(quest) {
   if (!quest) return '';
@@ -2961,30 +3000,53 @@ function initQuestSystem() {
     };
   });
   questSystemReady = true;
-  const initialHudQuest = tutorialActive ? getQuestProgressTarget() : getActiveQuest();
-  questHudTrackedQuestId = initialHudQuest?.id || null;
+  const initialHudQuests = getActiveQuests();
+  questHudTrackedQuestIds = initialHudQuests.map(quest => quest.id);
   questHudTrackingReady = true;
-  questHudHasNewQuest = false;
+  questHudNewQuestCount = 0;
   const btn = document.getElementById('quest-btn');
   if (btn) btn.style.display = 'flex';
   syncActiveQuestProgress();
   updateQuestUI();
 }
 
+function getQuestById(id) {
+  return QUEST_DEFINITIONS.find(quest => quest.id === id) || null;
+}
+
+function isQuestFinishedForBatch(quest) {
+  const state = quest ? questState[quest.id] : null;
+  return !!(state?.completed || state?.claimed);
+}
+
+function getCurrentQuestBatch() {
+  for (const ids of QUEST_BATCHES) {
+    const quests = ids.map(getQuestById).filter(Boolean);
+    if (quests.some(quest => !isQuestFinishedForBatch(quest))) return quests;
+  }
+  return [];
+}
+
+function getActiveQuests() {
+  if (tutorialActive && !tutorialReplayMode) {
+    const quest = getQuestProgressTarget();
+    return quest ? [quest] : [];
+  }
+  return getCurrentQuestBatch().filter(quest => isQuestUnlocked(quest) && !isQuestFinishedForBatch(quest));
+}
+
 function getActiveQuestIndex() {
-  const index = getFirstUnclaimedQuestIndex();
-  if (index < 0) return -1;
-  return isQuestUnlocked(QUEST_DEFINITIONS[index]) ? index : -1;
+  const quest = getActiveQuests()[0] || null;
+  return quest ? QUEST_DEFINITIONS.findIndex(item => item.id === quest.id) : -1;
 }
 
 function getActiveQuest() {
-  const index = getActiveQuestIndex();
-  return index >= 0 ? QUEST_DEFINITIONS[index] : null;
+  return getActiveQuests()[0] || null;
 }
 
 function getNextUnclaimedQuest() {
-  const index = getFirstUnclaimedQuestIndex();
-  return index >= 0 ? QUEST_DEFINITIONS[index] : null;
+  const batch = getCurrentQuestBatch();
+  return batch.find(quest => !isQuestFinishedForBatch(quest)) || null;
 }
 
 // Во время первого обучения следующий учебный квест становится активным сразу
@@ -2993,7 +3055,7 @@ function getQuestProgressIndex() {
   if (!tutorialActive || tutorialReplayMode) return getActiveQuestIndex();
   return QUEST_DEFINITIONS.findIndex(q => {
     const state = questState[q.id];
-    return q.tutorial && state && !state.completed && !state.claimed;
+    return INITIAL_TUTORIAL_QUEST_IDS.has(q.id) && state && !state.completed && !state.claimed;
   });
 }
 
@@ -3044,8 +3106,7 @@ function syncQuestProgressFromGameState(quest) {
 
 function syncActiveQuestProgress() {
   if (!questSystemReady || tutorialReplayMode) return;
-  const quest = tutorialActive ? getQuestProgressTarget() : getActiveQuest();
-  if (quest) syncQuestProgressFromGameState(quest);
+  getActiveQuests().forEach(quest => syncQuestProgressFromGameState(quest));
 }
 
 function applyQuestEventProgress(quest, eventName, amount = 1, data = {}) {
@@ -3087,6 +3148,7 @@ function applyQuestEventProgress(quest, eventName, amount = 1, data = {}) {
   }
 
   if (quest.event !== eventName) return false;
+  if (typeof quest.matchData === 'function' && !quest.matchData(data || {})) return false;
   if (quest.absolute) state.progress = Math.max(state.progress || 0, Number(amount) || 0);
   else state.progress = Math.min(quest.target, (state.progress || 0) + Math.max(1, Number(amount) || 1));
   if (state.progress >= quest.target) completeQuest(quest);
@@ -3095,10 +3157,7 @@ function applyQuestEventProgress(quest, eventName, amount = 1, data = {}) {
 }
 
 function canClaimQuestReward(quest, state) {
-  if (!quest || !state?.completed || state.claimed) return false;
-  if (state.completedDuringTutorial) return true;
-  const active = getActiveQuest();
-  return !!active && active.id === quest.id;
+  return !!(quest && state?.completed && !state.claimed);
 }
 
 function claimQuestReward(questId) {
@@ -3132,11 +3191,11 @@ function notifyGameEvent(eventName, amount = 1, data = {}) {
   if (!questSystemReady && gameStarted) initQuestSystem();
 
   if (!tutorialReplayMode) {
-    const quest = tutorialActive ? getQuestProgressTarget() : getActiveQuest();
-    if (quest) {
+    const activeQuests = getActiveQuests();
+    activeQuests.forEach(quest => {
       applyQuestEventProgress(quest, eventName, amount, data);
       if (!questState[quest.id]?.completed) syncQuestProgressFromGameState(quest);
-    }
+    });
   }
 
   if (activeQuestHelpQuestId) {
@@ -3157,24 +3216,26 @@ function notifyGameEvent(eventName, amount = 1, data = {}) {
 
 function updateQuestNewBadge() {
   const badge = document.getElementById('quest-new-badge');
-  const hudQuest = tutorialActive && !tutorialReplayMode ? getQuestProgressTarget() : getActiveQuest();
-  const currentId = hudQuest?.id || null;
+  const currentIds = getActiveQuests().map(quest => quest.id);
 
   if (!questHudTrackingReady) {
-    questHudTrackedQuestId = currentId;
+    questHudTrackedQuestIds = currentIds;
     questHudTrackingReady = true;
-  } else if (currentId && currentId !== questHudTrackedQuestId) {
-    questHudTrackedQuestId = currentId;
-    questHudHasNewQuest = true;
-  } else if (!currentId) {
-    questHudTrackedQuestId = null;
+  } else {
+    const previous = new Set(questHudTrackedQuestIds);
+    const newlyAdded = currentIds.filter(id => !previous.has(id));
+    if (newlyAdded.length > 0) questHudNewQuestCount += newlyAdded.length;
+    questHudTrackedQuestIds = currentIds;
   }
 
-  if (badge) badge.classList.toggle('show', questHudHasNewQuest);
+  if (badge) {
+    badge.textContent = String(Math.max(1, questHudNewQuestCount));
+    badge.classList.toggle('show', questHudNewQuestCount > 0);
+  }
 }
 
 function markQuestHudSeen() {
-  questHudHasNewQuest = false;
+  questHudNewQuestCount = 0;
   const badge = document.getElementById('quest-new-badge');
   if (badge) badge.classList.remove('show');
 }
@@ -3486,16 +3547,18 @@ function renderQuestsModal() {
   if (!list || !questSystemReady) return;
   list.innerHTML = '';
 
+  const pendingRewards = QUEST_DEFINITIONS.filter(quest => {
+    const state = questState[quest.id];
+    return !!(state?.completed && !state.claimed);
+  });
   const pendingTutorialRewards = getPendingTutorialQuestRewards();
   const help = document.getElementById('quests-modal-help');
   if (help) {
-    help.textContent = ((tutorialActive && !tutorialReplayMode) || pendingTutorialRewards.length > 0)
-      ? 'Во время обучения выполненные квесты остаются в списке. Следующий квест появляется сразу, а награды можно забрать позже.'
-      : 'Выполните текущее задание и нажмите «Забрать награду». После этого появится следующий квест.';
+    help.textContent = (tutorialActive && !tutorialReplayMode)
+      ? 'Во время начального обучения квесты идут по одному. Следующий появляется сразу после выполнения текущего.'
+      : 'Обычные квесты приходят группами по 2–3. Когда вся группа выполнена, следующая появляется сразу — награды можно забрать позже.';
   }
 
-  // Только во время обучения завершённые квесты накапливаются,
-  // а рядом с ними сразу появляется следующий активный квест.
   if (tutorialActive && !tutorialReplayMode) {
     const progressQuest = getQuestProgressTarget();
     const visible = [...pendingTutorialRewards];
@@ -3504,7 +3567,7 @@ function renderQuestsModal() {
     if (visible.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'quest-empty';
-      empty.textContent = 'Все учебные квесты выполнены. Заберите накопленные награды.';
+      empty.textContent = 'Все учебные квесты выполнены. Завершите обучение.';
       list.appendChild(empty);
       return;
     }
@@ -3513,29 +3576,27 @@ function renderQuestsModal() {
     return;
   }
 
-  // После завершения обучения накопленные награды остаются видимыми,
-  // пока игрок не заберёт каждую из них.
-  if (pendingTutorialRewards.length > 0) {
-    pendingTutorialRewards.forEach(quest => list.appendChild(createQuestCard(quest, false)));
+  const activeQuests = getActiveQuests();
+  const visible = [...pendingRewards];
+  activeQuests.forEach(quest => {
+    if (!visible.some(item => item.id === quest.id)) visible.push(quest);
+  });
+
+  if (visible.length > 0) {
+    visible.forEach(quest => list.appendChild(createQuestCard(quest, activeQuests.some(item => item.id === quest.id))));
     return;
   }
 
-  // Вне обучения сохраняется прежняя последовательная система: один квест за раз.
-  const quest = getActiveQuest();
-  if (!quest) {
-    const nextQuest = getNextUnclaimedQuest();
-    if (nextQuest) {
-      list.appendChild(createQuestCard(nextQuest, false, true));
-      return;
-    }
-    const empty = document.createElement('div');
-    empty.className = 'quest-empty';
-    empty.textContent = 'Все квесты до 10 уровня завершены.';
-    list.appendChild(empty);
+  const nextQuest = getNextUnclaimedQuest();
+  if (nextQuest) {
+    list.appendChild(createQuestCard(nextQuest, false, true));
     return;
   }
 
-  list.appendChild(createQuestCard(quest, true));
+  const empty = document.createElement('div');
+  empty.className = 'quest-empty';
+  empty.textContent = 'Все квесты до 10 уровня завершены.';
+  list.appendChild(empty);
 }
 
 // Каждый HUD открывается как при первом входе: без сохранённой прокрутки.
@@ -8274,7 +8335,7 @@ function placeDecorFromTap(clientX, clientY) {
     if (fromStorage) notifyGameEvent('decor_restored_from_storage', 1, { type:def.id });
     else {
       G.decorPurchasedCount = Math.max(0, Number(G.decorPurchasedCount) || 0) + 1;
-      notifyGameEvent('decor_purchased', 1, { type:def.id });
+      notifyGameEvent('decor_purchased', 1, { type:def.id, place:def.place });
     }
   }
   stopDecorPlaceMode();
@@ -12193,43 +12254,43 @@ const ACHIEVEMENT_DEFINITIONS = [
     targetText:value => 'Установить ' + value + ' объектов оформления'
   },
   {
-    id:'assortment', icon:'🧺', name:'Широкий ассортимент',
+    id:'assortment', icon:'🧺', name:'Широкий ассортимент', rewardType:'money',
     thresholds:[3,6,10,15,20],
     value:() => new Set((Array.isArray(G.soldProductIds) ? G.soldProductIds : []).filter(Boolean)).size,
     targetText:value => 'Продать ' + value + ' разных видов товаров'
   },
   {
-    id:'shelves', icon:'🪟', name:'Владелец витрин',
+    id:'shelves', icon:'🪟', name:'Владелец витрин', rewardType:'crystals',
     thresholds:[2,4,6,9,12],
     value:() => getAchievementShelfCount(),
     targetText:value => 'Установить ' + value + ' витрин'
   },
   {
-    id:'team', icon:'👥', name:'Команда мечты',
+    id:'team', icon:'👥', name:'Команда мечты', rewardType:'crystals',
     thresholds:[3,4,5,6,7],
     value:() => getAchievementStaffCount(),
     targetText:value => 'Иметь ' + value + ' работников'
   },
   {
-    id:'expansion', icon:'🏗️', name:'Расширение бизнеса',
+    id:'expansion', icon:'🏗️', name:'Расширение бизнеса', rewardType:'crystals',
     thresholds:[1,2,3,5,6],
     value:() => getAchievementExpansionCount(),
     targetText:value => 'Купить ' + value + ' расширений магазина'
   },
   {
-    id:'deliveries', icon:'🚚', name:'Надёжный поставщик',
+    id:'deliveries', icon:'🚚', name:'Надёжный поставщик', rewardType:'money',
     thresholds:[5,15,30,60,100],
     value:() => Math.max(0, Number(G.deliveriesReceived) || 0),
     targetText:value => 'Получить ' + value + ' поставок'
   },
   {
-    id:'cleaning', icon:'🧹', name:'Чистый магазин',
+    id:'cleaning', icon:'🧹', name:'Чистый магазин', rewardType:'money',
     thresholds:[10,30,75,150,300],
     value:() => Math.max(0, Number(G.shelvesCleaned) || 0),
     targetText:value => 'Убрать ' + value + ' загрязнённых витрин'
   },
   {
-    id:'decor_purchases', icon:'🎨', name:'Мастер интерьера',
+    id:'decor_purchases', icon:'🎨', name:'Мастер интерьера', rewardType:'crystals',
     thresholds:[1,3,5,10,15],
     value:() => Math.max(0, Number(G.decorPurchasedCount) || 0),
     targetText:value => 'Купить ' + value + ' объектов оформления'
@@ -12248,6 +12309,29 @@ function getAchievementClaimedTiers(id) {
   return Math.max(0, Math.min(5, Math.floor(Number(claims[id]) || 0)));
 }
 
+function getAchievementReward(achievement, tierIndex) {
+  const rewardType = achievement?.rewardType || 'both';
+  const money = rewardType === 'crystals' ? 0 : (ACHIEVEMENT_MONEY_REWARDS[tierIndex] || 1000);
+  const crystals = rewardType === 'money' ? 0 : (ACHIEVEMENT_CRYSTAL_REWARDS[tierIndex] || Math.min(5, tierIndex + 1));
+  return { money, crystals };
+}
+
+function formatAchievementReward(reward) {
+  const parts = [];
+  if (reward.money > 0) parts.push(fmtFull(reward.money) + ' 💰');
+  if (reward.crystals > 0) parts.push(reward.crystals + ' 💎');
+  return parts.join(' · ');
+}
+
+function getAchievementTotalReward(achievement) {
+  return achievement.thresholds.reduce((total, _, tierIndex) => {
+    const reward = getAchievementReward(achievement, tierIndex);
+    total.money += reward.money;
+    total.crystals += reward.crystals;
+    return total;
+  }, { money:0, crystals:0 });
+}
+
 function claimAchievementTier(id) {
   const achievement = ACHIEVEMENT_DEFINITIONS.find(item => item.id === id);
   if (!achievement) return;
@@ -12258,14 +12342,14 @@ function claimAchievementTier(id) {
   const target = achievement.thresholds[claimed];
   if (currentValue < target) return;
 
-  const crystalReward = ACHIEVEMENT_CRYSTAL_REWARDS[claimed] || (claimed + 1);
-  const moneyReward = ACHIEVEMENT_MONEY_REWARDS[claimed] || 1000;
+  const reward = getAchievementReward(achievement, claimed);
   claims[id] = claimed + 1;
-  G.crystals += crystalReward;
-  G.money += moneyReward;
+  G.crystals += reward.crystals;
+  G.money += reward.money;
   updateHUD();
-  showToast('🏆 ' + achievement.name + ' · +' + fmtFull(moneyReward) + ' 💰 · +' + crystalReward + ' 💎', '#23c483');
-  logEvent('🏆 ' + achievement.name + ' ' + (claimed + 1) + '/5: +' + fmtFull(moneyReward) + ' 💰 · +' + crystalReward + ' 💎');
+  const rewardText = formatAchievementReward(reward);
+  showToast('🏆 ' + achievement.name + ' · +' + rewardText, '#23c483');
+  logEvent('🏆 ' + achievement.name + ' ' + (claimed + 1) + '/5: +' + rewardText);
   renderAchievementsModal();
 }
 
@@ -12283,8 +12367,8 @@ function renderAchievementsModal() {
     const current = achievement.value();
     const tierProgress = complete ? 1 : Math.max(0, Math.min(1, (current - previousTarget) / Math.max(1, target - previousTarget)));
     const ready = !complete && current >= target;
-    const crystalReward = ACHIEVEMENT_CRYSTAL_REWARDS[tierIndex] || Math.min(5, tierIndex + 1);
-    const moneyReward = ACHIEVEMENT_MONEY_REWARDS[tierIndex] || 1000;
+    const reward = getAchievementReward(achievement, tierIndex);
+    const totalReward = getAchievementTotalReward(achievement);
 
     const card = document.createElement('div');
     card.className = 'achievement-card' + (ready ? ' ready' : '') + (complete ? ' complete' : '');
@@ -12300,7 +12384,7 @@ function renderAchievementsModal() {
       <div class="achievement-progress-bar"><div class="achievement-progress-fill" style="width:${Math.round(tierProgress * 100)}%"></div></div>
       <div class="achievement-foot">
         <span>${complete ? fmtFull(current) : (fmtFull(Math.min(current, target)) + ' / ' + fmtFull(target))}</span>
-        <span class="achievement-reward">${complete ? 'Получено 38 500 💰 · 15 💎' : ('Награда: ' + fmtFull(moneyReward) + ' 💰 · ' + crystalReward + ' 💎')}</span>
+        <span class="achievement-reward">${complete ? ('Получено ' + formatAchievementReward(totalReward)) : ('Награда: ' + formatAchievementReward(reward))}</span>
       </div>
       ${ready ? '<button type="button" class="achievement-claim-btn">Забрать награду</button>' : ''}`;
 
