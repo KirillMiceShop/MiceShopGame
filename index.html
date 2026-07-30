@@ -1248,6 +1248,35 @@
     color:var(--menu-close, #aaa); font-weight:900; cursor:pointer;
   }
 
+  /* Во время первого прохождения обучения оставляем только нужные элементы. */
+  body.initial-tutorial-hud-hidden #hud-level-box,
+  body.initial-tutorial-hud-hidden #left-hud-actions,
+  body.initial-tutorial-hud-hidden #hud-resources,
+  body.initial-tutorial-hud-hidden #bottom-right-hud {
+    opacity:0 !important;
+    visibility:hidden !important;
+    pointer-events:none !important;
+  }
+
+  .tutorial-hud-enter-left { animation:tutorialHudEnterLeft .72s cubic-bezier(.2,.9,.28,1.18) both; }
+  .tutorial-hud-enter-top { animation:tutorialHudEnterTop .72s cubic-bezier(.2,.9,.28,1.18) both; }
+  .tutorial-hud-enter-right { animation:tutorialHudEnterRight .72s cubic-bezier(.2,.9,.28,1.18) both; }
+  @keyframes tutorialHudEnterLeft {
+    0% { opacity:0; transform:translateX(-46px) scale(.88); }
+    70% { opacity:1; transform:translateX(5px) scale(1.03); }
+    100% { opacity:1; transform:translateX(0) scale(1); }
+  }
+  @keyframes tutorialHudEnterTop {
+    0% { opacity:0; transform:translateY(-42px) scale(.88); }
+    70% { opacity:1; transform:translateY(5px) scale(1.03); }
+    100% { opacity:1; transform:translateY(0) scale(1); }
+  }
+  @keyframes tutorialHudEnterRight {
+    0% { opacity:0; transform:translateX(48px) scale(.88); }
+    70% { opacity:1; transform:translateX(-5px) scale(1.03); }
+    100% { opacity:1; transform:translateX(0) scale(1); }
+  }
+
   #tutorial-dimmer {
     position:fixed;
     inset:0;
@@ -2816,7 +2845,7 @@ const QUEST_DEFINITIONS = [
   { id:'first_stock', tutorial:true, icon:'🪟', title:'Заполните витрину', text:'Выставьте товар со склада на витрину', event:'product_stocked', target:1, reward:{ money:150, xp:20 } },
   { id:'first_sale', tutorial:true, icon:'🛍️', title:'Первая продажа', text:'Продайте первый товар покупателю', event:'product_sold', target:1, reward:{ money:200, xp:30 } },
   { id:'first_collection', tutorial:true, icon:'💰', title:'Заберите выручку', text:'Нажмите на кассу и заберите деньги', event:'revenue_collected', target:1, reward:{ money:200, xp:20 } },
-  { id:'open_editor', tutorial:true, icon:'✏️', title:'Познакомьтесь с редактором', text:'Откройте режим редактора магазина', event:'editor_opened', target:1, reward:{ money:100, xp:10 } },
+  { id:'open_editor', minLevel:1, icon:'✏️', title:'Познакомьтесь с редактором', text:'Откройте режим редактора магазина', event:'editor_opened', target:1, reward:{ money:100, xp:10 } },
   { id:'sell_three_level_one', tutorial:true, icon:'🛍️', title:'Первые продажи', text:'Продайте 3 товара покупателям', event:'product_sold', target:3, reward:{ money:250, xp:30 } },
   { id:'buy_first_decor', tutorial:true, icon:'🪴', title:'Первое украшение', text:'Купите и установите один объект декора', event:'decor_purchased', target:1, reward:{ money:200, xp:20 } },
   { id:'decor_storage_cycle', tutorial:true, icon:'📦', title:'Декор на складе', text:'Уберите декор на склад, затем верните этот декор обратно в зал', kind:'decor_storage_cycle', target:2, reward:{ money:200, xp:20 } },
@@ -4020,11 +4049,44 @@ document.addEventListener('keydown', event => {
   blockOutsideTutorialTarget(event);
 }, true);
 
+const INITIAL_TUTORIAL_HUD_IDS = ['hud-level-box', 'left-hud-actions', 'hud-resources', 'bottom-right-hud'];
+let tutorialHudAnimationTimer = null;
+
+function setInitialTutorialHudHidden(hidden, animate = false) {
+  document.body.classList.toggle('initial-tutorial-hud-hidden', !!hidden);
+  const elements = INITIAL_TUTORIAL_HUD_IDS
+    .map(id => document.getElementById(id))
+    .filter(Boolean);
+
+  elements.forEach(el => el.classList.remove(
+    'tutorial-hud-enter-left', 'tutorial-hud-enter-top', 'tutorial-hud-enter-right'
+  ));
+  if (tutorialHudAnimationTimer) clearTimeout(tutorialHudAnimationTimer);
+  tutorialHudAnimationTimer = null;
+
+  if (!hidden && animate) {
+    // Два левых блока запрыгивают слева, ресурсы сверху, правые HUD — справа.
+    requestAnimationFrame(() => {
+      document.getElementById('hud-level-box')?.classList.add('tutorial-hud-enter-left');
+      document.getElementById('left-hud-actions')?.classList.add('tutorial-hud-enter-left');
+      document.getElementById('hud-resources')?.classList.add('tutorial-hud-enter-top');
+      document.getElementById('bottom-right-hud')?.classList.add('tutorial-hud-enter-right');
+      tutorialHudAnimationTimer = setTimeout(() => {
+        elements.forEach(el => el.classList.remove(
+          'tutorial-hud-enter-left', 'tutorial-hud-enter-top', 'tutorial-hud-enter-right'
+        ));
+        tutorialHudAnimationTimer = null;
+      }, 850);
+    });
+  }
+}
+
 function startTutorial(replayMode = false) {
   closeQuestsModal();
   tutorialEquipmentPlacement = null;
   tutorialReplayMode = !!replayMode;
   tutorialActive = true;
+  setInitialTutorialHudHidden(!tutorialReplayMode, false);
   tutorialStepIndex = 0;
   tutorialPreviousAutoStocking = G.autoStocking;
   if (!tutorialReplayMode) G.autoStocking = false;
@@ -4043,13 +4105,14 @@ function restartTutorial() {
   setTimeout(() => startTutorial(true), 120);
 }
 
-function skipTutorial(silent = false, provideStarterEquipment = true) {
+function skipTutorial(silent = false, provideStarterEquipment = true, animateHud = false) {
   const wasReplay = tutorialReplayMode;
   if (provideStarterEquipment && !wasReplay) ensureTutorialStarterEquipment();
   tutorialEquipmentPlacement = null;
   if (editorMode) exitEditorMode();
   tutorialActive = false;
   tutorialReplayMode = false;
+  setInitialTutorialHudHidden(false, !!animateHud && !wasReplay);
   G.autoStocking = tutorialPreviousAutoStocking;
   if (tutorialPositionTimer) clearInterval(tutorialPositionTimer);
   tutorialPositionTimer = null;
@@ -4082,7 +4145,7 @@ function finishTutorial() {
   } else if (wasReplay) {
     showToast('🎓 Повторное обучение завершено · без денег и наград', '#f5c518');
   }
-  skipTutorial(true, false);
+  skipTutorial(true, false, true);
 }
 
 function tutorialNext() {
