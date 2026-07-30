@@ -1248,14 +1248,24 @@
     color:var(--menu-close, #aaa); font-weight:900; cursor:pointer;
   }
 
-  /* Во время первого прохождения обучения оставляем только нужные элементы. */
+  /* Во время первого прохождения обучения HUD открывается поэтапно. */
   body.initial-tutorial-hud-hidden #hud-level-box,
   body.initial-tutorial-hud-hidden #left-hud-actions,
-  body.initial-tutorial-hud-hidden #hud-resources,
-  body.initial-tutorial-hud-hidden #bottom-right-hud {
+  body.initial-tutorial-hud-hidden #hud-resources {
     opacity:0 !important;
     visibility:hidden !important;
     pointer-events:none !important;
+  }
+  body.initial-tutorial-hud-hidden #bottom-right-hud > * {
+    opacity:0 !important;
+    visibility:hidden !important;
+    pointer-events:none !important;
+  }
+  body.initial-tutorial-hud-hidden.tutorial-show-warehouse #warehouse-main-btn {
+    opacity:1 !important;
+    visibility:visible !important;
+    pointer-events:auto !important;
+    animation:tutorialHudEnterRight .52s cubic-bezier(.2,.9,.28,1.18) both;
   }
 
   .tutorial-hud-enter-left { animation:tutorialHudEnterLeft .72s cubic-bezier(.2,.9,.28,1.18) both; }
@@ -4054,6 +4064,7 @@ let tutorialHudAnimationTimer = null;
 
 function setInitialTutorialHudHidden(hidden, animate = false) {
   document.body.classList.toggle('initial-tutorial-hud-hidden', !!hidden);
+  if (!hidden) document.body.classList.remove('tutorial-show-warehouse');
   const elements = INITIAL_TUTORIAL_HUD_IDS
     .map(id => document.getElementById(id))
     .filter(Boolean);
@@ -4079,6 +4090,17 @@ function setInitialTutorialHudHidden(hidden, animate = false) {
       }, 850);
     });
   }
+}
+
+function updateInitialTutorialHudForStep(step) {
+  if (!tutorialActive || tutorialReplayMode) {
+    document.body.classList.remove('tutorial-show-warehouse');
+    return;
+  }
+
+  // Склад появляется только тогда, когда игроку действительно нужно на него нажать.
+  const showWarehouse = step?.id === 'delivery' || step?.id === 'stock';
+  document.body.classList.toggle('tutorial-show-warehouse', showWarehouse);
 }
 
 function startTutorial(replayMode = false) {
@@ -4182,6 +4204,7 @@ function renderTutorialStep() {
   prepareTutorialShopView();
   const step = TUTORIAL_STEPS[tutorialStepIndex];
   if (!step) return;
+  updateInitialTutorialHudForStep(step);
   const card = document.getElementById('tutorial-card');
   const label = document.getElementById('tutorial-step-label');
   const title = document.getElementById('tutorial-title');
