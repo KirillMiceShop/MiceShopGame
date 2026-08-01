@@ -2381,6 +2381,170 @@
       padding:5px 3px!important;
     }
   }
+
+
+  /* НОВОЕ МЕНЮ МАГАЗИНА: вертикальные разделы слева, категории и товары справа */
+  #shopModal .modal-box {
+    width:min(94vw, 980px)!important;
+    height:min(82vh, 650px)!important;
+    max-height:min(82vh, 650px)!important;
+    padding:0!important;
+    overflow:hidden!important;
+  }
+  #shopModal #modal-header {
+    height:54px;
+    display:flex;
+    align-items:center;
+    padding:0 58px 0 20px;
+    border-bottom:1px solid rgba(255,255,255,.10);
+  }
+  #shopModal #modal-header h3 { margin:0!important; }
+  #shop-layout {
+    display:grid;
+    grid-template-columns:190px minmax(0,1fr);
+    height:calc(100% - 54px);
+    min-height:0;
+  }
+  #shopModal #cat-tabs {
+    display:flex!important;
+    flex-direction:column!important;
+    gap:0!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    padding:0!important;
+    margin:0!important;
+    background:rgba(255,255,255,.035);
+    border-right:1px solid rgba(255,255,255,.10);
+    scrollbar-width:none;
+  }
+  #shopModal #cat-tabs::-webkit-scrollbar { display:none; }
+  #shopModal .cat-tab {
+    flex:0 0 auto!important;
+    min-height:62px;
+    display:flex;
+    align-items:center;
+    padding:10px 14px!important;
+    border:0!important;
+    border-bottom:1px solid rgba(255,255,255,.08)!important;
+    border-radius:0!important;
+    background:transparent!important;
+    color:#b8b8c8!important;
+    font-size:13px!important;
+    font-weight:800!important;
+    white-space:normal!important;
+  }
+  #shopModal .cat-tab.active {
+    color:#fff!important;
+    background:linear-gradient(90deg,rgba(233,69,96,.35),rgba(233,69,96,.10))!important;
+    box-shadow:inset 4px 0 0 #e94560;
+  }
+  #shop-content {
+    min-width:0;
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+    padding:12px;
+    overflow:hidden;
+  }
+  #shop-content-head {
+    min-height:36px;
+    display:flex;
+    align-items:center;
+    gap:9px;
+    margin-bottom:8px;
+  }
+  #shop-content-title { font-size:15px; font-weight:900; color:#fff; }
+  #shop-content-back {
+    display:none;
+    width:34px;
+    height:32px;
+    border-radius:9px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);
+    color:#fff;
+    font-size:18px;
+    cursor:pointer;
+  }
+  #shopModal #subcat-tabs {
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    align-content:start;
+    gap:10px!important;
+    padding:0 2px 12px!important;
+    margin:0!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    max-height:none!important;
+    flex:1 1 auto;
+    scrollbar-width:thin;
+  }
+  #shopModal .subcat-tab {
+    min-height:78px;
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+    padding:12px 14px!important;
+    border-radius:12px!important;
+    border:1px solid rgba(255,255,255,.11)!important;
+    background:rgba(255,255,255,.055)!important;
+    color:#fff!important;
+    font-size:13px!important;
+    font-weight:900!important;
+    white-space:normal!important;
+    box-shadow:0 4px 12px rgba(0,0,0,.14);
+  }
+  #shopModal .subcat-tab:active { transform:scale(.97); }
+  #shopModal .subcat-tab.active { border-color:rgba(245,197,24,.6)!important; }
+  #shopModal #products-list {
+    display:none!important;
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    align-content:start;
+    gap:9px!important;
+    padding:2px 2px 12px!important;
+    margin:0!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    flex:1 1 auto;
+    min-height:0;
+    scroll-snap-type:none!important;
+    scrollbar-width:thin;
+  }
+  #shopModal.shop-items-view #subcat-tabs { display:none!important; }
+  #shopModal.shop-items-view #products-list { display:grid!important; }
+  #shopModal.shop-items-view #shop-content-back { display:flex; align-items:center; justify-content:center; }
+  #shopModal #products-list > * {
+    flex:none!important;
+    width:auto!important;
+    min-width:0!important;
+    min-height:132px!important;
+    margin:0!important;
+    padding:10px!important;
+    border-radius:12px!important;
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:center!important;
+    justify-content:center!important;
+    text-align:center!important;
+    gap:6px!important;
+  }
+  #shopModal #products-list .pr-emoji { font-size:30px!important; }
+  #shopModal #products-list .pr-info { width:100%; flex:0 0 auto!important; min-width:0; }
+  #shopModal #products-list .pr-name { font-size:11px!important; line-height:1.15!important; }
+  #shopModal #products-list .pr-sub { font-size:9px!important; line-height:1.15!important; max-height:31px; overflow:hidden; }
+  #shopModal #products-list .pr-right { width:100%; display:flex; justify-content:center; gap:5px; flex-wrap:wrap; }
+  #shopModal #products-list .pr-price,
+  #shopModal #products-list .pr-profit { font-size:9px!important; }
+  @media (max-width:760px), (max-height:520px) {
+    #shopModal .modal-box { width:96vw!important; height:88vh!important; max-height:88vh!important; }
+    #shop-layout { grid-template-columns:145px minmax(0,1fr); }
+    #shopModal .cat-tab { min-height:50px; padding:7px 10px!important; font-size:11px!important; }
+    #shopModal #subcat-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px!important; }
+    #shopModal .subcat-tab { min-height:58px; padding:8px 9px!important; font-size:10px!important; }
+    #shopModal #products-list { grid-template-columns:repeat(3,minmax(0,1fr))!important; gap:6px!important; }
+    #shopModal #products-list > * { min-height:105px!important; padding:7px!important; }
+    #shopModal #products-list .pr-emoji { font-size:24px!important; }
+  }
+
 </style>
 </head>
 <body data-menu-style="standard">
@@ -2494,10 +2658,18 @@
   <div class="modal-box">
     <div id="modal-header">
       <h3>🛍 Магазин</h3>
-      <div id="cat-tabs"></div>
-      <div id="subcat-tabs"></div>
     </div>
-    <div id="products-list"></div>
+    <div id="shop-layout">
+      <aside id="cat-tabs" aria-label="Разделы магазина"></aside>
+      <section id="shop-content">
+        <div id="shop-content-head">
+          <button id="shop-content-back" type="button" aria-label="Назад к категориям">←</button>
+          <div id="shop-content-title"></div>
+        </div>
+        <div id="subcat-tabs"></div>
+        <div id="products-list"></div>
+      </section>
+    </div>
     <button type="button" class="modal-close" onclick="closeShopModal()" aria-label="Закрыть">✕</button>
   </div>
 </div>
@@ -12737,12 +12909,35 @@ function getActiveShopSubcategory() {
   return available.some(x => x.id === current) ? current : (available[0]?.id || 'all');
 }
 
+let shopMenuView = 'categories';
+
+function setShopMenuView(view) {
+  shopMenuView = view === 'items' ? 'items' : 'categories';
+  const modal = document.getElementById('shopModal');
+  if (modal) modal.classList.toggle('shop-items-view', shopMenuView === 'items');
+  const back = document.getElementById('shop-content-back');
+  if (back) back.onclick = () => { setShopMenuView('categories'); renderSubcatTabs(); };
+  updateShopContentTitle();
+}
+
+function updateShopContentTitle() {
+  const title = document.getElementById('shop-content-title');
+  if (!title) return;
+  const category = getAvailableCategories().find(c => c.id === activeCat);
+  const categoryName = activeCat === 'facilities' && G.shopType === 'electronics' ? '🧪 Проверка техники' : (category?.name || 'Магазин');
+  if (shopMenuView === 'items') {
+    const sub = getShopSubcategories(activeCat).find(x => x.id === getActiveShopSubcategory());
+    title.textContent = sub?.name || categoryName;
+  } else {
+    title.textContent = categoryName;
+  }
+}
+
 function renderSubcatTabs() {
   const tabs = document.getElementById('subcat-tabs');
   if (!tabs) return;
   tabs.innerHTML = '';
   const available = getShopSubcategories(activeCat);
-  tabs.style.display = available.length <= 1 ? 'none' : 'flex';
   const current = getActiveShopSubcategory();
   activeSubcatByCategory[activeCat] = current;
 
@@ -12753,11 +12948,13 @@ function renderSubcatTabs() {
     t.textContent = sub.name;
     t.onclick = () => {
       activeSubcatByCategory[activeCat] = sub.id;
+      setShopMenuView('items');
       renderSubcatTabs();
       renderProductList();
     };
     tabs.appendChild(t);
   });
+  updateShopContentTitle();
 }
 
 function productMatchesActiveSubcategory(product) {
@@ -13398,6 +13595,7 @@ function openShopModal() {
   buyQty = 1;
   closeItemModal();
 
+  setShopMenuView('categories');
   renderCatTabs();
   renderSubcatTabs();
   renderProductList();
@@ -13433,6 +13631,7 @@ function renderCatTabs() {
     t.onclick = () => {
       activeCat = c.id;
       if (!activeSubcatByCategory[activeCat]) activeSubcatByCategory[activeCat] = 'all';
+      setShopMenuView('categories');
       renderCatTabs();
       renderSubcatTabs();
       renderProductList();
