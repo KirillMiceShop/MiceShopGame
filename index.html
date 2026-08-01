@@ -3512,10 +3512,15 @@ function showQuestHelpTarget(title, text, targetGetter, duration = 9000, questId
   }
 }
 
-function openShopQuestHelp(categoryId, subcategoryId = 'all') {
+function openShopQuestHelp(categoryId, subcategoryId = 'all', view = 'items') {
   openShopModal();
   activeCat = categoryId;
-  activeSubcatByCategory[categoryId] = subcategoryId;
+  const available = getShopSubcategories(categoryId);
+  const resolvedSubcategory = available.some(item => item.id === subcategoryId)
+    ? subcategoryId
+    : (available[0]?.id || 'all');
+  activeSubcatByCategory[categoryId] = resolvedSubcategory;
+  setShopMenuView(view);
   renderCatTabs();
   renderSubcatTabs();
   renderProductList();
@@ -3524,6 +3529,12 @@ function openShopQuestHelp(categoryId, subcategoryId = 'all') {
 
 function getFirstVisibleProductCard() {
   return document.querySelector('#products-list .prod-row:not(.cant), #products-list .prod-card:not(.cant), #products-list > *');
+}
+
+function findShopProductCardByText(text) {
+  const wanted = String(text || '').toLowerCase();
+  return [...document.querySelectorAll('#products-list .prod-row, #products-list .prod-card')]
+    .find(card => String(card.textContent || '').toLowerCase().includes(wanted)) || null;
 }
 
 function showQuestHelp(questId) {
@@ -3575,18 +3586,18 @@ function showQuestHelp(questId) {
     return;
   }
   if (eventName === 'wall_color_changed' || id.includes('wall_color')) {
-    openShopQuestHelp('design', 'walls');
-    showStep(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="walls"]') || getFirstVisibleProductCard());
+    openShopQuestHelp('design', 'ordinary');
+    showStep(quest.title, text, () => findShopProductCardByText('Стены ·') || getFirstVisibleProductCard());
     return;
   }
   if (eventName === 'floor_color_changed' || id.includes('floor_color')) {
-    openShopQuestHelp('design', 'floor');
-    showStep(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="floor"]') || getFirstVisibleProductCard());
+    openShopQuestHelp('design', 'ordinary');
+    showStep(quest.title, text, () => findShopProductCardByText('Пол ·') || getFirstVisibleProductCard());
     return;
   }
   if (metric === 'regular_decor_count' || eventName.includes('decor') || id.includes('decor')) {
-    openShopQuestHelp('design', 'decor');
-    showStep(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="decor"]') || getFirstVisibleProductCard());
+    openShopQuestHelp('design', 'ordinary');
+    showStep(quest.title, text, () => findShopProductCardByText('лампа') || findShopProductCardByText('картина') || findShopProductCardByText('диван') || getFirstVisibleProductCard());
     return;
   }
   if (metric === 'total_earned' || eventName === 'revenue_collected' || id.includes('earn_')) {
@@ -3635,9 +3646,8 @@ function showQuestHelp(questId) {
     return;
   }
   if (id.includes('expansion')) {
-    openShopQuestHelp('design');
-    setTimeout(() => { activeSubcatByCategory.design = 'expansion'; renderSubcatTabs(); renderProductList(); }, 80);
-    showStep(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="expansion"]') || getFirstVisibleProductCard());
+    openShopQuestHelp('design', 'expansion');
+    showStep(quest.title, text, () => findShopProductCardByText('Увеличить площадь магазина') || getFirstVisibleProductCard());
     return;
   }
 
@@ -3848,6 +3858,13 @@ function getTutorialStorePurchaseTarget(kind) {
     return document.querySelector(`#cat-tabs [data-category-id="${categoryId}"]`);
   }
 
+  // В новой структуре магазина сначала выбирается карточка подраздела,
+  // и только затем показываются сами предметы.
+  if (shopMenuView !== 'items') {
+    return document.querySelector('#subcat-tabs [data-subcategory-id="all"]')
+      || document.querySelector('#subcat-tabs .subcat-tab');
+  }
+
   if (kind === 'cash') {
     return document.querySelector(`#products-list [data-cash-variant-id="${CASH_REGISTER_VARIANTS[0]?.id || 'cash_classic'}"]`);
   }
@@ -3927,14 +3944,18 @@ function getTutorialProductTarget() {
   if (activeCat !== productCategoryId) {
     return document.querySelector('#cat-tabs [data-category-id="products"]');
   }
-  return document.querySelector('#products-list .prod-row:not(.cant)');
+  if (shopMenuView !== 'items') {
+    return document.querySelector('#subcat-tabs [data-subcategory-id="all"]')
+      || document.querySelector('#subcat-tabs .subcat-tab');
+  }
+  return document.querySelector('#products-list .prod-row:not(.cant), #products-list .prod-card:not(.cant)');
 }
 
-// На шагах покупки стартового оборудования магазин сам открывает нужный раздел.
-// Игрок по-прежнему самостоятельно нажимает на бесплатную карточку покупки,
-// но обучение больше не может застрять между категориями и подкатегориями.
+// Новое меню обучается пошагово: основная категория слева → карточка подраздела → предмет.
+// При первом прохождении мы не перескакиваем через эти действия автоматически.
+// В повторном обучении нужный экран можно открыть сразу, потому что оно только демонстрационное.
 function prepareTutorialShopView() {
-  if (!tutorialActive) return;
+  if (!tutorialActive || !tutorialReplayMode) return;
   const modal = document.getElementById('shopModal');
   if (!modal?.classList.contains('show')) return;
 
@@ -3942,19 +3963,14 @@ function prepareTutorialShopView() {
   let nextCategory = null;
   let nextSubcategory = 'all';
 
-  if (step?.id === 'buy_shelf') {
-    nextCategory = 'shelves';
-    nextSubcategory = 'all';
-  } else if (step?.id === 'buy_cash') {
-    nextCategory = 'cash';
-    nextSubcategory = 'all';
-  } else if (step?.id === 'product') {
-    nextCategory = 'products';
-  }
+  if (step?.id === 'buy_shelf') nextCategory = 'shelves';
+  else if (step?.id === 'buy_cash') nextCategory = 'cash';
+  else if (step?.id === 'product' || step?.id === 'order') nextCategory = 'products';
 
   if (!nextCategory) return;
   activeCat = nextCategory;
   activeSubcatByCategory[nextCategory] = nextSubcategory;
+  setShopMenuView('items');
   renderCatTabs();
   renderSubcatTabs();
   renderProductList();
@@ -4023,10 +4039,10 @@ function advancePastSatisfiedTutorialSteps() {
 
 const TUTORIAL_STEPS = [
   { id:'welcome', title:'Добро пожаловать в MiceShop!', text:'Магазин пока пустой. Сначала бесплатно купим стартовую витрину и кассу, затем закажем первый товар.', manual:true, button:'Начать' },
-  { id:'shop', title:'Откройте магазин', text:'Нажмите кнопку «Магазин». Обучение сразу откроет бесплатную стартовую витрину.', event:'shop_opened', target:() => document.getElementById('shop-main-btn') },
-  { id:'buy_shelf', title:'Купите и поставьте витрину', text:'Купите бесплатную стартовую витрину. Затем редактор откроется автоматически — перетащите витрину и отпустите её в выбранном месте.', event:'starter_shelf_placed', target:() => getTutorialEquipmentStepTarget('shelf') },
-  { id:'buy_cash', title:'Купите и поставьте кассу', text:'Купите бесплатную стартовую кассу. Затем редактор откроется автоматически — перетащите кассу и отпустите её в выбранном месте.', event:'starter_cash_placed', target:() => getTutorialEquipmentStepTarget('cash') },
-  { id:'product', title:'Выберите первый товар', text:'Нажмите на первый доступный товар.', event:'product_viewed', target:() => getTutorialProductTarget() },
+  { id:'shop', title:'Откройте магазин', text:'Нажмите кнопку «Магазин». Затем слева выберите нужный раздел, а справа — подраздел.', event:'shop_opened', target:() => document.getElementById('shop-main-btn') },
+  { id:'buy_shelf', title:'Купите и поставьте витрину', text:'Слева откройте «Витрины», справа выберите «Все витрины», затем купите бесплатную стартовую витрину. После покупки редактор откроется автоматически.', event:'starter_shelf_placed', target:() => getTutorialEquipmentStepTarget('shelf') },
+  { id:'buy_cash', title:'Купите и поставьте кассу', text:'Слева откройте «Кассы», справа выберите «Все кассы», затем купите бесплатную стартовую кассу. После покупки редактор откроется автоматически.', event:'starter_cash_placed', target:() => getTutorialEquipmentStepTarget('cash') },
+  { id:'product', title:'Выберите первый товар', text:'Слева откройте «Товары», справа выберите «Все товары», затем нажмите на первый доступный товар.', event:'product_viewed', target:() => getTutorialProductTarget() },
   { id:'order', title:'Закажите товар', text:'Оставьте количество 1 и нажмите кнопку покупки. Товар отправится на склад.', event:'product_ordered', target:() => document.querySelector('#itemModalBox .btn-buy') },
   { id:'delivery', title:'Дождитесь доставки', text:'Откройте склад и следите за таймером во вкладке «В пути». При желании доставку можно ускорить за 1💎 — это необязательно.', event:'delivery_arrived', target:() => {
       const warehouseOpen = document.getElementById('warehouseModal')?.classList.contains('show');
@@ -4459,14 +4475,24 @@ function renderTutorialStep() {
     body.textContent = 'Редактор открыт. Зажмите кассу, перетащите её в выбранное место и отпустите.';
   } else if ((step.id === 'buy_shelf' || step.id === 'buy_cash') && !document.getElementById('shopModal')?.classList.contains('show')) {
     body.textContent = 'Откройте «Магазин», чтобы купить бесплатное стартовое оборудование.';
+  } else if (step.id === 'buy_shelf' && activeCat !== 'shelves') {
+    body.textContent = 'Слева нажмите «Витрины».';
+  } else if (step.id === 'buy_shelf' && shopMenuView !== 'items') {
+    body.textContent = 'Справа нажмите подраздел «Все витрины».';
   } else if (step.id === 'buy_shelf') {
-    body.textContent = 'Нажмите на карточку «Бесплатно». После покупки автоматически откроется редактор для установки витрины.';
+    body.textContent = 'Нажмите на бесплатную стартовую витрину. После покупки автоматически откроется редактор.';
+  } else if (step.id === 'buy_cash' && activeCat !== 'cash') {
+    body.textContent = 'Слева нажмите «Кассы».';
+  } else if (step.id === 'buy_cash' && shopMenuView !== 'items') {
+    body.textContent = 'Справа нажмите подраздел «Все кассы».';
   } else if (step.id === 'buy_cash') {
-    body.textContent = 'Нажмите на карточку «Бесплатно». После покупки автоматически откроется редактор для установки кассы.';
+    body.textContent = 'Нажмите на бесплатную стартовую кассу. После покупки автоматически откроется редактор.';
   } else if (step.id === 'product' && !document.getElementById('shopModal')?.classList.contains('show')) {
     body.textContent = 'Откройте «Магазин» и выберите первый доступный товар.';
   } else if (step.id === 'product' && activeCat !== 'products') {
-    body.textContent = 'Перейдите в раздел товаров вашего магазина.';
+    body.textContent = 'Слева нажмите «Товары».';
+  } else if (step.id === 'product' && shopMenuView !== 'items') {
+    body.textContent = 'Справа нажмите подраздел «Все товары».';
   } else if (step.id === 'delivery' && document.getElementById('warehouseModal')?.classList.contains('show') && warehouseTab === 'products' && warehouseProductTab === 'transit') {
     body.textContent = 'Дождитесь окончания таймера. При желании можно нажать ⚡ 1💎 и ускорить доставку — это необязательно.';
   } else if (step.id === 'delivery' && document.getElementById('warehouseModal')?.classList.contains('show')) {
