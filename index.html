@@ -2809,7 +2809,7 @@ const SHOP_TYPES = {
     name: 'магазин одежды',
     icon: '👕',
     productCats: ['Одежда', 'Обувь', 'Аксессуары', 'Красота'],
-    categoryIds: ['products', 'shelves', 'cash', 'facilities', 'design', 'staff', 'expansion'],
+    categoryIds: ['products', 'shelves', 'cash', 'facilities', 'design', 'staff'],
     shelfVariants: ['shelf_brown', 'rack_simple', 'shoe_cubby', 'rack_wardrobe', 'glass_case'],
     starterShelf: 'shelf_brown'
   },
@@ -2817,7 +2817,7 @@ const SHOP_TYPES = {
     name: 'магазин электроники',
     icon: '📱',
     productCats: ['Техника'],
-    categoryIds: ['products', 'shelves', 'cash', 'facilities', 'design', 'staff', 'expansion'],
+    categoryIds: ['products', 'shelves', 'cash', 'facilities', 'design', 'staff'],
     shelfVariants: ['tech_island', 'tech_backstand', 'tv_low_stand', 'appliance_pedestal'],
     starterShelf: 'tech_island'
   }
@@ -3463,8 +3463,9 @@ function showQuestHelp(questId) {
     return;
   }
   if (id.includes('expansion')) {
-    openShopQuestHelp('expansion');
-    showStep(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="expansion"]') || getFirstVisibleProductCard());
+    openShopQuestHelp('design');
+    setTimeout(() => { activeSubcatByCategory.design = 'expansion'; renderSubcatTabs(); renderProductList(); }, 80);
+    showStep(quest.title, text, () => document.querySelector('#subcat-tabs [data-subcategory-id="expansion"]') || getFirstVisibleProductCard());
     return;
   }
 
@@ -12662,59 +12663,70 @@ const CATEGORIES = [
   { id:'shelves',    name:'🪟 Витрины' },
   { id:'cash',       name:'💵 Кассы' },
   { id:'facilities', name:'🚪 Примерочные' },
-  { id:'design',     name:'🎨 Оформление' },
+  { id:'design',     name:'🏠 Интерьер' },
   { id:'staff',      name:'👥 Персонал' },
-  { id:'expansion',  name:'🏗 Расширение' },
 ];
 
+const CLOTHING_DEPARTMENT_SUBCATEGORIES = Object.freeze([
+  { id:'all', name:'Все' },
+  { id:'male', name:'👨 Мужской отдел', emptyDepartment:true },
+  { id:'female', name:'👩 Женский отдел', emptyDepartment:true },
+  { id:'kids', name:'👶 Детский отдел', emptyDepartment:true },
+]);
+
 const SHOP_SUBCATEGORIES = {
-  products: [],
   shelves: [{ id:'all', name:'Все витрины' }],
   cash: [{ id:'all', name:'Все кассы' }],
   facilities: [{ id:'all', name:'Все примерочные' }],
-  staff: [{ id:'all', name:'Весь персонал' }],
-  expansion: [{ id:'all', name:'Все расширения' }],
+  staff: [{ id:'all', name:'Все работники' }],
   design: [
-    { id:'all', name:'Все категории' },
-    { id:'walls', name:'🎨 Стены' },
-    { id:'floor', name:'🟫 Пол' },
-    { id:'innerWalls', name:'🧱 Внутренние стены' },
-    { id:'decor', name:'🛋 Декор' },
-    { id:'windows', name:'🪟 Окна' },
-    { id:'doors', name:'🚪 Двери' },
+    { id:'ordinary', name:'🪑 Обычные предметы' },
+    { id:'male', name:'👨 Мужской отдел', emptyDepartment:true },
+    { id:'female', name:'👩 Женский отдел', emptyDepartment:true },
+    { id:'kids', name:'👶 Детский отдел', emptyDepartment:true },
+    { id:'expansion', name:'🏗 Расширение магазина' },
   ],
 };
 
 const activeSubcatByCategory = {
-  clothes:'all', tech:'all', store:'all', design:'all', other:'all'
+  products:'all', shelves:'all', cash:'all', facilities:'all', design:'ordinary', staff:'all'
 };
 
 function getShopSubcategories(categoryId = activeCat) {
-  if (categoryId === 'products') {
-    if (G.shopType === 'electronics') {
-      return [
-        { id:'all', name:'Все категории' },
-        { id:'mobile', name:'📱 Мобильные', productIds:['phone','headphones'] },
-        { id:'computers', name:'💻 Компьютеры', productIds:['laptop','desktop_pc'] },
-        { id:'entertainment', name:'🎮 Развлечения', productIds:['television','game_console'] },
-        { id:'appliances', name:'☕ Бытовая техника', productIds:['washing_machine','coffee_machine'] },
-      ];
+  if (G.shopType === 'clothing') {
+    if (categoryId === 'products') {
+      return CLOTHING_DEPARTMENT_SUBCATEGORIES.map((item, index) => ({
+        ...item,
+        name: index === 0 ? 'Все товары' : item.name
+      }));
     }
+    if (categoryId === 'shelves') {
+      return CLOTHING_DEPARTMENT_SUBCATEGORIES.map((item, index) => ({
+        ...item,
+        name: index === 0 ? 'Все витрины' : item.name
+      }));
+    }
+    if (categoryId === 'facilities') {
+      return CLOTHING_DEPARTMENT_SUBCATEGORIES.map((item, index) => ({
+        ...item,
+        name: index === 0 ? 'Все примерочные' : item.name
+      }));
+    }
+  }
+
+  if (categoryId === 'products') {
     return [
       { id:'all', name:'Все категории' },
-      { id:'apparel', name:'👕 Одежда', productCats:['Одежда'] },
-      { id:'shoes', name:'👟 Обувь', productCats:['Обувь'] },
-      { id:'accessories', name:'👜 Аксессуары', productCats:['Аксессуары'] },
-      { id:'beauty', name:'🧴 Парфюмерия', productCats:['Красота'] },
+      { id:'mobile', name:'📱 Мобильные', productIds:['phone','headphones'] },
+      { id:'computers', name:'💻 Компьютеры', productIds:['laptop','desktop_pc'] },
+      { id:'entertainment', name:'🎮 Развлечения', productIds:['television','game_console'] },
+      { id:'appliances', name:'☕ Бытовая техника', productIds:['washing_machine','coffee_machine'] },
     ];
   }
+
   let list = SHOP_SUBCATEGORIES[categoryId] || [{ id:'all', name:'Все категории' }];
-  if (categoryId === 'facilities') {
-    const facilityName = G.shopType === 'electronics' ? '🧪 Проверка техники' : '🚪 Примерочные';
-    list = [{ id:'all', name:facilityName }];
-  }
-  if (categoryId === 'design' && (G.currentFloor || 1) === 2) {
-    return list.filter(item => item.id !== 'doors');
+  if (categoryId === 'facilities' && G.shopType === 'electronics') {
+    list = [{ id:'all', name:'🧪 Все зоны проверки техники' }];
   }
   return list;
 }
@@ -12722,7 +12734,7 @@ function getShopSubcategories(categoryId = activeCat) {
 function getActiveShopSubcategory() {
   const available = getShopSubcategories(activeCat);
   const current = activeSubcatByCategory[activeCat] || 'all';
-  return available.some(x => x.id === current) ? current : 'all';
+  return available.some(x => x.id === current) ? current : (available[0]?.id || 'all');
 }
 
 function renderSubcatTabs() {
@@ -12753,6 +12765,7 @@ function productMatchesActiveSubcategory(product) {
   if (subId === 'all') return true;
   const sub = getShopSubcategories(activeCat).find(x => x.id === subId);
   if (!sub) return true;
+  if (sub.emptyDepartment) return false;
   if (Array.isArray(sub.productCats)) return sub.productCats.includes(product.cat);
   if (Array.isArray(sub.productIds)) return sub.productIds.includes(product.id);
   return true;
@@ -13379,7 +13392,7 @@ function openShopModal() {
   const available = getAvailableCategories();
   activeCat = available.length ? available[0].id : 'products';
   Object.keys(activeSubcatByCategory).forEach(categoryId => {
-    activeSubcatByCategory[categoryId] = 'all';
+    activeSubcatByCategory[categoryId] = categoryId === 'design' ? 'ordinary' : 'all';
   });
   activeProductId = null;
   buyQty = 1;
@@ -13555,12 +13568,74 @@ function applyCurrentFloorSurfaceColors() {
   tileMeshes.forEach(m => m.material?.color?.setHex(floorHex));
 }
 
+
+function renderExpansionStoreRows(list) {
+      const completedExpansions = getCompletedShopExpansions();
+      const expansionMaxed = G.shopStage >= SHOP_STAGE_MAX;
+      const nextExpansionLevel = getNextShopExpansionLevel();
+      const expansionUnlocked = expansionMaxed || (nextExpansionLevel !== null && (G.level || 1) >= nextExpansionLevel);
+      const canUpgrade = expansionUnlocked && !expansionMaxed && G.money >= SHOP_UPGRADE_COST;
+      const expRow = document.createElement('div');
+      expRow.className = 'prod-row' + (canUpgrade ? '' : ' cant');
+      expRow.innerHTML = `
+        <div class="pr-emoji">${expansionUnlocked && !expansionMaxed ? '🏗' : (expansionMaxed ? '✅' : '🔒')}</div>
+        <div class="pr-info">
+          <div class="pr-name">Увеличить площадь магазина</div>
+          <div class="pr-sub">${expansionMaxed
+            ? 'Все 6 расширений уже выполнены'
+            : (expansionUnlocked
+              ? 'Магазин, стены, брусчатка и дорога расширяются пропорционально'
+              : ('Следующее расширение откроется на уровне ' + nextExpansionLevel))}</div>
+        </div>
+        <div class="pr-right">
+          <div class="pr-price">${expansionMaxed
+            ? 'Готово'
+            : (expansionUnlocked ? ('💰' + fmt(SHOP_UPGRADE_COST)) : ('🔒 Ур.' + nextExpansionLevel))}</div>
+          <div class="pr-profit" style="color:#aaa">${completedExpansions}/${SHOP_EXPANSION_LEVELS.length}</div>
+        </div>`;
+      if (expansionUnlocked && !expansionMaxed) expRow.onclick = buyShopExpansion;
+      list.appendChild(expRow);
+
+      const onFirstFloor = (G.currentFloor || 1) === 1;
+      const liftUnlocked = G.liftBuilt || G.liftPurchased || (onFirstFloor && (G.level || 1) >= SECOND_FLOOR_UNLOCK_LEVEL);
+      const liftCanBuy = !G.liftPurchased && !G.liftBuilt && liftUnlocked && G.money >= LIFT_BUILD_COST;
+      const liftCanPlace = !!G.liftPurchased && !G.liftBuilt && onFirstFloor;
+      const liftRow = document.createElement('div');
+      liftRow.className = 'prod-row' + ((G.liftBuilt || liftCanBuy || liftCanPlace) ? '' : ' cant');
+      const secondType = shopFloorStates[2]?.shopType || getOppositeShopType(G.shopType);
+      liftRow.innerHTML = `
+        <div class="pr-emoji">${G.liftBuilt ? '🛗' : (G.liftPurchased ? '📦' : (liftUnlocked ? '🏗️' : '🔒'))}</div>
+        <div class="pr-info">
+          <div class="pr-name">Стеклянный лифт и второй этаж</div>
+          <div class="pr-sub">${G.liftBuilt
+            ? ('Открыт ' + SHOP_TYPES[secondType].name + ' · уровень и XP общие · следующая линейка товаров начинается с ур.25, следующий товар с ур.27')
+            : (G.liftPurchased
+              ? 'Лифт уже куплен. Установите его на свободное место первого этажа'
+              : (liftUnlocked
+                ? ('Купить стеклянный лифт и открыть ' + SHOP_TYPES[secondType].name)
+                : 'Откроется на общем 25 уровне магазина'))}</div>
+        </div>
+        <div class="pr-right">
+          <div class="pr-price">${G.liftBuilt
+            ? ((G.currentFloor || 1) === 1 ? 'На 2 этаж' : 'На 1 этаж')
+            : (G.liftPurchased ? 'Поставить' : (liftUnlocked ? ('💰' + fmt(LIFT_BUILD_COST)) : '🔒 Ур.25'))}</div>
+          <div class="pr-profit" style="color:#aaa">${G.liftBuilt ? ((G.currentFloor || 1) + '/2 этаж') : (G.liftPurchased ? 'Куплен' : '0/1')}</div>
+        </div>`;
+      if (G.liftBuilt) liftRow.onclick = switchShopFloor;
+      else if (liftUnlocked && onFirstFloor) liftRow.onclick = buildShopLift;
+      list.appendChild(liftRow);
+    
+}
+
 function renderProductList() {
   const list = document.getElementById('products-list');
   if (!list) return;
   list.innerHTML = '';
   const subcat = getActiveShopSubcategory();
-  const showSubcat = id => activeCat === 'design' ? (subcat === 'all' || subcat === id) : activeCat === id;
+  const subcatDef = getShopSubcategories(activeCat).find(item => item.id === subcat);
+  const showSubcat = id => activeCat === 'design' ? (subcat === 'ordinary' || subcat === id) : activeCat === id;
+  // Мужской, женский и детский отделы пока подготовлены как пустые разделы.
+  if (subcatDef?.emptyDepartment) return;
 
   if (activeCat === 'design') {
     const palette = getSurfacePalette(G.shopType);
@@ -13706,10 +13781,11 @@ function renderProductList() {
         list.appendChild(el);
       });
     }
+    if (subcat === 'expansion') renderExpansionStoreRows(list);
     return;
   }
 
-  if (['facilities','expansion','shelves','staff','cash'].includes(activeCat)) {
+  if (['facilities','shelves','staff','cash'].includes(activeCat)) {
     if (showSubcat('facilities')) {
       const facility = getStoreFacilityDef();
       if (facility) {
@@ -13745,62 +13821,7 @@ function renderProductList() {
       }
     }
 
-    if (showSubcat('expansion')) {
-      const completedExpansions = getCompletedShopExpansions();
-      const expansionMaxed = G.shopStage >= SHOP_STAGE_MAX;
-      const nextExpansionLevel = getNextShopExpansionLevel();
-      const expansionUnlocked = expansionMaxed || (nextExpansionLevel !== null && (G.level || 1) >= nextExpansionLevel);
-      const canUpgrade = expansionUnlocked && !expansionMaxed && G.money >= SHOP_UPGRADE_COST;
-      const expRow = document.createElement('div');
-      expRow.className = 'prod-row' + (canUpgrade ? '' : ' cant');
-      expRow.innerHTML = `
-        <div class="pr-emoji">${expansionUnlocked && !expansionMaxed ? '🏗' : (expansionMaxed ? '✅' : '🔒')}</div>
-        <div class="pr-info">
-          <div class="pr-name">Увеличить площадь магазина</div>
-          <div class="pr-sub">${expansionMaxed
-            ? 'Все 6 расширений уже выполнены'
-            : (expansionUnlocked
-              ? 'Магазин, стены, брусчатка и дорога расширяются пропорционально'
-              : ('Следующее расширение откроется на уровне ' + nextExpansionLevel))}</div>
-        </div>
-        <div class="pr-right">
-          <div class="pr-price">${expansionMaxed
-            ? 'Готово'
-            : (expansionUnlocked ? ('💰' + fmt(SHOP_UPGRADE_COST)) : ('🔒 Ур.' + nextExpansionLevel))}</div>
-          <div class="pr-profit" style="color:#aaa">${completedExpansions}/${SHOP_EXPANSION_LEVELS.length}</div>
-        </div>`;
-      if (expansionUnlocked && !expansionMaxed) expRow.onclick = buyShopExpansion;
-      list.appendChild(expRow);
-
-      const onFirstFloor = (G.currentFloor || 1) === 1;
-      const liftUnlocked = G.liftBuilt || G.liftPurchased || (onFirstFloor && (G.level || 1) >= SECOND_FLOOR_UNLOCK_LEVEL);
-      const liftCanBuy = !G.liftPurchased && !G.liftBuilt && liftUnlocked && G.money >= LIFT_BUILD_COST;
-      const liftCanPlace = !!G.liftPurchased && !G.liftBuilt && onFirstFloor;
-      const liftRow = document.createElement('div');
-      liftRow.className = 'prod-row' + ((G.liftBuilt || liftCanBuy || liftCanPlace) ? '' : ' cant');
-      const secondType = shopFloorStates[2]?.shopType || getOppositeShopType(G.shopType);
-      liftRow.innerHTML = `
-        <div class="pr-emoji">${G.liftBuilt ? '🛗' : (G.liftPurchased ? '📦' : (liftUnlocked ? '🏗️' : '🔒'))}</div>
-        <div class="pr-info">
-          <div class="pr-name">Стеклянный лифт и второй этаж</div>
-          <div class="pr-sub">${G.liftBuilt
-            ? ('Открыт ' + SHOP_TYPES[secondType].name + ' · уровень и XP общие · следующая линейка товаров начинается с ур.25, следующий товар с ур.27')
-            : (G.liftPurchased
-              ? 'Лифт уже куплен. Установите его на свободное место первого этажа'
-              : (liftUnlocked
-                ? ('Купить стеклянный лифт и открыть ' + SHOP_TYPES[secondType].name)
-                : 'Откроется на общем 25 уровне магазина'))}</div>
-        </div>
-        <div class="pr-right">
-          <div class="pr-price">${G.liftBuilt
-            ? ((G.currentFloor || 1) === 1 ? 'На 2 этаж' : 'На 1 этаж')
-            : (G.liftPurchased ? 'Поставить' : (liftUnlocked ? ('💰' + fmt(LIFT_BUILD_COST)) : '🔒 Ур.25'))}</div>
-          <div class="pr-profit" style="color:#aaa">${G.liftBuilt ? ((G.currentFloor || 1) + '/2 этаж') : (G.liftPurchased ? 'Куплен' : '0/1')}</div>
-        </div>`;
-      if (G.liftBuilt) liftRow.onclick = switchShopFloor;
-      else if (liftUnlocked && onFirstFloor) liftRow.onclick = buildShopLift;
-      list.appendChild(liftRow);
-    }
+    if (showSubcat('expansion')) renderExpansionStoreRows(list);
 
     if (showSubcat('shelves')) {
       const currentCount = SHELF_POSITIONS.length;
