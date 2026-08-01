@@ -5105,6 +5105,7 @@ const PRODUCTS = [
   {id:'shorts', name:'Шорты',      emoji:'🩳', cat:'Одежда',    cost:320,   sell:590,   time:90,  xp:18,  shelfKinds:['classic_counter']},
   {id:'jeans',  name:'Джинсы',     emoji:'👖', cat:'Одежда',    cost:450,   sell:830,   time:120, xp:24,  shelfKinds:['classic_counter']},
   {id:'sneakers',name:'Кроссовки', emoji:'👟', cat:'Обувь',     cost:800,   sell:1450,  time:180, xp:36,  shelfKinds:['shoe_cubby']},
+  {id:'boots', name:'Ботинки', emoji:'🥾', cat:'Обувь', cost:850, sell:1550, time:185, xp:37, shelfKinds:['shoe_cubby']},
   {id:'women_shoes',name:'Женские туфли',emoji:'👠',cat:'Обувь', cost:900,  sell:1650,  time:190, xp:38,  shelfKinds:['shoe_cubby']},
   {id:'men_shoes',name:'Мужские туфли',emoji:'👞',cat:'Обувь',   cost:950,  sell:1750,  time:200, xp:40,  shelfKinds:['shoe_cubby']},
   {id:'jacket', name:'Куртка',     emoji:'🧥', cat:'Одежда',    cost:1200,  sell:2100,  time:240, xp:50,  shelfKinds:['hanging_rack']},
@@ -5347,28 +5348,29 @@ const PRODUCT_UNLOCK_LEVELS = {
     tshirt: 2,
     jeans: 2,
     sneakers: 3,
+    boots: 3,
     jacket: 4,
     dress: 4,
+    women_winter_boots: 4,
+    men_winter_boots: 4,
     wallet: 5,
+    winter_hat: 5,
+    umbrella: 5,
     bag: 6,
     glasses: 6,
+    windbreaker: 6,
+    rubber_boots: 6,
     women_shoes: 7,
+    autumn_raincoat: 7,
+    thin_turtleneck: 7,
     men_shoes: 8,
     perfume: 8,
+    leather_jacket: 8,
     watch: 9,
     suit: 10,
     jewelry: 10,
-    women_winter_boots: 3,
-    men_winter_boots: 3,
-    winter_hat: 3,
-    umbrella: 3,
-    rubber_boots: 3,
-    autumn_raincoat: 3,
-    windbreaker: 3,
-    thin_turtleneck: 3,
-    leather_jacket: 3,
-    swimsuit: 3,
-    flip_flops: 3,
+    swimsuit: 11,
+    flip_flops: 11,
   },
   electronics: {
     headphones: 1,
@@ -12841,9 +12843,21 @@ const CATEGORIES = [
 
 const CLOTHING_DEPARTMENT_SUBCATEGORIES = Object.freeze([
   { id:'all', name:'Все' },
-  { id:'male', name:'👨 Мужской отдел', emptyDepartment:true },
-  { id:'female', name:'👩 Женский отдел', emptyDepartment:true },
+  { id:'male', name:'👨 Мужской отдел' },
+  { id:'female', name:'👩 Женский отдел' },
   { id:'kids', name:'👶 Детский отдел', emptyDepartment:true },
+]);
+
+const CLOTHING_PRODUCT_SUBCATEGORIES = Object.freeze([
+  { id:'all', name:'Все товары' },
+  { id:'male', name:'👨 Мужской отдел', productIds:['tshirt','shorts','jeans','sneakers','boots','men_winter_boots','winter_hat','umbrella','rubber_boots','autumn_raincoat','windbreaker','thin_turtleneck','leather_jacket','men_shoes','suit','wallet','watch','glasses','perfume'] },
+  { id:'female', name:'👩 Женский отдел', productIds:['tshirt','shorts','jeans','sneakers','boots','women_winter_boots','winter_hat','umbrella','rubber_boots','autumn_raincoat','windbreaker','thin_turtleneck','leather_jacket','women_shoes','dress','swimsuit','flip_flops','bag','wallet','watch','glasses','perfume','jewelry'] },
+  { id:'kids', name:'👶 Детский отдел', emptyDepartment:true },
+  { id:'winter', name:'❄️ Зимние вещи', productIds:['women_winter_boots','men_winter_boots','winter_hat'] },
+  { id:'autumn', name:'🍂 Осенние вещи', productIds:['umbrella','rubber_boots','autumn_raincoat','windbreaker'] },
+  { id:'spring', name:'🌷 Весенние вещи', productIds:['thin_turtleneck','leather_jacket'] },
+  { id:'summer', name:'☀️ Летние вещи', productIds:['swimsuit','flip_flops','shorts'] },
+  { id:'other', name:'📦 Прочее', productIds:['tshirt','jeans','sneakers','boots','jacket','dress','women_shoes','men_shoes','suit','wallet','bag','glasses','perfume','watch','jewelry'] },
 ]);
 
 const SHOP_SUBCATEGORIES = {
@@ -12867,10 +12881,7 @@ const activeSubcatByCategory = {
 function getShopSubcategories(categoryId = activeCat) {
   if (G.shopType === 'clothing') {
     if (categoryId === 'products') {
-      return CLOTHING_DEPARTMENT_SUBCATEGORIES.map((item, index) => ({
-        ...item,
-        name: index === 0 ? 'Все товары' : item.name
-      }));
+      return CLOTHING_PRODUCT_SUBCATEGORIES.map(item => ({ ...item }));
     }
     if (categoryId === 'shelves') {
       return CLOTHING_DEPARTMENT_SUBCATEGORIES.map((item, index) => ({
