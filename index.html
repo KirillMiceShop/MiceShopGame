@@ -3091,6 +3091,13 @@ const INITIAL_TUTORIAL_QUEST_IDS = new Set([
 ]);
 
 const QUEST_BATCHES = [
+  // Если игрок пропускает начальное обучение, его пять квестов не исчезают:
+  // они продолжаются по одному в обычном HUD квестов и сохраняют свои награды.
+  ['first_order'],
+  ['first_delivery'],
+  ['first_stock'],
+  ['first_sale'],
+  ['first_collection'],
   ['open_editor', 'sell_three_level_one', 'rotate_shelf'],
   ['buy_first_decor', 'decor_storage_cycle', 'sell_one_decor'],
   ['reach_level_2'],
@@ -4399,6 +4406,18 @@ function skipTutorial(silent = false, provideStarterEquipment = true, animateHud
   if (dim) dim.style.display = 'none';
   closeShopModal();
   closeItemModal();
+
+  // После пропуска обучение превращается в обычную последовательность квестов.
+  // Обновляем активный квест уже после отключения tutorialActive, чтобы первый
+  // невыполненный учебный квест появился в HUD и получил индикатор нового квеста.
+  if (questSystemReady && !wasReplay) {
+    questHudTrackedQuestIds = [];
+    questHudTrackingReady = true;
+    questHudNewQuestCount = 0;
+    syncActiveQuestProgress();
+    updateQuestUI();
+  }
+
   if (!silent) {
     showToast(wasReplay
       ? '🎓 Повторное обучение закрыто · без наград'
