@@ -2545,6 +2545,60 @@
     #shopModal #products-list .pr-emoji { font-size:24px!important; }
   }
 
+
+
+/* Небольшая кнопка сбора прибыли, привязанная к положению кассы в 3D-сцене. */
+#cash-profit-popup {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2600;
+  display: none;
+  pointer-events: auto;
+  padding: 0;
+  border-radius: 14px;
+  filter: drop-shadow(0 8px 18px rgba(0,0,0,.28));
+}
+#cash-profit-popup.show {
+  display: block;
+  animation: cashProfitPopupIn .2s ease-out both;
+}
+#cash-profit-popup::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  width: 16px;
+  height: 16px;
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--menu-card, rgba(28,31,45,.96));
+  border-right: 1px solid rgba(245,197,24,.48);
+  border-bottom: 1px solid rgba(245,197,24,.48);
+}
+#cash-profit-popup button {
+  position: relative;
+  z-index: 1;
+  min-height: 42px;
+  padding: 10px 16px;
+  border: 1px solid rgba(245,197,24,.55);
+  border-radius: 14px;
+  background: var(--menu-card, rgba(28,31,45,.96));
+  color: var(--menu-text, #fff);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(245,197,24,.12) inset;
+  -webkit-tap-highlight-color: transparent;
+}
+#cash-profit-popup button:active {
+  transform: scale(.97);
+}
+@keyframes cashProfitPopupIn {
+  from { opacity: 0; transform: translateY(8px) scale(.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 </style>
 </head>
 <body data-menu-style="standard">
@@ -2918,9 +2972,14 @@
 <audio id="cashSound" src="cash-sound.mp3" preload="auto"></audio>
 <audio id="clickSound" src="click-sound.mp3" preload="auto"></audio>
 
-<!-- МОДАЛКА КАССЫ -->
+<!-- Старое окно кассы оставлено скрытым для совместимости со старыми сохранениями/вызовами. -->
 <div class="modal-bg" id="cashModal">
   <div class="modal-box" id="cashModalBox"></div>
+</div>
+
+<!-- Компактный сбор прибыли прямо над выбранной кассой. -->
+<div id="cash-profit-popup" role="dialog" aria-label="Сбор прибыли">
+  <button type="button" id="cash-profit-collect-btn" onclick="collectAllRevenue()">Забрать прибыль 💰</button>
 </div>
 
 <div id="toast"></div>
@@ -4091,9 +4150,9 @@ const TUTORIAL_STEPS = [
         .find(btn => btn.textContent.includes('Поставить')) || null;
     } },
   { id:'sale', title:'Первая продажа', text:'Товар уже на витрине. Для обучения первая продажа произойдёт быстрее обычного.', event:'product_sold', target:null },
-  { id:'collect', title:'Заберите выручку', text:'Нажмите на кассу внутри магазина, затем выберите «Забрать всё».', event:'revenue_collected', target:() => {
-      if (document.getElementById('cashModal')?.classList.contains('show')) {
-        return document.querySelector('#cashModalBox .btn-buy');
+  { id:'collect', title:'Заберите выручку', text:'Нажмите на кассу внутри магазина, затем нажмите «Забрать прибыль 💰» в небольшом окне над кассой.', event:'revenue_collected', target:() => {
+      if (document.getElementById('cash-profit-popup')?.classList.contains('show')) {
+        return document.getElementById('cash-profit-collect-btn');
       }
       const cash = cashRegisters[0];
       return makeTutorialObjectTarget(cash && (cash.hitZone || cash.group), 14);
@@ -6077,6 +6136,9 @@ function handleTap(clientX, clientY) {
   if (document.getElementById('itemModal').classList.contains('show')) return;
   if (document.getElementById('cashModal').classList.contains('show')) return;
   if (moveMode || winMoveMode) return;
+  // Игнорируем только тот же самый тап, которым игрок нажал «Поставить».
+  // Следующее отдельное нажатие по витрине уже обрабатывается нормально.
+  if (placingMode && Date.now() < placementInputGuardUntil) return;
 
   mouse2D.x =  (clientX / window.innerWidth)  * 2 - 1;
   mouse2D.y = -(clientY / window.innerHeight) * 2 + 1;
@@ -6215,7 +6277,7 @@ function handleTap(clientX, clientY) {
       ? getShelfHitForPlacement(hits, pendingProduct)
       : hits[0];
     const obj = selectedHit.object;
-    if (obj.userData.isCashier) { openCashModal(); return; }
+    if (obj.userData.isCashier) { openCashModal(obj.userData.cashRegisterIndex); return; }
     const idx = obj.userData.shelfIndex;
     if (idx !== undefined) {
       if (sellMode) { sellShelf(idx); return; }
@@ -13162,6 +13224,10 @@ let pendingProduct = null; // товар ожидающий размещения
 let pendingQty = 1;
 let pendingFromStorage = false;
 let placingMode = false;
+// Защита от «прокликивания»: на мобильных устройствах тот же тап,
+// которым нажали «Поставить» в закрывающемся окне склада, иногда сразу
+// попадал в canvas и отменял режим размещения.
+let placementInputGuardUntil = 0;
 
 let activeProductId = null;
 let buyQty = 1;
@@ -14477,15 +14543,18 @@ document.getElementById('itemModal').addEventListener('click', e => {
 
 function startPlacing(productId, qty = 1, fromStorage = false) {
   pendingProduct = PRODUCTS.find(p => p.id === productId);
+  if (!pendingProduct) return;
   pendingQty = Math.max(1, qty || 1);
   pendingFromStorage = !!fromStorage;
   placingMode = true;
+  placementInputGuardUntil = Date.now() + 450;
   closeItemModal();
   closeShopModal();
   closeWarehouseModal();
   document.getElementById('bottom-btns').style.display = 'none';
   document.getElementById('place-hint').style.display = 'block';
   showToast('👆 Нажми на витрину чтобы поставить ' + pendingProduct.name + ' ×' + pendingQty);
+  requestAnimationFrame(() => updateTutorialSpotlight());
 }
 
 function cancelPlacing() {
@@ -14493,6 +14562,7 @@ function cancelPlacing() {
   pendingQty = 1;
   pendingFromStorage = false;
   placingMode = false;
+  placementInputGuardUntil = 0;
   document.getElementById('bottom-btns').style.display = '';
   document.getElementById('place-hint').style.display = 'none';
 }
@@ -16905,7 +16975,7 @@ function renderWarehouseModal() {
         </div>
       </div>
       <div class="pr-right" style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
-        <button class="btn-buy" style="padding:9px 10px;font-size:12px" onclick="startPlacingFromStorage('${productId}')">Поставить</button>
+        <button class="btn-buy" style="padding:9px 10px;font-size:12px" onclick="startPlacingFromStorage('${productId}', event)">Поставить</button>
         <button class="btn-back" style="margin:0;padding:8px 10px;font-size:12px" onclick="sellProductFromStorage('${productId}')">Продать</button>
       </div>`;
     list.appendChild(row);
@@ -16936,11 +17006,24 @@ function changeWarehousePlaceQty(productId, delta) {
   renderWarehouseModal();
 }
 
-function startPlacingFromStorage(productId) {
+function startPlacingFromStorage(productId, event = null) {
+  // Не даём нажатию пройти сквозь закрывающееся окно склада в canvas.
+  if (event) {
+    if (event.cancelable) event.preventDefault();
+    event.stopPropagation?.();
+    event.stopImmediatePropagation?.();
+  }
+
   const qty = Math.max(1, Math.min(G.storage[productId] || 0, warehousePlaceQty[productId] || 1));
   if (qty <= 0) return;
-  startPlacing(productId, qty, true);
-  renderTutorialStep();
+
+  // Запускаем размещение на следующем кадре: к этому моменту исходный тап
+  // уже полностью завершён и не может отменить новый режим размещения.
+  requestAnimationFrame(() => {
+    if ((G.storage[productId] || 0) < qty) return;
+    startPlacing(productId, qty, true);
+    renderTutorialStep();
+  });
 }
 
 
@@ -17086,34 +17169,75 @@ function placeEquipmentFromStorage(key) {
   startMoveMode(true);
 }
 
-function openCashModal() {
+let activeCashProfitRegisterIndex = null;
+
+function getCashRegisterForProfitPopup() {
+  if (!cashRegisters.length) return null;
+  const idx = Number.isInteger(activeCashProfitRegisterIndex)
+    ? activeCashProfitRegisterIndex
+    : 0;
+  return cashRegisters[idx] || cashRegisters[0] || null;
+}
+
+function updateCashProfitPopupPosition() {
+  const popup = document.getElementById('cash-profit-popup');
+  if (!popup || !popup.classList.contains('show')) return;
+
   if (G.pendingRevenue <= 0) {
+    closeCashModal();
+    return;
+  }
+
+  const cash = getCashRegisterForProfitPopup();
+  if (!cash) {
+    closeCashModal();
+    return;
+  }
+
+  const rect = getTutorialObjectScreenRect(cash.hitZone || cash.group, 0);
+  if (!rect) {
+    popup.style.visibility = 'hidden';
+    return;
+  }
+
+  popup.style.visibility = 'visible';
+  const popupWidth = popup.offsetWidth || 170;
+  const popupHeight = popup.offsetHeight || 44;
+  const centerX = rect.left + rect.width / 2;
+  const gap = 13;
+  const left = Math.max(8, Math.min(window.innerWidth - popupWidth - 8, centerX - popupWidth / 2));
+  const top = Math.max(8, rect.top - popupHeight - gap);
+
+  popup.style.left = Math.round(left) + 'px';
+  popup.style.top = Math.round(top) + 'px';
+}
+
+function openCashModal(cashRegisterIndex = 0) {
+  if (G.pendingRevenue <= 0) {
+    closeCashModal();
     showToast('❌ Пока нет прибыли для сбора', '#e94560ee');
     return;
   }
-  const box = document.getElementById('cashModalBox');
-  const itemsList = G.pendingItems.map(it =>
-    `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.07)">
-      <span>${it.emoji} ${it.name}</span>
-      <span style="color:#f5c518;font-weight:700">+${fmt(it.amount)}₽</span>
-    </div>`
-  ).join('');
-  box.innerHTML = `
-    <button type="button" class="modal-close" onclick="closeCashModal()" aria-label="Закрыть">✕</button>
-    <div style="font-size:32px;text-align:center;margin-bottom:8px">🏦</div>
-    <div style="font-size:17px;font-weight:700;text-align:center;margin-bottom:4px">Касса</div>
-    <div style="font-size:12px;color:#888;text-align:center;margin-bottom:16px">Ожидает выплаты</div>
-    <div style="margin-bottom:14px">${itemsList}</div>
-    <div style="background:rgba(245,197,24,0.1);border:1px solid rgba(245,197,24,0.3);border-radius:12px;padding:12px;text-align:center;margin-bottom:16px">
-      <div style="font-size:12px;color:#888">Итого</div>
-      <div style="font-size:26px;font-weight:700;color:#f5c518">💰 ${fmt(G.pendingRevenue)}₽</div>
-    </div>
-    <button class="btn-buy" onclick="collectAllRevenue()">Забрать всё</button>`;
-  document.getElementById('cashModal').classList.add('show');
-  resetModalViewState('cashModal');
+
+  const parsedIndex = Number(cashRegisterIndex);
+  activeCashProfitRegisterIndex = Number.isInteger(parsedIndex) && cashRegisters[parsedIndex]
+    ? parsedIndex
+    : 0;
+
+  // Большое модальное окно больше не используется.
+  document.getElementById('cashModal')?.classList.remove('show');
+  const popup = document.getElementById('cash-profit-popup');
+  if (!popup) return;
+  popup.classList.add('show');
+  updateCashProfitPopupPosition();
 }
 
 function collectAllRevenue() {
+  if (G.pendingRevenue <= 0) {
+    closeCashModal();
+    return;
+  }
+
   const collectedAmount = G.pendingRevenue;
   G.money += collectedAmount;
   G.totalEarned += collectedAmount;
@@ -17126,11 +17250,20 @@ function collectAllRevenue() {
 }
 
 function closeCashModal() {
-  document.getElementById('cashModal').classList.remove('show');
+  document.getElementById('cashModal')?.classList.remove('show');
+  const popup = document.getElementById('cash-profit-popup');
+  if (popup) {
+    popup.classList.remove('show');
+    popup.style.visibility = '';
+  }
+  activeCashProfitRegisterIndex = null;
 }
-document.getElementById('cashModal').addEventListener('click', e => {
+
+document.getElementById('cashModal')?.addEventListener('click', e => {
   if (e.target === document.getElementById('cashModal')) closeCashModal();
 });
+
+window.addEventListener('resize', updateCashProfitPopupPosition);
 
 // ══════════════════════════════════════
 //  ANIMATE LOOP
@@ -17265,6 +17398,7 @@ function animate(now = performance.now()) {
   }
 
   if (editorMode && editorSelection) updateEditorActionPosition();
+  updateCashProfitPopupPosition();
 
   renderer.render(scene, camera);
 }
