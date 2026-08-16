@@ -3096,7 +3096,7 @@ const QUEST_DEFINITIONS = [
   { id:'first_collection', tutorial:true, minLevel:1, icon:'💰', title:'Заберите выручку', text:'Нажмите на кассу и заберите деньги', event:'revenue_collected', target:1, reward:{ money:200, xp:20 } },
   { id:'open_editor', minLevel:1, icon:'✏️', title:'Познакомьтесь с редактором', text:'Откройте режим редактора магазина', event:'editor_opened', target:1, reward:{ money:100, xp:10 } },
   { id:'sell_three_level_one', minLevel:1, icon:'🛍️', title:'Первые продажи', text:'Продайте 3 товара', metric:'total_sold', target:3, absolute:true, reward:{ money:250, xp:30 } },
-  { id:'buy_first_decor', minLevel:1, icon:'🪴', title:'Первое украшение', text:'Купите и установите один объект декора', event:'decor_purchased', target:1, reward:{ money:200, xp:20 } },
+  { id:'buy_first_decor', minLevel:1, icon:'🪴', title:'Первое украшение', text:'Купите и установите один объект декора', metric:'regular_decor_count', target:1, absolute:true, reward:{ money:200, xp:20 } },
   { id:'decor_storage_cycle', minLevel:1, icon:'📦', title:'Декор на складе', text:'Уберите декор на склад, затем верните его обратно в зал', kind:'decor_storage_cycle', target:2, reward:{ money:200, xp:20 } },
   { id:'sell_one_decor', minLevel:1, icon:'💰', title:'Продажа декора', text:'Продайте один установленный объект декора', event:'decor_sold', target:1, reward:{ money:200, xp:20 } },
   { id:'reach_level_2', minLevel:1, icon:'⭐', title:'Новый уровень', text:'Достигните 2 уровня магазина', event:'level_reached', metric:'level', target:2, absolute:true, reward:{ money:300, crystals:1 } },
@@ -3112,7 +3112,7 @@ const QUEST_DEFINITIONS = [
 
   // Квесты 3–4 уровней.
   { id:'install_two_decor', minLevel:3, icon:'🛋️', title:'Оформляем магазин', text:'Купите и установите 2 объекта оформления', metric:'regular_decor_count', target:2, absolute:true, reward:{ money:350, xp:60 } },
-  { id:'buy_wall_decor', minLevel:3, icon:'🖼️', title:'Новый декор', text:'Купите настенный декор', event:'decor_purchased', target:1, matchData:data => data?.place === 'wall', reward:{ money:320, xp:60 } },
+  { id:'buy_wall_decor', minLevel:3, icon:'🖼️', title:'Новый декор', text:'Купите настенный декор', metric:'wall_decor_count', target:1, absolute:true, reward:{ money:320, xp:60 } },
   { id:'install_facility', minLevel:3, icon:'🚪', title:'Комфорт покупателей', text:() => G.shopType === 'electronics' ? 'Установите зону проверки техники' : 'Установите примерочную', metric:'facility_count', target:1, absolute:true, reward:{ money:300, xp:80 } },
   { id:'sell_three_product_types', minLevel:3, icon:'🧺', title:'Разнообразный ассортимент', text:'Продайте товары 3 разных видов', metric:'distinct_products_sold', target:3, absolute:true, reward:{ money:400, xp:70 } },
   { id:'sell_ten_products', minLevel:3, icon:'🛍️', title:'Первые покупатели', text:'Продайте суммарно 10 товаров', metric:'total_sold', target:10, absolute:true, reward:{ money:400, xp:60 } },
@@ -3122,10 +3122,7 @@ const QUEST_DEFINITIONS = [
   { id:'buy_new_shelf', minLevel:5, icon:'🪟', title:'Новая витрина', text:() => {
       const variant = getLevelFiveQuestShelfVariant();
       return variant ? ('Купите витрину «' + variant.name + '»') : 'Купите новый вид витрины';
-    }, event:'shelf_installed', target:1, matchData:data => {
-      const variant = getLevelFiveQuestShelfVariant();
-      return !!variant && data?.variantId === variant.id && !data?.tutorialFree;
-    }, reward:{ money:500, xp:90 } },
+    }, metric:'level_five_shelf_owned', target:1, absolute:true, reward:{ money:500, xp:90 } },
   { id:'install_second_shelf', minLevel:5, icon:'🪟', title:'Больше места для товара', text:'Купите и установите вторую витрину', metric:'shelf_count', target:2, absolute:true, reward:{ money:600, xp:80 } },
   { id:'stock_two_product_types', minLevel:5, icon:'🏬', title:'Два отдела', text:'Одновременно выставьте разные товары на двух разных витринах', metric:'different_stocked_shelves', target:2, absolute:true, reward:{ money:500, xp:80 } },
   { id:'hire_cleaner', minLevel:5, icon:'🧹', title:'Чистый магазин', text:'Наймите уборщика', metric:'staff_cleaner', target:1, absolute:true, reward:{ money:500, xp:80 } },
@@ -3207,6 +3204,19 @@ function getQuestMetricValue(quest) {
       const def = getDecorDef(item.type);
       return def && !def.special && !def.facility;
     }).length;
+  }
+  if (quest.metric === 'wall_decor_count') {
+    const installed = typeof getAllInstalledDecorationsForProgress === 'function'
+      ? getAllInstalledDecorationsForProgress()
+      : (Array.isArray(decorations) ? decorations : []);
+    return installed.filter(item => {
+      const def = getDecorDef(item.type);
+      return def && !def.special && !def.facility && def.place === 'wall';
+    }).length;
+  }
+  if (quest.metric === 'level_five_shelf_owned') {
+    const variant = getLevelFiveQuestShelfVariant();
+    return variant ? getOwnedShelfVariantCount(variant.id) : 0;
   }
   if (quest.metric === 'facility_count') {
     const installed = typeof getAllInstalledDecorationsForProgress === 'function'
@@ -3378,9 +3388,12 @@ function applyQuestEventProgress(quest, eventName, amount = 1, data = {}) {
       return true;
     }
     if (eventName === 'shelf_restored_from_storage' && (state.progress || 0) >= 1) {
-      state.progress = 2;
-      completeQuest(quest);
-      return true;
+      const storedType = state.meta?.storedType || null;
+      if (!storedType || !data.variantId || storedType === data.variantId) {
+        state.progress = 2;
+        completeQuest(quest);
+        return true;
+      }
     }
     return false;
   }
@@ -3428,6 +3441,11 @@ function claimQuestReward(questId) {
 function notifyGameEvent(eventName, amount = 1, data = {}) {
   if (!questSystemReady && gameStarted) initQuestSystem();
 
+  const helpQuestIdBefore = activeQuestHelpQuestId;
+  const helpStateBefore = helpQuestIdBefore ? questState[helpQuestIdBefore] : null;
+  const helpProgressBefore = Number(helpStateBefore?.progress) || 0;
+  const helpCompletedBefore = !!helpStateBefore?.completed;
+
   if (!tutorialReplayMode) {
     const activeQuests = getActiveQuests();
     activeQuests.forEach(quest => {
@@ -3436,16 +3454,24 @@ function notifyGameEvent(eventName, amount = 1, data = {}) {
     });
   }
 
-  if (activeQuestHelpQuestId) {
-    const helpQuest = QUEST_DEFINITIONS.find(item => item.id === activeQuestHelpQuestId);
+  // Автоматические продажи и другие посторонние события больше не заставляют
+  // открытую подсказку моргать и запускаться заново. Обновляем её только если
+  // именно отслеживаемый квест реально изменил состояние.
+  if (helpQuestIdBefore && activeQuestHelpQuestId === helpQuestIdBefore) {
+    const helpQuest = QUEST_DEFINITIONS.find(item => item.id === helpQuestIdBefore);
     const helpState = helpQuest ? questState[helpQuest.id] : null;
-    const helpQuestId = activeQuestHelpQuestId;
-    hideQuestHelp();
-    if (helpQuest && !helpState?.completed && !helpState?.claimed) {
-      questHelpAdvanceTimer = setTimeout(() => {
-        questHelpAdvanceTimer = null;
-        showQuestHelp(helpQuestId);
-      }, 350);
+    const helpChanged = !!helpState && (
+      (Number(helpState.progress) || 0) !== helpProgressBefore
+      || !!helpState.completed !== helpCompletedBefore
+    );
+    if (helpChanged) {
+      hideQuestHelp();
+      if (helpQuest && !helpState?.completed && !helpState?.claimed) {
+        questHelpAdvanceTimer = setTimeout(() => {
+          questHelpAdvanceTimer = null;
+          showQuestHelp(helpQuestIdBefore);
+        }, 350);
+      }
     }
   }
 
@@ -3504,6 +3530,7 @@ let questHelpResizeHandlerBound = false;
 let activeQuestHelpTargetGetter = null;
 let activeQuestHelpQuestId = null;
 let questHelpAdvanceTimer = null;
+let questHelpPositionTimer = null;
 
 function hideQuestHelp() {
   if (questHelpTimer) clearTimeout(questHelpTimer);
@@ -3512,6 +3539,8 @@ function hideQuestHelp() {
   activeQuestHelpQuestId = null;
   if (questHelpAdvanceTimer) clearTimeout(questHelpAdvanceTimer);
   questHelpAdvanceTimer = null;
+  if (questHelpPositionTimer) clearInterval(questHelpPositionTimer);
+  questHelpPositionTimer = null;
   const highlight = document.getElementById('quest-help-highlight');
   const card = document.getElementById('quest-help-card');
   if (highlight) highlight.style.display = 'none';
@@ -3570,6 +3599,7 @@ function showQuestHelpTarget(title, text, targetGetter, duration = 9000, questId
   requestAnimationFrame(positionQuestHelp);
   setTimeout(positionQuestHelp, 160);
   setTimeout(positionQuestHelp, 420);
+  questHelpPositionTimer = setInterval(positionQuestHelp, 140);
   questHelpTimer = setTimeout(hideQuestHelp, duration);
   if (!questHelpResizeHandlerBound) {
     questHelpResizeHandlerBound = true;
@@ -3603,6 +3633,302 @@ function findShopProductCardByText(text) {
     .find(card => String(card.textContent || '').toLowerCase().includes(wanted)) || null;
 }
 
+function getShopCategoryHelpLabel(categoryId) {
+  const category = getAvailableCategories().find(item => item.id === categoryId);
+  if (categoryId === 'facilities' && G.shopType === 'electronics') return 'Проверка техники';
+  return String(category?.name || 'раздел').replace(/^[^\p{L}\p{N}]+/u, '').trim();
+}
+
+function getShopSubcategoryHelpLabel(categoryId, subcategoryId) {
+  const sub = getShopSubcategories(categoryId).find(item => item.id === subcategoryId);
+  return String(sub?.name || 'нужный подраздел').replace(/^[^\p{L}\p{N}]+/u, '').trim();
+}
+
+function getShopQuestNavigationState(categoryId, subcategoryId = 'all', itemGetter = null, itemText = '') {
+  const shopOpen = document.getElementById('shopModal')?.classList.contains('show');
+  const categoryLabel = getShopCategoryHelpLabel(categoryId);
+  const available = getShopSubcategories(categoryId);
+  const resolvedSubcategory = available.some(item => item.id === subcategoryId)
+    ? subcategoryId
+    : (available[0]?.id || 'all');
+  const subLabel = getShopSubcategoryHelpLabel(categoryId, resolvedSubcategory);
+
+  if (!shopOpen) {
+    return {
+      text:'Сначала нажмите «Магазин».',
+      targetGetter:() => document.getElementById('shop-main-btn')
+    };
+  }
+
+  if (activeCat !== categoryId) {
+    return {
+      text:'Слева выберите раздел «' + categoryLabel + '».',
+      targetGetter:() => document.querySelector(`#cat-tabs [data-category-id="${categoryId}"]`)
+    };
+  }
+
+  const currentSubcategory = getActiveShopSubcategory();
+  if (shopMenuView === 'items' && currentSubcategory !== resolvedSubcategory) {
+    return {
+      text:'Вернитесь к подразделам кнопкой ←, затем выберите «' + subLabel + '».',
+      targetGetter:() => document.getElementById('shop-content-back')
+    };
+  }
+
+  if (shopMenuView !== 'items') {
+    return {
+      text:'Справа выберите подраздел «' + subLabel + '».',
+      targetGetter:() => document.querySelector(`#subcat-tabs [data-subcategory-id="${resolvedSubcategory}"]`)
+    };
+  }
+
+  return {
+    text:itemText || 'Теперь выберите нужный предмет.',
+    targetGetter:() => (typeof itemGetter === 'function' ? itemGetter() : getFirstVisibleProductCard())
+  };
+}
+
+function showShopQuestPath(quest, categoryId, subcategoryId = 'all', itemGetter = null, itemText = '', duration = 22000) {
+  const state = getShopQuestNavigationState(categoryId, subcategoryId, itemGetter, itemText);
+  showQuestHelpTarget(quest.title, state.text, state.targetGetter, duration, quest.id);
+}
+
+function getFirstPurchasableShopRow(selector = '#products-list .prod-row') {
+  return [...document.querySelectorAll(selector)].find(row => !row.classList.contains('cant')) || null;
+}
+
+function getRegularDecorCard(wallOnly = false) {
+  const rows = [...document.querySelectorAll('#products-list .prod-row[data-decor-variant-id]')];
+  return rows.find(row => {
+    if (row.classList.contains('cant') || row.dataset.facilityType) return false;
+    const def = getDecorDef(row.dataset.decorVariantId);
+    if (!def || def.special || def.facility) return false;
+    return wallOnly ? def.place === 'wall' : true;
+  }) || null;
+}
+
+function getSurfaceHelpCard(kind) {
+  const rows = [...document.querySelectorAll(`#products-list .prod-row[data-surface-kind="${kind}"]`)];
+  return rows.find(row => !row.classList.contains('cant') && !String(row.textContent || '').includes('Выбрано'))
+    || rows.find(row => !row.classList.contains('cant'))
+    || null;
+}
+
+function getFirstAvailableProductHelpCard(excludedIds = []) {
+  const excluded = new Set(excludedIds || []);
+  return [...document.querySelectorAll('#products-list .prod-row[data-product-id]')]
+    .find(row => !row.classList.contains('cant') && !excluded.has(row.dataset.productId)) || null;
+}
+
+function getEditableShelfHelpIndex() {
+  return SHELF_POSITIONS.findIndex((_, i) => !isShelfLockedForEditing(i));
+}
+
+function getEditorObjectHelpTarget(type) {
+  if (type === 'shelf') {
+    let idx = getEditableShelfHelpIndex();
+    if (idx < 0 && SHELF_POSITIONS.length) idx = 0;
+    const shelf = idx >= 0 ? shelfMeshes[idx] : null;
+    return makeTutorialObjectTarget(shelf && (shelf.group || shelf.stand || shelf.base), 16);
+  }
+  if (type === 'cash') {
+    const cash = cashRegisters[0];
+    return makeTutorialObjectTarget(cash && (cash.hitZone || cash.group), 14);
+  }
+  if (type === 'decor') {
+    const decor = decorations.find(item => {
+      const def = getDecorDef(item.type);
+      return def && !def.special && !def.facility;
+    });
+    return makeTutorialObjectTarget(decor && (decor.hitZone || decor.group), 14);
+  }
+  return null;
+}
+
+function showEditorActionQuestPath(quest, objectType, actionId, selectText, actionText) {
+  // Кассу нельзя редактировать, пока в ней лежит прибыль. Раньше подсказка
+  // вела к заблокированной кассе и игрок попадал в тупик.
+  if (objectType === 'cash' && isCashRegisterLockedForEditing()) {
+    if (editorMode) {
+      showQuestHelpTarget(quest.title, 'Сначала выйдите из редактора и заберите накопленную прибыль с кассы.', () => document.getElementById('editor-toggle-btn'), 22000, quest.id);
+    } else {
+      showCashCollectionQuestPath(quest);
+    }
+    return;
+  }
+
+  // Витрину с товаром или мусором нельзя двигать/поворачивать/убирать.
+  // Не отправляем игрока на неработающую кнопку редактора.
+  if (objectType === 'shelf' && getEditableShelfHelpIndex() < 0) {
+    if (editorMode) {
+      showQuestHelpTarget(quest.title, 'Сейчас все витрины заняты. Сначала выйдите из редактора, чтобы освободить одну из них.', () => document.getElementById('editor-toggle-btn'), 22000, quest.id);
+      return;
+    }
+    const soldOutIdx = (G.slots || []).findIndex(item => item && (item.soldOut || item.qty <= 0));
+    const fallbackIdx = soldOutIdx >= 0 ? soldOutIdx : (SHELF_POSITIONS.length ? 0 : -1);
+    const targetGetter = () => {
+      const shelf = fallbackIdx >= 0 ? shelfMeshes[fallbackIdx] : null;
+      return makeTutorialObjectTarget(shelf && (shelf.group || shelf.stand || shelf.base), 16);
+    };
+    const message = soldOutIdx >= 0
+      ? 'Сначала уберите мусор с распроданной витрины. После уборки она станет доступна для редактора.'
+      : 'Для этого действия нужна пустая витрина. Дождитесь распродажи товара, затем освободите витрину.';
+    showQuestHelpTarget(quest.title, message, targetGetter, 30000, quest.id);
+    return;
+  }
+
+  if (actionId === 'move' && editorObjectMoveMode && editorMoveSelection?.type === objectType) {
+    let target = null;
+    if (objectType === 'shelf') {
+      const shelf = shelfMeshes[editorMoveSelection.index];
+      target = makeTutorialObjectTarget(shelf && (shelf.group || shelf.stand || shelf.base), 18);
+    }
+    showQuestHelpTarget(quest.title, 'Перетащите объект на новое свободное место и отпустите.', () => target || document.getElementById('canvas-wrap'), 30000, quest.id);
+    return;
+  }
+
+  if (!editorMode) {
+    showQuestHelpTarget(quest.title, 'Сначала откройте редактор.', () => document.getElementById('editor-toggle-btn'), 22000, quest.id);
+    return;
+  }
+
+  if (!editorSelection || editorSelection.type !== objectType) {
+    showQuestHelpTarget(quest.title, selectText, () => getEditorObjectHelpTarget(objectType), 30000, quest.id);
+    return;
+  }
+
+  showQuestHelpTarget(quest.title, actionText, () => document.getElementById('editor-action-' + actionId), 22000, quest.id);
+}
+
+function showWarehouseProductQuestPath(quest, productTab, finalText, finalTargetGetter, duration = 30000) {
+  const warehouseOpen = document.getElementById('warehouseModal')?.classList.contains('show');
+  if (!warehouseOpen) {
+    showQuestHelpTarget(quest.title, 'Откройте склад.', () => document.getElementById('warehouse-main-btn'), duration, quest.id);
+    return;
+  }
+  if (warehouseTab !== 'products') {
+    showQuestHelpTarget(quest.title, 'Выберите раздел «Товары».', () => [...document.querySelectorAll('#warehouse-tabs button')].find(btn => btn.textContent.includes('Товары')), duration, quest.id);
+    return;
+  }
+  if (warehouseProductTab !== productTab) {
+    const label = productTab === 'stock' ? 'На складе' : 'В пути';
+    showQuestHelpTarget(quest.title, 'Перейдите во вкладку «' + label + '».', () => document.querySelector(`#warehouse-product-tabs [data-product-tab="${productTab}"]`), duration, quest.id);
+    return;
+  }
+  showQuestHelpTarget(quest.title, finalText, finalTargetGetter, duration, quest.id);
+}
+
+function showWarehouseEquipmentQuestPath(quest, kind, type = null, finalText = 'Нажмите «Поставить».') {
+  const warehouseOpen = document.getElementById('warehouseModal')?.classList.contains('show');
+  if (!warehouseOpen) {
+    showQuestHelpTarget(quest.title, 'Откройте склад.', () => document.getElementById('warehouse-main-btn'), 30000, quest.id);
+    return;
+  }
+  if (warehouseTab !== 'objects') {
+    showQuestHelpTarget(quest.title, 'Перейдите в раздел «Оборудование».', () => [...document.querySelectorAll('#warehouse-tabs button')].find(btn => btn.textContent.includes('Оборудование')), 30000, quest.id);
+    return;
+  }
+  const selector = type
+    ? `#warehouse-list .prod-row[data-equipment-kind="${kind}"][data-equipment-type="${type}"] .btn-buy`
+    : `#warehouse-list .prod-row[data-equipment-kind="${kind}"] .btn-buy`;
+  showQuestHelpTarget(quest.title, finalText, () => document.querySelector(selector), 30000, quest.id);
+}
+
+function showCashCollectionQuestPath(quest) {
+  const popup = document.getElementById('cash-profit-popup');
+  if (popup?.classList.contains('show')) {
+    showQuestHelpTarget(quest.title, 'Нажмите «Забрать прибыль 💰».', () => document.getElementById('cash-profit-collect-btn'), 22000, quest.id);
+    return;
+  }
+  const cash = cashRegisters[0];
+  showQuestHelpTarget(quest.title, 'Нажмите на кассу, над ней появится небольшая кнопка сбора прибыли.', () => makeTutorialObjectTarget(cash && (cash.hitZone || cash.group), 14), 30000, quest.id);
+}
+
+function showProductOrderQuestPath(quest, excludedIds = []) {
+  const excluded = new Set(excludedIds || []);
+  const itemOpen = document.getElementById('itemModal')?.classList.contains('show');
+  if (itemOpen) {
+    const product = PRODUCTS.find(item => item.id === activeProductId) || null;
+    if (product && excluded.has(product.id)) {
+      showQuestHelpTarget(quest.title, 'Этот вид товара уже засчитан. Вернитесь назад и выберите другой товар.', () => document.querySelector('#itemModalBox .modal-close, #itemModalBox .btn-back'), 22000, quest.id);
+      return;
+    }
+    if (product && G.money < product.cost) {
+      showQuestHelpTarget(quest.title, 'Сейчас не хватает денег на этот товар. Вернитесь в магазин после следующих продаж.', () => document.querySelector('#itemModalBox .modal-close, #itemModalBox .btn-back'), 22000, quest.id);
+      return;
+    }
+    showQuestHelpTarget(quest.title, 'Оставьте нужное количество и нажмите кнопку покупки.', () => document.querySelector('#itemModalBox .btn-buy'), 22000, quest.id);
+    return;
+  }
+  showShopQuestPath(
+    quest,
+    'products',
+    'all',
+    () => getFirstAvailableProductHelpCard(excludedIds),
+    'Выберите доступный товар.',
+    22000
+  );
+}
+
+function getSellingShelfHelpTarget(excludedProductIds = []) {
+  const excluded = new Set(excludedProductIds || []);
+  const idx = (G.slots || []).findIndex(item => item && item.qty > 0 && !item.soldOut && item.nextSaleAt && item.product?.id && !excluded.has(item.product.id));
+  if (idx < 0) return null;
+  const shelf = shelfMeshes[idx];
+  return makeTutorialObjectTarget(shelf && (shelf.group || shelf.stand || shelf.base), 16);
+}
+
+function getStoredProductIdForSales(excludedProductIds = []) {
+  const excluded = new Set(excludedProductIds || []);
+  return Object.entries(G.storage || {}).find(([productId, qty]) => Number(qty) > 0 && !excluded.has(productId))?.[0] || null;
+}
+
+function showSalesQuestPath(quest, distinctOnly = false) {
+  const excluded = distinctOnly ? Array.from(new Set(G.soldProductIds || [])) : [];
+  const sellingTarget = getSellingShelfHelpTarget(excluded);
+  if (sellingTarget) {
+    showQuestHelpTarget(
+      quest.title,
+      distinctOnly ? 'На этой витрине уже продаётся новый для квеста вид товара. Дождитесь следующей продажи.' : 'На этой витрине идёт продажа. Дождитесь следующей продажи товара.',
+      () => getSellingShelfHelpTarget(excluded),
+      180000,
+      quest.id
+    );
+    return;
+  }
+
+  if (placingMode && pendingProduct && (!distinctOnly || !excluded.includes(pendingProduct.id))) {
+    showQuestHelpTarget(quest.title, 'Поставьте товар на подходящую свободную витрину, чтобы началась продажа.', () => getProductPlacementHelpTarget(pendingProduct), 30000, quest.id);
+    return;
+  }
+
+  const matchingDelivery = (G.deliveries || []).find(delivery => delivery && delivery.readyAt > Date.now() && (!distinctOnly || !excluded.includes(delivery.productId)));
+  if (matchingDelivery) {
+    showWarehouseProductQuestPath(
+      quest,
+      'transit',
+      'Товар уже заказан. Дождитесь доставки, затем выставьте его на витрину.',
+      () => document.querySelector(`#warehouse-list .prod-row[data-delivery-id="${matchingDelivery.id}"]`),
+      90000
+    );
+    return;
+  }
+
+  const storedProductId = getStoredProductIdForSales(excluded);
+  if (storedProductId) {
+    showWarehouseProductQuestPath(
+      quest,
+      'stock',
+      'Нажмите «Поставить» у товара, затем выберите подходящую свободную витрину.',
+      () => document.querySelector(`#warehouse-list .prod-row[data-product-id="${storedProductId}"] .btn-buy`),
+      30000
+    );
+    return;
+  }
+
+  showProductOrderQuestPath(quest, excluded);
+}
+
 function showQuestHelp(questId) {
   const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
   if (!quest || !isQuestUnlocked(quest)) return;
@@ -3612,114 +3938,205 @@ function showQuestHelp(questId) {
   const id = quest.id;
   const eventName = quest.event || '';
   const metric = quest.metric || '';
-  const showStep = (title, helpText, targetGetter, duration = 15000) =>
-    showQuestHelpTarget(title, helpText, targetGetter, duration, quest.id);
+  const state = questState[id] || { progress:0 };
 
   if (metric === 'level' || id.startsWith('reach_level_')) {
-    showStep(quest.title, 'Получайте XP за продажи и задания. Следите за шкалой уровня здесь.', () => document.getElementById('hud-level-box'));
+    showQuestHelpTarget(quest.title, 'Получайте XP за продажи и задания. Следите за шкалой уровня здесь.', () => document.getElementById('hud-level-box'), 22000, quest.id);
     return;
   }
+
   if (metric === 'rating' || id.includes('rating')) {
-    showStep(quest.title, 'Нажмите сюда, чтобы открыть рейтинг и посмотреть, что влияет на него.', () => document.getElementById('hud-level-box'));
+    showQuestHelpTarget(quest.title, 'Нажмите на панель уровня, чтобы открыть рейтинг и посмотреть, что на него влияет.', () => document.getElementById('hud-level-box'), 22000, quest.id);
     return;
   }
-  if (metric === 'staff_cleaner' || metric === 'extra_sellers' || id.startsWith('hire_')) {
-    openShopQuestHelp('staff');
-    showStep(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="staff"]') || getFirstVisibleProductCard());
-    return;
-  }
-  if (metric === 'shelf_count' || metric === 'different_stocked_shelves' || id.includes('shelf')) {
-    if (id.includes('move') || id.includes('rotate') || id.includes('storage_cycle')) {
-      showStep(quest.title, 'Откройте редактор, затем выберите витрину и нужное действие.', () => document.getElementById('editor-toggle-btn'));
-    } else {
-      openShopQuestHelp('shelves');
-      showStep(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="shelves"]') || getFirstVisibleProductCard());
-    }
-    return;
-  }
-  if (id.includes('cash') || eventName === 'cash_rotated') {
-    if (eventName === 'cash_rotated') {
-      showStep(quest.title, 'Откройте редактор, выберите кассу и нажмите кнопку поворота.', () => document.getElementById('editor-toggle-btn'));
-    } else {
-      openShopQuestHelp('cash');
-      showStep(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="cash"]') || getFirstVisibleProductCard());
-    }
-    return;
-  }
-  if (metric === 'facility_count' || id === 'install_facility') {
-    openShopQuestHelp('facilities');
-    showStep(quest.title, text, () => document.querySelector('#cat-tabs [data-category-id="facilities"]') || getFirstVisibleProductCard());
-    return;
-  }
-  if (eventName === 'wall_color_changed' || id.includes('wall_color')) {
-    openShopQuestHelp('design', 'ordinary');
-    showStep(quest.title, text, () => findShopProductCardByText('Стены ·') || getFirstVisibleProductCard());
-    return;
-  }
-  if (eventName === 'floor_color_changed' || id.includes('floor_color')) {
-    openShopQuestHelp('design', 'ordinary');
-    showStep(quest.title, text, () => findShopProductCardByText('Пол ·') || getFirstVisibleProductCard());
-    return;
-  }
-  if (metric === 'regular_decor_count' || eventName.includes('decor') || id.includes('decor')) {
-    openShopQuestHelp('design', 'ordinary');
-    showStep(quest.title, text, () => findShopProductCardByText('лампа') || findShopProductCardByText('картина') || findShopProductCardByText('диван') || getFirstVisibleProductCard());
-    return;
-  }
-  if (metric === 'total_earned' || eventName === 'revenue_collected' || id.includes('earn_')) {
-    showStep(quest.title, 'После продаж нажмите на кассу в магазине и заберите накопленную выручку.', () => {
-      const cash = cashRegisters?.[0];
-      return makeTutorialObjectTarget(cash && (cash.hitZone || cash.group), 14);
-    });
-    return;
-  }
-  if (eventName === 'product_ordered') {
-    const shopOpen = document.getElementById('shopModal')?.classList.contains('show');
-    const itemOpen = document.getElementById('itemModal')?.classList.contains('show');
-    if (!shopOpen && !itemOpen) {
-      showStep(quest.title, 'Сначала откройте магазин.', () => document.getElementById('shop-main-btn'));
+
+  // Двухэтапные квесты склада должны учитывать уже выполненную половину задания.
+  if (id === 'decor_storage_cycle') {
+    if ((state.progress || 0) < 1) {
+      if (!decorations.some(item => { const def = getDecorDef(item.type); return def && !def.special && !def.facility; })) {
+        showShopQuestPath(quest, 'design', 'ordinary', () => getRegularDecorCard(false), 'Сначала установите обычный предмет декора.');
+        return;
+      }
+      showEditorActionQuestPath(quest, 'decor', 'store', 'Выберите установленный декор.', 'Нажмите «На склад» 📦.');
       return;
     }
-    if (shopOpen && activeCat !== 'products') {
-      showStep(quest.title, 'Откройте вкладку «Товары».', () => document.querySelector('#cat-tabs [data-category-id="products"]'));
+    const storedType = state.meta?.storedType || null;
+    if (decorPlaceMode && pendingDecorStorageKey) {
+      showQuestHelpTarget(quest.title, 'Выберите подходящее место и верните декор в зал.', () => document.getElementById('canvas-wrap'), 30000, quest.id);
       return;
     }
-    if (!itemOpen) {
-      showStep(quest.title, 'Теперь выберите любой доступный товар.', () => getFirstVisibleProductCard());
+    showWarehouseEquipmentQuestPath(quest, 'decor', storedType, 'Нажмите «Поставить», затем выберите место в магазине.');
+    return;
+  }
+
+  if (id === 'shelf_storage_cycle') {
+    if ((state.progress || 0) < 1) {
+      showEditorActionQuestPath(quest, 'shelf', 'store', 'Выберите пустую витрину.', 'Нажмите «На склад» 📦.');
       return;
     }
-    showStep(quest.title, 'Укажите количество и нажмите кнопку покупки.', () => document.querySelector('#itemModalBox .btn-buy'));
+    showWarehouseEquipmentQuestPath(quest, 'shelf', state.meta?.storedType || null, 'Нажмите «Поставить», чтобы вернуть витрину в магазин.');
     return;
   }
-  if (eventName === 'delivery_arrived') {
-    openWarehouseModal();
-    warehouseTab = 'products'; warehouseProductTab = 'transit'; renderWarehouseModal();
-    showStep(quest.title, 'Следите за таймером доставки во вкладке «В пути».', () => document.querySelector('#warehouse-product-tabs [data-product-tab="transit"]') || document.getElementById('warehouse-main-btn'));
+
+  if (id === 'sell_one_decor') {
+    if (!decorations.some(item => { const def = getDecorDef(item.type); return def && !def.special && !def.facility; })) {
+      showShopQuestPath(quest, 'design', 'ordinary', () => getRegularDecorCard(false), 'Сначала установите обычный предмет декора.');
+      return;
+    }
+    showEditorActionQuestPath(quest, 'decor', 'sell', 'Выберите установленный декор.', 'Нажмите «Продать» 💰.');
     return;
   }
-  if (eventName === 'product_stocked') {
-    openWarehouseModal();
-    warehouseTab = 'products'; warehouseProductTab = 'stock'; renderWarehouseModal();
-    showStep(quest.title, 'Нажмите «Поставить» у товара на складе, затем выберите подходящую витрину.', () => [...document.querySelectorAll('#warehouse-list button')].find(btn => btn.textContent.includes('Поставить')) || document.querySelector('#warehouse-product-tabs [data-product-tab="stock"]'));
+
+  if (id === 'move_shelf') {
+    showEditorActionQuestPath(quest, 'shelf', 'move', 'Выберите пустую витрину, которую хотите переместить.', 'Нажмите «Переместить» ↔️.');
     return;
   }
+
+  if (id === 'rotate_shelf') {
+    showEditorActionQuestPath(quest, 'shelf', 'rotate', 'Выберите пустую витрину.', 'Нажмите «Повернуть» 🔄.');
+    return;
+  }
+
+  if (id === 'rotate_cash' || eventName === 'cash_rotated') {
+    showEditorActionQuestPath(quest, 'cash', 'rotate', 'Выберите кассу.', 'Нажмите «Повернуть» 🔄.');
+    return;
+  }
+
   if (eventName === 'editor_opened') {
-    showStep(quest.title, text, () => document.getElementById('editor-toggle-btn'));
+    showQuestHelpTarget(quest.title, text, () => document.getElementById('editor-toggle-btn'), 22000, quest.id);
     return;
   }
+
+  if (metric === 'staff_cleaner' || id === 'hire_cleaner') {
+    showShopQuestPath(quest, 'staff', 'all', () => document.querySelector('#products-list .prod-row[data-worker-type="cleaner"]'), 'Выберите уборщика и наймите его.');
+    return;
+  }
+
+  if (metric === 'extra_sellers' || id === 'hire_extra_seller') {
+    showShopQuestPath(quest, 'staff', 'all', () => document.querySelector('#products-list .prod-row[data-worker-type="seller"]'), 'Выберите дополнительного продавца и наймите его.');
+    return;
+  }
+
+  if (id === 'buy_new_shelf') {
+    const variant = getLevelFiveQuestShelfVariant();
+    showShopQuestPath(quest, 'shelves', 'all', () => variant ? document.querySelector(`#products-list [data-shelf-variant-id="${variant.id}"]`) : getFirstPurchasableShopRow(), 'Выберите именно новый вид витрины, указанный в квесте.');
+    return;
+  }
+
+  if (metric === 'shelf_count' || id === 'install_second_shelf') {
+    showShopQuestPath(quest, 'shelves', 'all', () => getFirstPurchasableShopRow('#products-list .prod-row[data-shelf-variant-id]'), 'Выберите доступную витрину и установите её.');
+    return;
+  }
+
+  if (metric === 'different_stocked_shelves' || id === 'stock_two_product_types') {
+    const stockedIds = (G.slots || []).filter(item => item?.product?.id && item.qty > 0 && !item.soldOut).map(item => item.product.id);
+    const hasStorage = Object.values(G.storage || {}).some(qty => Number(qty) > 0);
+    if (placingMode && pendingProduct) {
+      showQuestHelpTarget(quest.title, 'Поставьте товар на другую подходящую свободную витрину.', () => getProductPlacementHelpTarget(pendingProduct), 30000, quest.id);
+    } else if (hasStorage) {
+      showWarehouseProductQuestPath(quest, 'stock', 'Нажмите «Поставить» у товара, которого ещё нет на другой витрине.', () => [...document.querySelectorAll('#warehouse-list .prod-row')].find(row => {
+        const name = row.querySelector('.pr-name')?.textContent || '';
+        return !stockedIds.some(productId => name.includes(PRODUCTS.find(p => p.id === productId)?.name || '___'));
+      })?.querySelector('.btn-buy') || [...document.querySelectorAll('#warehouse-list .btn-buy')].find(btn => btn.textContent.includes('Поставить')));
+    } else {
+      showProductOrderQuestPath(quest, stockedIds);
+    }
+    return;
+  }
+
+  if (metric === 'facility_count' || id === 'install_facility') {
+    const facility = getStoreFacilityDef(G.shopType);
+    if (decorPlaceMode && pendingDecorId && getDecorDef(pendingDecorId)?.facility) {
+      showQuestHelpTarget(quest.title, 'Выберите свободное место внутри магазина и установите объект.', () => document.getElementById('canvas-wrap'), 30000, quest.id);
+      return;
+    }
+    showShopQuestPath(quest, 'facilities', 'all', () => facility ? document.querySelector(`#products-list [data-facility-type="${facility.id}"]`) : getFirstPurchasableShopRow(), text);
+    return;
+  }
+
+  if (eventName === 'wall_color_changed' || id.includes('wall_color')) {
+    showShopQuestPath(quest, 'design', 'ordinary', () => getSurfaceHelpCard('wall'), 'Выберите доступный цвет стен, который ещё не используется.');
+    return;
+  }
+
+  if (eventName === 'floor_color_changed' || id.includes('floor_color')) {
+    showShopQuestPath(quest, 'design', 'ordinary', () => getSurfaceHelpCard('floor'), 'Выберите доступный цвет пола, который ещё не используется.');
+    return;
+  }
+
+  if (id === 'buy_wall_decor') {
+    if (decorPlaceMode && pendingDecorId && getDecorDef(pendingDecorId)?.place === 'wall') {
+      showQuestHelpTarget(quest.title, 'Нажмите на свободное место на стене и повесьте декор.', () => document.getElementById('canvas-wrap'), 30000, quest.id);
+      return;
+    }
+    showShopQuestPath(quest, 'design', 'ordinary', () => getRegularDecorCard(true), 'Выберите настенный декор.');
+    return;
+  }
+
+  if (metric === 'regular_decor_count' || id === 'buy_first_decor' || eventName === 'decor_purchased') {
+    if (decorPlaceMode && pendingDecorId) {
+      showQuestHelpTarget(quest.title, 'Выберите подходящее место и установите предмет.', () => document.getElementById('canvas-wrap'), 30000, quest.id);
+      return;
+    }
+    showShopQuestPath(quest, 'design', 'ordinary', () => getRegularDecorCard(false), 'Выберите обычный предмет интерьера и установите его.');
+    return;
+  }
+
+  if (eventName === 'revenue_collected' || id === 'first_collection') {
+    showCashCollectionQuestPath(quest);
+    return;
+  }
+
+  if (metric === 'total_earned' || id.includes('earn_')) {
+    if ((G.pendingRevenue || 0) > 0) showCashCollectionQuestPath(quest);
+    else showSalesQuestPath(quest, false);
+    return;
+  }
+
+  if (eventName === 'product_ordered') {
+    showProductOrderQuestPath(quest);
+    return;
+  }
+
+  if (eventName === 'delivery_arrived') {
+    showWarehouseProductQuestPath(
+      quest,
+      'transit',
+      'Следите за таймером доставки. Ускорение за 1💎 необязательно.',
+      () => document.querySelector('#warehouse-list .prod-row[data-delivery-id]') || document.querySelector('#warehouse-product-tabs [data-product-tab="transit"]'),
+      90000
+    );
+    return;
+  }
+
+  if (eventName === 'product_stocked') {
+    if (placingMode && pendingProduct) {
+      closeWarehouseModal();
+      showQuestHelpTarget('Выберите свободную витрину', 'Нажмите на свободную подходящую витрину внутри магазина.', () => getProductPlacementHelpTarget(pendingProduct), 30000, quest.id);
+      return;
+    }
+    showWarehouseProductQuestPath(
+      quest,
+      'stock',
+      'Нажмите «Поставить» у товара. Склад закроется, затем выберите свободную подходящую витрину.',
+      () => [...document.querySelectorAll('#warehouse-list button')].find(btn => btn.textContent.includes('Поставить')),
+      30000
+    );
+    return;
+  }
+
   if (metric === 'total_sold' || metric === 'distinct_products_sold' || eventName === 'product_sold') {
-    showStep(quest.title, 'Закажите товар, поставьте его на витрину и дождитесь продажи покупателю.', () => document.getElementById('shop-main-btn'));
+    showSalesQuestPath(quest, metric === 'distinct_products_sold');
     return;
   }
+
   if (id.includes('expansion')) {
-    openShopQuestHelp('design', 'expansion');
-    showStep(quest.title, text, () => findShopProductCardByText('Увеличить площадь магазина') || getFirstVisibleProductCard());
+    showShopQuestPath(quest, 'design', 'expansion', () => findShopProductCardByText('Увеличить площадь магазина') || getFirstVisibleProductCard(), 'Выберите расширение магазина.');
     return;
   }
 
-  showStep(quest.title, text, () => document.getElementById('shop-main-btn'));
+  showQuestHelpTarget(quest.title, text, () => document.getElementById('shop-main-btn'), 22000, quest.id);
 }
-
 
 function getQuestHelpTargetRectSafe() {
   if (!activeQuestHelpTargetGetter) return null;
@@ -4017,6 +4434,28 @@ function getTutorialProductTarget() {
   return document.querySelector('#products-list .prod-row:not(.cant), #products-list .prod-card:not(.cant)');
 }
 
+// Возвращает свободную подходящую витрину для текущего товара.
+// Используется и начальным обучением, и кнопкой «Показать» у квеста,
+// чтобы после нажатия «Поставить» подсказка переходила в игровой зал,
+// а не открывала склад повторно.
+function getProductPlacementHelpTarget(product = pendingProduct) {
+  if (!product) return null;
+
+  let shelfIndex = -1;
+  for (let i = 0; i < SHELF_POSITIONS.length; i++) {
+    const slot = G.slots[i];
+    const available = !slot || slot.qty <= 0 || slot.soldOut || slot.product?.id === product.id;
+    if (available && canShelfAcceptProduct(i, product)) {
+      shelfIndex = i;
+      break;
+    }
+  }
+
+  if (shelfIndex < 0) return null;
+  const shelf = shelfMeshes[shelfIndex];
+  return makeTutorialObjectTarget(shelf && (shelf.group || shelf.stand || shelf.base), 16);
+}
+
 // Новое меню обучается пошагово: основная категория слева → карточка подраздела → предмет.
 // При первом прохождении мы не перескакиваем через эти действия автоматически.
 // В повторном обучении нужный экран можно открыть сразу, потому что оно только демонстрационное.
@@ -4130,8 +4569,7 @@ const TUTORIAL_STEPS = [
     } },
   { id:'stock', title:'Перейдите на склад', text:'Товар доставлен. Откройте склад, перейдите во вкладку «На складе», нажмите «Поставить», затем выберите стартовую витрину.', event:'product_stocked', target:() => {
       if (placingMode) {
-        const shelf = shelfMeshes[0];
-        return makeTutorialObjectTarget(shelf && (shelf.group || shelf.stand || shelf.base), 14);
+        return getProductPlacementHelpTarget(pendingProduct);
       }
 
       const warehouseOpen = document.getElementById('warehouseModal')?.classList.contains('show');
@@ -4543,7 +4981,9 @@ function renderTutorialStep() {
   const actionCount = TUTORIAL_STEPS.length - 2;
   const visibleStep = Math.max(0, Math.min(actionCount, tutorialStepIndex));
   label.textContent = step.id === 'welcome' ? 'Короткое обучение' : step.id === 'complete' ? 'Готово' : 'Шаг ' + visibleStep + ' из ' + actionCount;
-  title.textContent = step.title;
+  title.textContent = step.id === 'stock' && placingMode
+    ? 'Выберите свободную витрину'
+    : step.title;
   const replayStepText = getTutorialReplayStepText(step);
   if (replayStepText) {
     body.textContent = replayStepText;
@@ -4576,11 +5016,13 @@ function renderTutorialStep() {
   } else if (step.id === 'delivery' && document.getElementById('warehouseModal')?.classList.contains('show')) {
     body.textContent = 'Перейдите во вкладку «В пути», чтобы увидеть таймер доставки.';
   } else if (step.id === 'stock' && placingMode) {
-    body.textContent = 'Теперь нажмите прямо на стартовую витрину внутри магазина.';
+    body.textContent = 'Склад закрыт. Нажмите на свободную подходящую витрину внутри магазина.';
   } else if (step.id === 'stock' && document.getElementById('warehouseModal')?.classList.contains('show') && warehouseProductTab === 'stock') {
     body.textContent = 'Нажмите «Поставить» на карточке доставленного товара.';
   } else if (step.id === 'stock' && document.getElementById('warehouseModal')?.classList.contains('show')) {
     body.textContent = 'Товар уже доставлен. Перейдите во вкладку «На складе».';
+  } else if (step.id === 'collect' && document.getElementById('cash-profit-popup')?.classList.contains('show')) {
+    body.textContent = 'Теперь нажмите «Забрать прибыль 💰» в небольшом окне над кассой.';
   } else if (step.id === 'cleanup' && cleanupTask && cleanupTask.slotIdx === 0) {
     body.textContent = 'Продавец уже убирает мусор. Подождите немного.';
   } else {
@@ -5150,10 +5592,15 @@ function shopLimit(margin = 0) {
 // сколько опыта нужно заработать от текущего уровня до следующего.
 const MAX_LEVEL = 100;
 const EARLY_LEVEL_XP = {
-  2: 300,
-  3: 350,
-  4: 450,
-  5: 600,
+  2: 450,
+  3: 650,
+  4: 1400,
+  5: 1600,
+  6: 1900,
+  7: 2200,
+  8: 2600,
+  9: 3000,
+  10: 3600,
 };
 
 function roundXP(value) {
@@ -5165,8 +5612,8 @@ function getXPNeededForLevel(level) {
   if (level <= 1) return 0;
   if (EARLY_LEVEL_XP[level]) return EARLY_LEVEL_XP[level];
 
-  // Уровни 6–10: плавное повышение сложности.
-  if (level <= 10) return 850 + (level - 6) * 250;
+  // Уровни 2–10 заданы явно выше, чтобы первые 10 уровней
+  // занимали около 5 часов активной игры с учётом квестов и продаж.
 
   // Уровни 11–20: рост заметно быстрее.
   if (level <= 20) return 2400 + (level - 11) * 450;
@@ -5248,10 +5695,11 @@ const PRODUCTS = [
 ];
 
 
-// Баланс стартового магазина электроники повторяет первые товары одежды
-// на тех же этапах прогрессии. Это применяется только если электроника
-// выбрана как первый магазин. Электроника на втором этаже сохраняет
-// собственные исходные цены и XP.
+// Баланс стартового магазина электроники повторяет цены первых товаров одежды
+// на тех же этапах прогрессии, но сохраняет собственный XP электроники,
+// рассчитанный под более длинное время продажи. Это применяется только если
+// электроника выбрана как первый магазин. Электроника на втором этаже также
+// сохраняет собственные исходные цены и XP.
 const ORIGINAL_PRODUCT_ECONOMY = Object.fromEntries(
   PRODUCTS.map(product => [product.id, {
     cost: product.cost,
@@ -5290,7 +5738,8 @@ function configureStartingShopProductBalance(startingShopType) {
     if (!electronicsProduct || !clothingProduct) return;
     electronicsProduct.cost = clothingProduct.cost;
     electronicsProduct.sell = clothingProduct.sell;
-    electronicsProduct.xp = clothingProduct.xp;
+    // XP не копируем: у техники более длинные таймеры продажи,
+    // поэтому остаётся её собственный XP из ORIGINAL_PRODUCT_ECONOMY.
   });
 }
 
@@ -11920,14 +12369,32 @@ function getLevelUnlockNotificationItems(level) {
   return items;
 }
 
+const EARLY_LEVEL_MONEY_REWARDS = {
+  2: 700,
+  3: 500,
+  4: 650,
+  5: 1000,
+  6: 700,
+  7: 850,
+  8: 1200,
+  9: 1000,
+  10: 5000,
+};
+
 function getLevelReward(level) {
   const safeLevel = Math.max(2, Math.min(MAX_LEVEL, Math.floor(Number(level) || 2)));
   const isDecadeLevel = safeLevel % 10 === 0;
 
-  // На каждом 10-м уровне действует отдельная крупная денежная награда.
-  const money = isDecadeLevel
-    ? (safeLevel / 10) * 10000
-    : 1500 + Math.floor((safeLevel - 2) / 3) * 250;
+  // Для 2–10 уровней денежные награды сбалансированы вручную:
+  // обычные уровни дают поддержку экономике, ключевые 5/8/10 — заметный бонус.
+  // После 10 уровня сохраняем прежнюю формулу, пока поздняя прогрессия
+  // не будет перебалансирована отдельно.
+  const earlyMoney = EARLY_LEVEL_MONEY_REWARDS[safeLevel];
+  const money = Number.isFinite(earlyMoney)
+    ? earlyMoney
+    : (isDecadeLevel
+        ? (safeLevel / 10) * 10000
+        : 1500 + Math.floor((safeLevel - 2) / 3) * 250);
 
   return {
     money:Math.max(0, Math.round(money)),
@@ -12950,8 +13417,8 @@ const CATEGORIES = [
 
 const CLOTHING_DEPARTMENT_SUBCATEGORIES = Object.freeze([
   { id:'all', name:'Все' },
-  { id:'male', name:'👨 Мужской отдел' },
-  { id:'female', name:'👩 Женский отдел' },
+  { id:'male', name:'👨 Мужской отдел', emptyDepartment:true },
+  { id:'female', name:'👩 Женский отдел', emptyDepartment:true },
   { id:'kids', name:'👶 Детский отдел', emptyDepartment:true },
 ]);
 
@@ -13069,6 +13536,7 @@ function renderSubcatTabs() {
       setShopMenuView('items');
       renderSubcatTabs();
       renderProductList();
+      if (tutorialActive) renderTutorialStep();
     };
     tabs.appendChild(t);
   });
@@ -13757,6 +14225,7 @@ function renderCatTabs() {
       renderCatTabs();
       renderSubcatTabs();
       renderProductList();
+      if (tutorialActive) renderTutorialStep();
     };
     tabs.appendChild(t);
   });
@@ -13862,7 +14331,12 @@ function getSurfacePalette(shopType = G.shopType) {
 }
 
 function getSurfaceUnlockLevel(index) {
-  return 1 + Math.max(0, index) * 4;
+  const safeIndex = Math.max(0, Math.floor(Number(index) || 0));
+  if (safeIndex === 0) return 1;
+  // Первый альтернативный цвет открывается на 2 уровне, иначе квесты
+  // «Новый пол» и «Новый интерьер» были физически невыполнимы до 5 уровня.
+  // Дальше снова идём крупными шагами: 5, 9, 13...
+  return safeIndex === 1 ? 2 : 1 + (safeIndex - 1) * 4;
 }
 
 function applyShopTypeDefaultSurfaces(shopType = G.shopType) {
@@ -13954,10 +14428,20 @@ function renderProductList() {
   list.innerHTML = '';
   const subcat = getActiveShopSubcategory();
   const subcatDef = getShopSubcategories(activeCat).find(item => item.id === subcat);
-  const showSubcat = id => activeCat === 'design' ? (subcat === 'ordinary' || subcat === id) : activeCat === id;
-  // Мужской, женский и детский отделы пока подготовлены как пустые разделы.
+  const DESIGN_ORDINARY_SECTIONS = new Set(['walls','floor','innerWalls','decor','windows','doors']);
+  const showSubcat = id => {
+    if (activeCat === 'design') {
+      if (subcat === 'ordinary') return DESIGN_ORDINARY_SECTIONS.has(id);
+      return subcat === id;
+    }
+    return activeCat === id;
+  };
+  // Мужской, женский и детский отделы оборудования пока подготовлены как пустые разделы.
   if (subcatDef?.emptyDepartment) return;
 
+  // «Интерьер» рендерится отдельно. Остальные разделы оборудования
+  // (витрины, кассы, примерочные и персонал) обрабатываются следующим блоком.
+  // Важно не перехватывать их здесь, иначе после выбора «Все ...» экран будет пустым.
   if (activeCat === 'design') {
     const palette = getSurfacePalette(G.shopType);
     const WALL_COLORS = palette.walls;
@@ -13973,6 +14457,8 @@ function renderProductList() {
         const unlocked = (G.level || 1) >= unlockLevel;
         const selected = Number(WALL) === Number(c.hex);
         const el = document.createElement('div');
+        el.dataset.surfaceKind = 'wall';
+        el.dataset.surfaceColor = String(c.hex);
         el.className = 'prod-row' + (unlocked ? '' : ' cant');
         el.innerHTML = `
           <div class="pr-emoji" style="width:38px;height:38px;border-radius:10px;background:#${c.hex.toString(16).padStart(6,'0')};border:2px solid rgba(255,255,255,.55);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></div>
@@ -14003,6 +14489,8 @@ function renderProductList() {
         const unlocked = (G.level || 1) >= unlockLevel;
         const selected = floorMat.color.getHex() === c.hex;
         const el = document.createElement('div');
+        el.dataset.surfaceKind = 'floor';
+        el.dataset.surfaceColor = String(c.hex);
         el.className = 'prod-row' + (unlocked ? '' : ' cant');
         el.innerHTML = `
           <div class="pr-emoji" style="width:38px;height:38px;border-radius:10px;background:#${c.hex.toString(16).padStart(6,'0')};border:2px solid rgba(255,255,255,.55);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></div>
@@ -14049,6 +14537,8 @@ function renderProductList() {
       DECOR_VARIANTS.filter(dv => !dv.special && !dv.facility).forEach(dv => {
         const can = G.money >= DECOR_PRICE;
         const el = document.createElement('div');
+        el.dataset.decorVariantId = dv.id;
+        el.dataset.decorPlace = dv.place || 'floor';
         el.className = 'prod-row' + (can ? '' : ' cant');
         el.innerHTML = `
           <div class="pr-emoji">${dv.emoji}</div>
@@ -14126,6 +14616,8 @@ function renderProductList() {
         else statusText = facility.desc + ' · сейчас доступен 1 объект';
 
         const el = document.createElement('div');
+        el.dataset.decorVariantId = facility.id;
+        el.dataset.facilityType = facility.id;
         el.className = 'prod-row' + (canBuy ? '' : ' cant');
         el.innerHTML = `
           <div class="pr-emoji">${unlocked ? facility.emoji : '🔒'}</div>
@@ -14198,6 +14690,7 @@ function renderProductList() {
         const limitReached = count >= w.limit;
         const can = unlocked && !limitReached && G.money >= WORKER_PRICE;
         const el = document.createElement('div');
+        el.dataset.workerType = w.type;
         el.className = 'prod-row' + (can ? '' : ' cant');
         el.innerHTML = `
           <div class="pr-emoji">${unlocked ? w.emoji : '🔒'}</div>
@@ -14252,6 +14745,7 @@ function renderProductList() {
     const shelfReady = getProductShelfKinds(p).length > 0;
     const can = unlocked && G.money >= p.cost && shelfReady;
     const el = document.createElement('div');
+    el.dataset.productId = p.id;
     el.className = 'prod-row' + (can ? '' : ' cant');
     el.innerHTML = `
       <div class="pr-emoji">${unlocked ? p.emoji : '🔒'}</div>
@@ -16839,7 +17333,8 @@ function openWarehouseModal() {
   renderWarehouseModal();
   document.getElementById('warehouseModal').classList.add('show');
   resetModalViewState('warehouseModal');
-  updateTutorialSpotlight();
+  if (tutorialActive) renderTutorialStep();
+  else updateTutorialSpotlight();
 }
 function closeWarehouseModal() {
   const el = document.getElementById('warehouseModal');
@@ -16960,6 +17455,7 @@ function renderWarehouseModal() {
     const freshnessText = freshnessParts.join(' · ') || '✅ полная цена';
     const row = document.createElement('div');
     row.className = 'prod-row';
+    row.dataset.productId = productId;
     row.innerHTML = `
       <div class="pr-emoji">${p.emoji}</div>
       <div class="pr-info">
@@ -17015,17 +17511,48 @@ function startPlacingFromStorage(productId, event = null) {
   }
 
   const qty = Math.max(1, Math.min(G.storage[productId] || 0, warehousePlaceQty[productId] || 1));
-  if (qty <= 0) return;
+  if (qty <= 0 || (G.storage[productId] || 0) < qty) return;
 
-  // Запускаем размещение на следующем кадре: к этому моменту исходный тап
-  // уже полностью завершён и не может отменить новый режим размещения.
-  requestAnimationFrame(() => {
-    if ((G.storage[productId] || 0) < qty) return;
-    startPlacing(productId, qty, true);
-    renderTutorialStep();
-  });
+  // Закрываем склад сразу в том же обработчике. Защита placementInputGuardUntil
+  // не позволяет этому же нажатию попасть в canvas и отменить размещение.
+  startPlacing(productId, qty, true);
+
+  // В начальном обучении карточка сразу меняется на «Выберите свободную витрину».
+  if (tutorialActive) renderTutorialStep();
+
+  // Если игрок воспользовался кнопкой «Показать» у квеста, не ждём повторного
+  // открытия склада: показываем следующую цель прямо в игровом зале.
+  if (activeQuestHelpQuestId) {
+    const questId = activeQuestHelpQuestId;
+    const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
+    if (quest?.event === 'product_stocked') {
+      showQuestHelpTarget(
+        'Выберите свободную витрину',
+        'Нажмите на свободную подходящую витрину внутри магазина.',
+        () => getProductPlacementHelpTarget(pendingProduct),
+        15000,
+        questId
+      );
+    }
+  }
 }
 
+
+function getStorageCycleQuestProtectingEquipment(item) {
+  if (!item || item.count <= 0) return null;
+  const checks = [
+    { id:'decor_storage_cycle', kind:'decor' },
+    { id:'shelf_storage_cycle', kind:'shelf' },
+  ];
+  for (const check of checks) {
+    if (item.kind !== check.kind) continue;
+    const state = questState[check.id];
+    if (!state || state.completed || state.claimed || (state.progress || 0) < 1) continue;
+    const storedType = state.meta?.storedType || null;
+    if (!storedType || storedType === item.type) return getQuestById(check.id);
+  }
+  return null;
+}
 
 function renderEquipmentWarehouse(list) {
   const entries = Object.entries(G.equipmentStorage || {}).filter(([key, item]) => item && item.count > 0);
@@ -17044,7 +17571,12 @@ function renderEquipmentWarehouse(list) {
     const sellPrice = getEquipmentSellPrice(item);
     const row = document.createElement('div');
     row.className = 'prod-row';
+    row.dataset.equipmentKey = key;
+    row.dataset.equipmentKind = item.kind || '';
+    row.dataset.equipmentType = item.type || '';
     const isLift = item.kind === 'decor' && item.type === 'glass_elevator';
+    const protectedQuest = getStorageCycleQuestProtectingEquipment(item);
+    const protectedForQuest = !!(protectedQuest && item.count <= 1);
     const usesCrystals = item.currency === 'crystals';
     const purchaseLabel = usesCrystals ? ('💎' + (item.price || 0)) : ('💰' + fmt(item.price || 0));
     const sellLabel = usesCrystals ? ('💎' + sellPrice) : ('💰' + fmt(sellPrice));
@@ -17056,7 +17588,9 @@ function renderEquipmentWarehouse(list) {
       </div>
       <div class="pr-right" style="display:flex;flex-direction:column;gap:6px">
         <button class="btn-buy" style="padding:8px 10px;font-size:12px" onclick="placeEquipmentFromStorage('${key}')">Поставить</button>
-        ${isLift ? '' : `<button class="btn-back" style="margin:0;padding:8px 10px;font-size:12px" onclick="sellEquipmentFromStorage('${key}')">Продать</button>`}
+        ${isLift ? '' : (protectedForQuest
+          ? `<button class="btn-back" style="margin:0;padding:8px 10px;font-size:12px;opacity:.6;pointer-events:none">Нужно для квеста</button>`
+          : `<button class="btn-back" style="margin:0;padding:8px 10px;font-size:12px" onclick="sellEquipmentFromStorage('${key}')">Продать</button>`)}
       </div>`;
     list.appendChild(row);
   });
@@ -17065,6 +17599,11 @@ function renderEquipmentWarehouse(list) {
 function sellEquipmentFromStorage(key) {
   const item = G.equipmentStorage[key];
   if (!item || item.count <= 0) return;
+  const protectedQuest = getStorageCycleQuestProtectingEquipment(item);
+  if (protectedQuest && item.count <= 1) {
+    showToast('📋 Сначала верните этот объект в магазин для квеста «' + protectedQuest.title + '»', '#f5c518');
+    return;
+  }
   if (item.kind === 'decor' && item.type === 'glass_elevator') {
     showToast('🛗 Стеклянный лифт нельзя продать');
     return;
@@ -17230,6 +17769,7 @@ function openCashModal(cashRegisterIndex = 0) {
   if (!popup) return;
   popup.classList.add('show');
   updateCashProfitPopupPosition();
+  if (tutorialActive) renderTutorialStep();
 }
 
 function collectAllRevenue() {
