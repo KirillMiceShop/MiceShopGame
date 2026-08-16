@@ -3432,9 +3432,13 @@ function claimQuestReward(questId) {
     setTimeout(() => {
       addXP(reward.xp);
       syncActiveQuestProgress();
+      if (typeof scheduleAutosave === 'function') scheduleAutosave();
     }, 0);
   } else {
-    setTimeout(syncActiveQuestProgress, 0);
+    setTimeout(() => {
+      syncActiveQuestProgress();
+      if (typeof scheduleAutosave === 'function') scheduleAutosave();
+    }, 0);
   }
 }
 
@@ -3476,6 +3480,9 @@ function notifyGameEvent(eventName, amount = 1, data = {}) {
   }
 
   tutorialNotify(eventName, data);
+  // Любое значимое игровое событие ставит автосохранение в очередь.
+  // Само сохранение выполняется с небольшой задержкой и только в стабильном состоянии.
+  if (typeof scheduleAutosave === 'function') scheduleAutosave();
 }
 
 function updateQuestNewBadge() {
@@ -4915,6 +4922,7 @@ function skipTutorial(silent = false, provideStarterEquipment = true, animateHud
     updateQuestUI();
   }
 
+  if (!wasReplay && typeof scheduleAutosave === 'function') scheduleAutosave();
   if (!silent) {
     showToast(wasReplay
       ? '🎓 Повторное обучение закрыто · без наград'
@@ -15861,6 +15869,7 @@ function chooseShopType(type) {
     logEvent(config.icon + ' Открыт ' + config.name);
     initQuestSystem();
     setTimeout(startTutorial, 450);
+    if (typeof scheduleAutosave === 'function') scheduleAutosave(1200);
   }, 900);
 }
 
@@ -17811,6 +17820,608 @@ window.addEventListener('resize', updateCashProfitPopupPosition);
 let frame = 0;
 let gameStarted = false;
 
+// ══════════════════════════════════════
+//  АВТОСОХРАНЕНИЕ И ЗАГРУЗКА ИГРЫ
+// ══════════════════════════════════════
+// Настройки звука по-прежнему сохраняются отдельно через SETTINGS_SAVE_KEY.
+// Здесь хранится именно игровая сессия: прогресс, склад, квесты и планировка.
+const GAME_SAVE_KEY = 'miceshop_game_v1';
+const GAME_SAVE_VERSION = 1;
+const AUTOSAVE_INTERVAL_MS = 15000;
+const AUTOSAVE_DEBOUNCE_MS = 900;
+let autosaveIntervalId = null;
+let autosaveDebounceId = null;
+let gameRestoreInProgress = false;
+let lastAutosaveAt = 0;
+
+const AUTOSAVE_FLOOR_BOUND_G_KEYS = new Set([
+  'shopType', 'currentFloor', 'shopStage',
+  'slots', 'shelfVariants', 'shelfRotations',
+  'staff', 'staffStyles'
+]);
+const AUTOSAVE_TRANSIENT_G_KEYS = new Set([
+  'pendingSlot', 'cashServiceUntil', 'cashServiceRegisterId', 'menuStyle'
+]);
+
+function jsonCloneForSave(value, fallback = null) {
+  try { return JSON.parse(JSON.stringify(value)); }
+  catch (e) { return fallback; }
+}
+
+function serializeShelfSlotForSave(item) {
+  if (!item || !item.product?.id) return null;
+  return {
+    productId: item.product.id,
+    qty: Math.max(0, Number(item.qty) || 0),
+    maxQty: Math.max(0, Number(item.maxQty) || 0),
+    nextSaleAt: Number.isFinite(Number(item.nextSaleAt)) ? Number(item.nextSaleAt) : null,
+    activeSalePrice: Number.isFinite(Number(item.activeSalePrice)) ? Number(item.activeSalePrice) : null,
+    soldOut: !!item.soldOut,
+    discountedQty: Math.max(0, Number(item.discountedQty) || 0),
+    defectiveQty: Math.max(0, Number(item.defectiveQty) || 0),
+  };
+}
+
+function deserializeShelfSlotFromSave(savedSlot) {
+  if (!savedSlot?.productId) return null;
+  const product = PRODUCTS.find(item => item.id === savedSlot.productId);
+  if (!product) return null;
+  return {
+    product,
+    qty: Math.max(0, Number(savedSlot.qty) || 0),
+    maxQty: Math.max(0, Number(savedSlot.maxQty) || 0),
+    nextSaleAt: Number.isFinite(Number(savedSlot.nextSaleAt)) ? Number(savedSlot.nextSaleAt) : null,
+    activeSalePrice: Number.isFinite(Number(savedSlot.activeSalePrice)) ? Number(savedSlot.activeSalePrice) : null,
+    soldOut: !!savedSlot.soldOut,
+    discountedQty: Math.max(0, Number(savedSlot.discountedQty) || 0),
+    defectiveQty: Math.max(0, Number(savedSlot.defectiveQty) || 0),
+  };
+}
+
+function serializeFloorForSave(state) {
+  if (!state) return null;
+  return {
+    floorNumber: Number(state.floorNumber) || 1,
+    shopType: state.shopType,
+    shopStage: Math.max(1, Number(state.shopStage) || 1),
+    slots: (state.slots || []).map(serializeShelfSlotForSave),
+    shelfVariants: [...(state.shelfVariants || [])],
+    shelfRotations: (state.shelfRotations || []).map(value => Number(value) || 0),
+    shelfPositions: (state.shelfPositions || []).map(pos => [Number(pos?.[0]) || 0, 0, Number(pos?.[2]) || 0]),
+    staff: jsonCloneForSave(state.staff, { cashier:1, seller:1, cleaner:0, guard:0 }),
+    staffStyles: jsonCloneForSave(state.staffStyles, { cashier:'classic', seller:'classic', cleaner:'classic', guard:'classic' }),
+    cashRegisters: (state.cashRegisters || []).map(item => ({
+      variantId: item.variantId || 'cash_classic',
+      x: Number(item.x) || 0,
+      z: Number(item.z) || 0,
+      rotation: Number(item.rotation) || 0,
+    })),
+    windows: (state.windows || []).map(item => ({
+      id: Number(item.id) || 0,
+      axis: item.axis === 'x' ? 'x' : 'z',
+      pos: Number(item.pos) || 0,
+      type: item.type || 'grid',
+    })),
+    doors: (state.doors || []).map(item => ({
+      id: Number(item.id) || 0,
+      axis: item.axis === 'x' ? 'x' : 'z',
+      pos: Number(item.pos) || 0,
+      type: item.type || 'single',
+      width: Number(item.width) || undefined,
+    })),
+    internalWalls: (state.internalWalls || []).map(item => ({
+      id: Number(item.id) || 0,
+      axis: item.axis === 'z' ? 'z' : 'x',
+      x: Number(item.x) || 0,
+      z: Number(item.z) || 0,
+    })),
+    decorations: (state.decorations || []).map(item => ({
+      id: Number(item.id) || 0,
+      type: item.type,
+      x: Number(item.x) || 0,
+      z: Number(item.z) || 0,
+      axis: item.axis === 'x' ? 'x' : 'z',
+      pos: Number(item.pos) || 0,
+      rotation: Number(item.rotation) || 0,
+    })),
+    wallColor: Number.isFinite(Number(state.wallColor)) ? Number(state.wallColor) : null,
+    floorColor: Number.isFinite(Number(state.floorColor)) ? Number(state.floorColor) : null,
+  };
+}
+
+function captureAutosavePayload() {
+  if (!gameStarted || !G.shopType) return null;
+  captureCurrentFloorState(G.currentFloor || 1);
+
+  const globalState = {};
+  Object.keys(G).forEach(key => {
+    if (AUTOSAVE_FLOOR_BOUND_G_KEYS.has(key) || AUTOSAVE_TRANSIENT_G_KEYS.has(key)) return;
+    const cloned = jsonCloneForSave(G[key], undefined);
+    if (cloned !== undefined) globalState[key] = cloned;
+  });
+
+  const floors = {};
+  Object.keys(shopFloorStates).forEach(key => {
+    const saved = serializeFloorForSave(shopFloorStates[key]);
+    if (saved) floors[key] = saved;
+  });
+
+  return {
+    version: GAME_SAVE_VERSION,
+    savedAt: Date.now(),
+    startingShopType: floors[1]?.shopType || G.shopType,
+    currentFloor: G.currentFloor || 1,
+    global: globalState,
+    floors,
+    quests: {
+      state: jsonCloneForSave(questState, {}),
+      hudTrackedIds: [...(questHudTrackedQuestIds || [])],
+      hudNewCount: Math.max(0, Number(questHudNewQuestCount) || 0),
+    },
+    tutorial: {
+      // Повторное обучение — демонстрация и не является игровым прогрессом.
+      active: !!(tutorialActive && !tutorialReplayMode),
+      stepIndex: Math.max(0, Number(tutorialStepIndex) || 0),
+      rewardGranted: !!tutorialRewardGranted,
+      starterStorePrepared: !!tutorialStarterStorePrepared,
+      previousAutoStocking: tutorialPreviousAutoStocking !== false,
+    },
+  };
+}
+
+function isAutosaveStateStable() {
+  if (!gameStarted || !G.shopType || gameRestoreInProgress || tutorialReplayMode) return false;
+
+  // Не фиксируем промежуточный кадр перетаскивания/размещения. В такой момент
+  // безопаснее оставить последнее стабильное сохранение, чем записать полупоставленный объект.
+  if (placingMode || decorPlaceMode || internalWallBuildMode || tutorialEquipmentPlacement) return false;
+  if (dragWinIdx !== null || dragDoorIdx !== null) return false;
+  if (typeof dragShelfIdx !== 'undefined' && dragShelfIdx !== null) return false;
+  if (typeof dragCashierIdx !== 'undefined' && dragCashierIdx !== null) return false;
+  if (typeof dragInternalWallId !== 'undefined' && dragInternalWallId !== null) return false;
+  if (typeof dragDecorId !== 'undefined' && dragDecorId !== null) return false;
+  return true;
+}
+
+function saveGameNow() {
+  if (!isAutosaveStateStable()) return false;
+  const payload = captureAutosavePayload();
+  if (!payload) return false;
+  try {
+    localStorage.setItem(GAME_SAVE_KEY, JSON.stringify(payload));
+    lastAutosaveAt = payload.savedAt;
+    return true;
+  } catch (error) {
+    console.warn('MiceShop autosave failed:', error);
+    return false;
+  }
+}
+
+function scheduleAutosave(delay = AUTOSAVE_DEBOUNCE_MS) {
+  if (!gameStarted || gameRestoreInProgress) return;
+  if (autosaveDebounceId !== null) clearTimeout(autosaveDebounceId);
+  autosaveDebounceId = setTimeout(() => {
+    autosaveDebounceId = null;
+    saveGameNow();
+  }, Math.max(150, Number(delay) || AUTOSAVE_DEBOUNCE_MS));
+}
+
+function startAutosaveLoop() {
+  if (autosaveIntervalId !== null) return;
+  autosaveIntervalId = setInterval(() => saveGameNow(), AUTOSAVE_INTERVAL_MS);
+}
+
+function readAutosavePayload() {
+  try {
+    const raw = localStorage.getItem(GAME_SAVE_KEY);
+    if (!raw) return null;
+    const payload = JSON.parse(raw);
+    if (!payload || Number(payload.version) !== GAME_SAVE_VERSION || !payload.floors?.[1]) return null;
+    return payload;
+  } catch (error) {
+    console.warn('MiceShop save load failed:', error);
+    return null;
+  }
+}
+
+function clearBoundFloorRuntimeForRestore() {
+  // Удаляем только динамические объекты магазина. Пол, наружные стены, дороги и HUD
+  // являются общими и будут перестроены обычными функциями текущей архитектуры.
+  const currentState = {
+    shelfMeshes, shelfClickTargets, shelfItemMeshes,
+    cashRegisters, windows, doors, internalWalls, decorations,
+    sellers, customers
+  };
+  const internalParts = new Set((internalWalls || []).flatMap(wall => wall?.parts || []));
+  getShopFloorStateSceneRoots(currentState).forEach(object => scene.remove(object));
+  if (internalParts.size) {
+    for (let i = wallMeshes.length - 1; i >= 0; i--) {
+      if (internalParts.has(wallMeshes[i])) wallMeshes.splice(i, 1);
+    }
+  }
+
+  shelfMeshes = [];
+  shelfClickTargets = [];
+  shelfItemMeshes = {};
+  cashRegisters = [];
+  cashRegisterTargets = [];
+  windows = [];
+  windowClickTargets = [];
+  doors = [];
+  doorClickTargets = [];
+  internalWalls = [];
+  internalWallClickTargets = [];
+  decorations = [];
+  decorClickTargets = [];
+  sellers = [];
+  customers = [];
+  nextWindowId = 0;
+  nextDoorId = 0;
+  nextInternalWallId = 0;
+  nextDecorId = 0;
+}
+
+function createEmptyRuntimeFloorStateFromSave(saved) {
+  const floorNumber = Number(saved.floorNumber) || 1;
+  const shopType = SHOP_TYPES[saved.shopType] ? saved.shopType : (floorNumber === 1 ? 'clothing' : 'electronics');
+  const palette = getSurfacePalette(shopType);
+  const positions = Array.isArray(saved.shelfPositions) ? saved.shelfPositions : [];
+  const variants = Array.isArray(saved.shelfVariants) ? saved.shelfVariants : [];
+  const rotations = Array.isArray(saved.shelfRotations) ? saved.shelfRotations : [];
+  const slots = Array.isArray(saved.slots) ? saved.slots : [];
+
+  return {
+    floorNumber,
+    shopType,
+    shopStage: Math.max(1, Number(saved.shopStage) || 1),
+    slots: positions.map((_, index) => deserializeShelfSlotFromSave(slots[index])),
+    shelfRotations: positions.map((_, index) => Number(rotations[index]) || 0),
+    shelfVariants: positions.map((_, index) => variants[index] || SHOP_TYPES[shopType].starterShelf),
+    staff: { cashier:1, seller:1, cleaner:0, guard:0, ...(saved.staff || {}) },
+    staffStyles: { cashier:'classic', seller:'classic', cleaner:'classic', guard:'classic', ...(saved.staffStyles || {}) },
+    shelfPositions: positions.map(pos => [Number(pos?.[0]) || 0, 0, Number(pos?.[2]) || 0]),
+    shelfMeshes: [],
+    shelfClickTargets: [],
+    shelfItemMeshes: {},
+    cashRegisters: [],
+    cashRegisterTargets: [],
+    windows: [],
+    windowClickTargets: [],
+    doors: [],
+    doorClickTargets: [],
+    internalWalls: [],
+    internalWallClickTargets: [],
+    decorations: [],
+    decorClickTargets: [],
+    sellers: [],
+    customers: [],
+    nextWindowId: 0,
+    nextDoorId: 0,
+    nextInternalWallId: 0,
+    nextDecorId: 0,
+    wallColor: Number.isFinite(Number(saved.wallColor)) ? Number(saved.wallColor) : palette.walls[0].hex,
+    floorColor: Number.isFinite(Number(saved.floorColor)) ? Number(saved.floorColor) : palette.floors[0].hex,
+    visualYOffset: 0,
+  };
+}
+
+function restoreSavedWindows(savedWindows) {
+  let maxId = -1;
+  (savedWindows || []).forEach(saved => {
+    const win = {
+      id: Number.isFinite(Number(saved.id)) ? Number(saved.id) : maxId + 1,
+      kind:'window',
+      axis: saved.axis === 'x' ? 'x' : 'z',
+      pos: Number(saved.pos) || 0,
+      type: saved.type || 'grid',
+      group:null,
+      hitZone:null,
+    };
+    const visual = makeWindowMesh(win);
+    win.group = visual.group;
+    win.hitZone = visual.hitZone;
+    windows.push(win);
+    maxId = Math.max(maxId, win.id);
+  });
+  nextWindowId = maxId + 1;
+}
+
+function restoreSavedDoors(savedDoors) {
+  let maxId = -1;
+  (savedDoors || []).forEach(saved => {
+    const variant = DOOR_TYPES.find(item => item.id === saved.type) || DOOR_TYPES[0];
+    const door = {
+      id: Number.isFinite(Number(saved.id)) ? Number(saved.id) : maxId + 1,
+      kind:'door',
+      axis: saved.axis === 'x' ? 'x' : 'z',
+      pos: Number(saved.pos) || 0,
+      type: variant.id,
+      width: Number(saved.width) || variant.width,
+      group:null,
+      hitZone:null,
+    };
+    const visual = makeDoorMesh(door);
+    door.group = visual.group;
+    door.hitZone = visual.hitZone;
+    door.leafPivots = visual.leafPivots || [];
+    door.openAmount = 0;
+    doors.push(door);
+    maxId = Math.max(maxId, door.id);
+  });
+  nextDoorId = maxId + 1;
+}
+
+function restoreSavedInternalWalls(savedWalls) {
+  let maxId = -1;
+  (savedWalls || []).forEach(saved => {
+    const wall = {
+      id: Number.isFinite(Number(saved.id)) ? Number(saved.id) : maxId + 1,
+      kind:'innerWall',
+      axis: saved.axis === 'z' ? 'z' : 'x',
+      x: Number(saved.x) || 0,
+      z: Number(saved.z) || 0,
+      group:null,
+      hitZone:null,
+      parts:[],
+    };
+    const visual = makeInternalWallMesh(wall);
+    wall.group = visual.group;
+    wall.hitZone = visual.hitZone;
+    wall.parts = visual.parts || [];
+    internalWalls.push(wall);
+    maxId = Math.max(maxId, wall.id);
+  });
+  nextInternalWallId = maxId + 1;
+}
+
+function restoreSavedDecorations(savedDecorations) {
+  let maxId = -1;
+  (savedDecorations || []).forEach(saved => {
+    const def = getDecorDef(saved.type);
+    if (!def) return;
+    const decor = {
+      id: Number.isFinite(Number(saved.id)) ? Number(saved.id) : maxId + 1,
+      kind:'decor',
+      type:def.id,
+      x:Number(saved.x) || 0,
+      z:Number(saved.z) || 0,
+      axis:saved.axis === 'x' ? 'x' : 'z',
+      pos:Number(saved.pos) || 0,
+      rotation:Number(saved.rotation) || 0,
+      group:null,
+      hitZone:null,
+      parts:[],
+    };
+    const visual = makeDecorMesh(decor);
+    decor.group = visual.group;
+    decor.hitZone = visual.hitZone;
+    decor.parts = visual.parts || [];
+    decorations.push(decor);
+    maxId = Math.max(maxId, decor.id);
+  });
+  nextDecorId = maxId + 1;
+}
+
+function restoreSavedCashRegisters(savedCashRegisters) {
+  (savedCashRegisters || []).slice(0, MAX_CASH_REGISTERS).forEach(saved => {
+    const variant = CASH_REGISTER_VARIANTS.find(item => item.id === saved.variantId) || CASH_REGISTER_VARIANTS[0];
+    const cash = addCashRegister(variant, Number(saved.x) || 0, Number(saved.z) || 0);
+    if (!cash) return;
+    cash.rotation = Number(saved.rotation) || 0;
+    setCashRegisterPosition(cash.id, cash.x, cash.z);
+  });
+}
+
+function restoreWorkersForBoundFloor() {
+  const styleColor = type => getWorkerStyle(type).body || 0x999999;
+  const labels = { cashier:'Кассир', seller:'Продавец', cleaner:'Уборщик', guard:'Охранник' };
+  const types = ['cashier','seller','cleaner','guard'];
+
+  types.forEach(type => {
+    const count = Math.max(0, Number(G.staff?.[type]) || 0);
+    for (let i = 0; i < count; i++) {
+      let x = 0, z = 0;
+      if (type === 'cashier' && i === 0) {
+        x = cashRegisters[0]?.x ?? -1.8;
+        z = cashRegisters[0]?.z ?? (SHOP_HALF - 1.2);
+      } else if (type === 'seller' && i === 0) {
+        x = -1.5;
+        z = Math.min(2.2, SHOP_HALF - 1.0);
+      } else {
+        const point = typeof randomCustomerPoint === 'function' ? randomCustomerPoint() : new THREE.Vector3(0, 0.6, 0);
+        x = point.x;
+        z = point.z;
+      }
+      createSeller(styleColor(type), x, z, (labels[type] || 'Работник') + ' ' + (i + 1), type);
+    }
+  });
+}
+
+function buildRuntimeFloorFromSave(saved) {
+  const state = createEmptyRuntimeFloorStateFromSave(saved);
+  shopFloorStates[state.floorNumber] = state;
+  bindShopFloorState(state);
+  applyShopStageVisuals();
+  applyCurrentFloorSurfaceColors();
+
+  state.shelfPositions.forEach((pos, index) => {
+    const variantId = state.shelfVariants[index] || getDefaultShelfVariantId();
+    const variant = getShelfVariantById(variantId);
+    addShelfMesh(index, pos[0], pos[2], variant.color, variant.topColor, variant.id);
+  });
+
+  G.slots.forEach((slot, index) => {
+    if (!slot?.product || !SHELF_POSITIONS[index]) return;
+    createItemMesh(slot.product, index);
+    refreshShelfItemVisual(index);
+  });
+
+  restoreSavedCashRegisters(saved.cashRegisters);
+  restoreSavedWindows(saved.windows);
+  restoreSavedDoors(saved.doors);
+  restoreSavedInternalWalls(saved.internalWalls);
+  restoreSavedDecorations(saved.decorations);
+  restoreWorkersForBoundFloor();
+  applyWindowHoles();
+  captureCurrentFloorState(state.floorNumber);
+  return shopFloorStates[state.floorNumber];
+}
+
+function restoreQuestAndTutorialProgress(payload) {
+  questSystemReady = false;
+  Object.keys(questState).forEach(key => delete questState[key]);
+
+  // Восстанавливаем квесты напрямую, без initQuestSystem(): тот во время загрузки
+  // мог бы успеть показать «квест выполнен» ещё до применения сохранённого состояния.
+  const savedQuestState = payload.quests?.state || {};
+  QUEST_DEFINITIONS.forEach(quest => {
+    const source = savedQuestState[quest.id];
+    const metricValue = getQuestMetricValue(quest);
+    questState[quest.id] = source ? {
+      progress: Math.max(0, Number(source.progress) || 0),
+      completed: !!source.completed,
+      claimed: !!source.claimed,
+      completedDuringTutorial: !!source.completedDuringTutorial,
+      meta: jsonCloneForSave(source.meta, {}) || {},
+    } : {
+      progress: metricValue === null ? 0 : Math.min(quest.target, Math.max(0, Number(metricValue) || 0)),
+      completed: false,
+      claimed: false,
+      completedDuringTutorial: false,
+      meta: {},
+    };
+  });
+  questSystemReady = true;
+  questHudTrackedQuestIds = Array.isArray(payload.quests?.hudTrackedIds)
+    ? payload.quests.hudTrackedIds.filter(Boolean)
+    : getActiveQuests().map(quest => quest.id);
+  questHudTrackingReady = true;
+  questHudNewQuestCount = Math.max(0, Number(payload.quests?.hudNewCount) || 0);
+  syncActiveQuestProgress();
+  updateQuestUI();
+
+  tutorialRewardGranted = !!payload.tutorial?.rewardGranted;
+  tutorialStarterStorePrepared = !!payload.tutorial?.starterStorePrepared;
+  tutorialPreviousAutoStocking = payload.tutorial?.previousAutoStocking !== false;
+  tutorialReplayMode = false;
+  tutorialEquipmentPlacement = null;
+
+  if (payload.tutorial?.active) {
+    tutorialActive = true;
+    tutorialStepIndex = Math.max(0, Math.min(TUTORIAL_STEPS.length - 1, Number(payload.tutorial.stepIndex) || 0));
+    setInitialTutorialHudHidden(true, false);
+    const card = document.getElementById('tutorial-card');
+    if (card) {
+      card.classList.remove('replay-top-right');
+      card.style.display = 'block';
+    }
+    if (tutorialPositionTimer) clearInterval(tutorialPositionTimer);
+    tutorialPositionTimer = setInterval(updateTutorialSpotlight, 180);
+    renderTutorialStep();
+  } else {
+    tutorialActive = false;
+    setInitialTutorialHudHidden(false, false);
+    const card = document.getElementById('tutorial-card');
+    const spot = document.getElementById('tutorial-spotlight');
+    const dim = document.getElementById('tutorial-dimmer');
+    if (card) card.style.display = 'none';
+    if (spot) spot.style.display = 'none';
+    if (dim) dim.style.display = 'none';
+  }
+}
+
+function restoreGameFromAutosave(payload) {
+  if (!payload?.floors?.[1]) return false;
+  gameRestoreInProgress = true;
+  try {
+    closeCashModal();
+    clearBoundFloorRuntimeForRestore();
+    Object.keys(shopFloorStates).forEach(key => delete shopFloorStates[key]);
+    shopFloorSystemReady = false;
+
+    const savedGlobal = payload.global || {};
+    Object.keys(savedGlobal).forEach(key => {
+      if (AUTOSAVE_FLOOR_BOUND_G_KEYS.has(key) || AUTOSAVE_TRANSIENT_G_KEYS.has(key)) return;
+      if (!(key in G)) return;
+      G[key] = jsonCloneForSave(savedGlobal[key], G[key]);
+    });
+    G.pendingSlot = null;
+    G.cashServiceUntil = 0;
+    G.cashServiceRegisterId = null;
+
+    const startingType = SHOP_TYPES[payload.startingShopType]
+      ? payload.startingShopType
+      : (SHOP_TYPES[payload.floors[1].shopType] ? payload.floors[1].shopType : 'clothing');
+    configureStartingShopProductBalance(startingType);
+
+    buildRuntimeFloorFromSave(payload.floors[1]);
+    setShopFloorStateVisible(shopFloorStates[1], false);
+
+    if (payload.floors[2]) {
+      buildRuntimeFloorFromSave(payload.floors[2]);
+      setShopFloorStateVisible(shopFloorStates[2], false);
+    }
+
+    const requestedFloor = Number(payload.currentFloor) === 2 && shopFloorStates[2] ? 2 : 1;
+    const activeState = shopFloorStates[requestedFloor];
+    bindShopFloorState(activeState);
+    setShopFloorStateYOffset(activeState, 0);
+    setShopFloorStateVisible(activeState, true);
+    setShopFloorCharactersVisible(activeState, true);
+
+    if (requestedFloor === 2 && shopFloorStates[1]) {
+      setShopFloorStateYOffset(shopFloorStates[1], -SHOP_FLOOR_HEIGHT);
+      setShopFloorStateVisible(shopFloorStates[1], true);
+      setShopFloorCharactersVisible(shopFloorStates[1], false);
+    } else if (shopFloorStates[2]) {
+      setShopFloorStateYOffset(shopFloorStates[2], 0);
+      setShopFloorStateVisible(shopFloorStates[2], false);
+      setShopFloorCharactersVisible(shopFloorStates[2], false);
+    }
+
+    gameStarted = true;
+    shopTypeChoiceLocked = true;
+    shopFloorSystemReady = true;
+    activeCat = 'products';
+    sellerShiftStart = Date.now();
+    lastCustomerSpawnAt = 0;
+    nextDeliveryId = Math.max(0, ...(G.deliveries || []).map(item => (Number(item.id) || 0) + 1));
+
+    setExteriorYOffset(requestedFloor === 2 ? -SHOP_FLOOR_HEIGHT : 0);
+    if (lowerFloorPreviewGroup) lowerFloorPreviewGroup.visible = requestedFloor === 2;
+    applyShopStageVisuals();
+    applyCurrentFloorSurfaceColors();
+    applyWindowHoles();
+    rebuildSecondFloorFacade();
+    updateLiftButton();
+    initializeSeasonSystem();
+    restoreQuestAndTutorialProgress(payload);
+
+    const screen = document.getElementById('shop-type-screen');
+    if (screen) screen.classList.add('hidden');
+    updateHUD();
+    renderProductList();
+    lastAutosaveAt = Number(payload.savedAt) || Date.now();
+    return true;
+  } catch (error) {
+    console.error('MiceShop restore failed:', error);
+    return false;
+  } finally {
+    gameRestoreInProgress = false;
+  }
+}
+
+function loadAutosavedGame() {
+  const payload = readAutosavePayload();
+  if (!payload) return false;
+  return restoreGameFromAutosave(payload);
+}
+
+// На мобильных ОС pagehide/visibilitychange — самые важные точки: браузер может
+// выгрузить вкладку вскоре после сворачивания. Пишем стабильное состояние сразу.
+window.addEventListener('pagehide', () => saveGameNow());
+window.addEventListener('beforeunload', () => saveGameNow());
+
 // Основная игра работает максимум в 30 FPS. Под открытыми окнами достаточно 15 FPS:
 // 3D-сцена всё равно частично закрыта интерфейсом, поэтому лишние кадры только греют телефон.
 const ACTIVE_GAME_FPS = 30;
@@ -17825,6 +18436,7 @@ function isHeavyMenuOpen() {
 }
 
 document.addEventListener('visibilitychange', () => {
+  if (document.hidden) saveGameNow();
   pageRenderingPaused = document.hidden;
   const now = performance.now();
   lastProcessedFrameAt = now;
@@ -17945,12 +18557,14 @@ function animate(now = performance.now()) {
 
 // ── START ──
 loadMenuStyle();
-initializeShopTypeScreen();
+const restoredFromAutosave = loadAutosavedGame();
+if (!restoredFromAutosave) initializeShopTypeScreen();
 updateHUD();
+startAutosaveLoop();
 animate();
 if (gameStarted) {
   const config = getShopTypeConfig();
-  logEvent((config ? config.icon : '🏬') + ' Магазин открыт! Добавьте товары на витрины');
+  logEvent((config ? config.icon : '🏬') + (restoredFromAutosave ? ' Сохранение загружено!' : ' Магазин открыт! Добавьте товары на витрины'));
 }
 </script>
 </body>
