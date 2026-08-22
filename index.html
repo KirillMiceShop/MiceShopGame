@@ -1364,19 +1364,20 @@
 
   /* ГЛОБАЛЬНЫЕ СТИЛИ ВСЕХ МЕНЮ И ОКОН */
   body {
-    /* Стандартный стиль: простое бело-серебристое оформление. */
-    --menu-bg:linear-gradient(145deg,#fbfbfb 0%,#e7e7e9 58%,#c9cacf 100%);
-    --menu-card:rgba(255,255,255,0.48);
-    --menu-card-strong:rgba(255,255,255,0.68);
-    --menu-border:rgba(48,51,58,0.19);
-    --menu-text:#27292e;
-    --menu-muted:#686d75;
-    --menu-accent:#8c929d;
+    /* Стандартный стиль: чуть более тёмное бело-серебристое оформление,
+       чтобы меню не выглядело пересвеченным. */
+    --menu-bg:linear-gradient(145deg,#eeeff2 0%,#daddE2 58%,#bcc1c9 100%);
+    --menu-card:rgba(255,255,255,0.38);
+    --menu-card-strong:rgba(255,255,255,0.56);
+    --menu-border:rgba(48,51,58,0.23);
+    --menu-text:#25282e;
+    --menu-muted:#5f6670;
+    --menu-accent:#818897;
     --menu-accent-text:#ffffff;
-    --menu-secondary:#555b65;
+    --menu-secondary:#4f5662;
     --menu-secondary-text:#ffffff;
-    --menu-profit:#287660;
-    --menu-close:#676b72;
+    --menu-profit:#27715d;
+    --menu-close:#5f6670;
   }
   body[data-menu-style="sky"] {
     --menu-bg:linear-gradient(145deg,#154963 0%,#277ea2 55%,#54b6d6 100%);
