@@ -3080,6 +3080,13 @@ G.shopType = null; // тип магазина выбирается заново 
 //  ОБУЧЕНИЕ И СТАРТОВЫЕ КВЕСТЫ
 // ══════════════════════════════════════
 function getLevelFiveQuestShelfVariant(shopType = G.shopType) {
+  // У одежды на 5 уровне действительно появляется новый тип — стеклянный прилавок.
+  // У электроники нового типа на L5 нет, зато открывается вторая техно-витрина.
+  // Квест должен совпадать с реальным открытием уровня, а не вести к ТВ-витрине L4.
+  if (shopType === 'electronics') {
+    return getShelfVariantById(SHOP_TYPES.electronics?.starterShelf || 'tech_island');
+  }
+
   const variants = SHELF_VARIANTS.filter(variant => isShelfVariantAllowedForShop(variant));
   const candidates = variants
     .filter(variant => getShelfUnlockLevel(variant, shopType, 1) <= 5)
@@ -3121,6 +3128,7 @@ const QUEST_DEFINITIONS = [
   // Квесты 5–7 уровней.
   { id:'buy_new_shelf', minLevel:5, icon:'🪟', title:'Новая витрина', text:() => {
       const variant = getLevelFiveQuestShelfVariant();
+      if (G.shopType === 'electronics' && variant) return 'Купите и установите вторую витрину «' + variant.name + '»';
       return variant ? ('Купите витрину «' + variant.name + '»') : 'Купите новый вид витрины';
     }, metric:'level_five_shelf_owned', target:1, absolute:true, reward:{ money:500, xp:90 } },
   { id:'install_second_shelf', minLevel:5, icon:'🪟', title:'Больше места для товара', text:'Купите и установите вторую витрину', metric:'shelf_count', target:2, absolute:true, reward:{ money:600, xp:80 } },
@@ -3216,7 +3224,10 @@ function getQuestMetricValue(quest) {
   }
   if (quest.metric === 'level_five_shelf_owned') {
     const variant = getLevelFiveQuestShelfVariant();
-    return variant ? getOwnedShelfVariantCount(variant.id) : 0;
+    if (!variant) return 0;
+    const owned = getOwnedShelfVariantCount(variant.id);
+    // Для электроники L5 означает разблокировку второй стартовой техно-витрины.
+    return G.shopType === 'electronics' ? (owned >= 2 ? 1 : 0) : (owned >= 1 ? 1 : 0);
   }
   if (quest.metric === 'facility_count') {
     const installed = typeof getAllInstalledDecorationsForProgress === 'function'
@@ -3317,6 +3328,36 @@ function getPendingTutorialQuestRewards() {
     const state = questState[quest.id];
     return !!(quest.tutorial && state?.completed && !state.claimed && state.completedDuringTutorial);
   });
+}
+
+function claimInitialTutorialQuestRewardsAsBatch() {
+  let money = 0;
+  let xp = 0;
+  let crystals = 0;
+  let claimedCount = 0;
+
+  INITIAL_TUTORIAL_QUEST_IDS.forEach(questId => {
+    const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
+    const state = quest ? questState[questId] : null;
+    if (!quest || !state?.completed || state.claimed) return;
+
+    state.claimed = true;
+    claimedCount++;
+    money += Math.max(0, Number(quest.reward?.money) || 0);
+    xp += Math.max(0, Number(quest.reward?.xp) || 0);
+    crystals += Math.max(0, Number(quest.reward?.crystals) || 0);
+  });
+
+  if (money) G.money += money;
+  if (crystals) G.crystals += crystals;
+  if (xp) addXP(xp);
+  if (claimedCount) {
+    updateHUD();
+    updateQuestUI();
+    logEvent('🎁 Награды ' + claimedCount + ' учебных квестов получены автоматически');
+  }
+
+  return { money, xp, crystals, claimedCount };
 }
 
 function rewardText(reward = {}) {
@@ -4026,7 +4067,10 @@ function showQuestHelp(questId) {
 
   if (id === 'buy_new_shelf') {
     const variant = getLevelFiveQuestShelfVariant();
-    showShopQuestPath(quest, 'shelves', 'all', () => variant ? document.querySelector(`#products-list [data-shelf-variant-id="${variant.id}"]`) : getFirstPurchasableShopRow(), 'Выберите именно новый вид витрины, указанный в квесте.');
+    const hint = G.shopType === 'electronics'
+      ? 'На 5 уровне открылась вторая техно-витрина. Купите и установите именно вторую копию.'
+      : 'Выберите именно новый вид витрины, указанный в квесте.';
+    showShopQuestPath(quest, 'shelves', 'all', () => variant ? document.querySelector(`#products-list [data-shelf-variant-id="${variant.id}"]`) : getFirstPurchasableShopRow(), hint);
     return;
   }
 
@@ -4422,7 +4466,13 @@ function handleTutorialEquipmentPlacementResult(kind, index, success) {
   setTimeout(() => {
     if (!tutorialActive) return;
     const step = TUTORIAL_STEPS[tutorialStepIndex];
-    if (step?.id === 'buy_cash' || step?.id === 'product') openShopModal();
+    if (step?.id === 'buy_cash' || step?.id === 'product') {
+      openShopModal();
+      // tutorialNotify() сменил шаг до того, как магазин успел открыться.
+      // Обновляем текст ещё раз уже при реально открытом меню, чтобы подсказка
+      // не продолжала ошибочно говорить «Откройте Магазин».
+      renderTutorialStep();
+    }
   }, 120);
 }
 
@@ -4934,10 +4984,20 @@ function finishTutorial() {
   const wasReplay = tutorialReplayMode;
   if (!wasReplay && !tutorialRewardGranted) {
     tutorialRewardGranted = true;
+
+    // Первые пять учебных квестов уже фактически выполнены внутри обучения.
+    // Забираем их одной пачкой, чтобы после кнопки «Готово» окно квестов
+    // показывало только актуальные задания, а не 5 старых карточек наград.
+    const tutorialQuestRewards = claimInitialTutorialQuestRewardsAsBatch();
+
     G.money += 250;
     G.crystals += 1;
     updateHUD();
-    showToast('🎓 Обучение завершено · 💰250 · 💎1', '#f5c518');
+
+    const questRewardLabel = tutorialQuestRewards.claimedCount
+      ? (' · квесты: 💰' + fmt(tutorialQuestRewards.money) + ' · ⭐' + tutorialQuestRewards.xp + ' XP')
+      : '';
+    showToast('🎓 Обучение завершено' + questRewardLabel + ' · бонус: 💰250 · 💎1', '#f5c518');
   } else if (wasReplay) {
     showToast('🎓 Повторное обучение завершено · без денег и наград', '#f5c518');
   }
@@ -5676,6 +5736,12 @@ const PRODUCTS = [
   {id:'coffee_machine',name:'Кофемашина',emoji:'☕',cat:'Техника', cost:2200, sell:3900, time:300, xp:66, shelfKinds:['tech_backstand']},
   {id:'game_console',name:'Игровая приставка',emoji:'🎮',cat:'Техника', cost:3000, sell:5200, time:340, xp:75, shelfKinds:['tech_backstand']},
   {id:'desktop_pc',name:'Стационарный компьютер',emoji:'🖥️',cat:'Техника', cost:8000, sell:13500, time:600, xp:138, shelfKinds:['tech_backstand']},
+  // Дополнительная прогрессия электроники 7–10 уровней. Для первого магазина
+  // их экономика ниже дополнительно выравнивается относительно одежды.
+  {id:'tablet',name:'Планшет',emoji:'📲',cat:'Техника', cost:6500, sell:11200, time:480, xp:108, shelfKinds:['tech_island']},
+  {id:'smart_speaker',name:'Умная колонка',emoji:'🔊',cat:'Техника', cost:7200, sell:12400, time:540, xp:120, shelfKinds:['tech_backstand']},
+  {id:'robot_vacuum',name:'Робот-пылесос',emoji:'🤖',cat:'Техника', cost:9000, sell:15500, time:600, xp:135, shelfKinds:['appliance_pedestal']},
+  {id:'camera',name:'Фотоаппарат',emoji:'📷',cat:'Техника', cost:10000, sell:17000, time:660, xp:150, shelfKinds:['tech_island']},
   {id:'perfume',name:'Духи',       emoji:'🧴', cat:'Красота',   cost:1800,  sell:3200,  time:260, xp:55,  shelfKinds:['glass_case']},
   {id:'watch',  name:'Часы',       emoji:'⌚', cat:'Аксессуары', cost:2000,  sell:3500,  time:300, xp:66, shelfKinds:['glass_case']},
   {id:'jewelry',name:'Ювелирные украшения',emoji:'💍',cat:'Аксессуары', cost:2200,sell:3900,time:320,xp:70, shelfKinds:['glass_case']},
@@ -5703,11 +5769,12 @@ const PRODUCTS = [
 ];
 
 
-// Баланс стартового магазина электроники повторяет цены первых товаров одежды
-// на тех же этапах прогрессии, но сохраняет собственный XP электроники,
-// рассчитанный под более длинное время продажи. Это применяется только если
-// электроника выбрана как первый магазин. Электроника на втором этаже также
-// сохраняет собственные исходные цены и XP.
+// Баланс стартового магазина электроники использует закупочную цену товара
+// одежды с того же этапа прогрессии, но НЕ копирует его продажную цену.
+// У техники длиннее таймер продажи, поэтому её чистая прибыль за минуту
+// выравнивается с парным товаром одежды. Собственный XP техники сохраняется.
+// Это применяется только если электроника выбрана как первый магазин.
+// Электроника на втором этаже сохраняет собственную исходную экономику.
 const ORIGINAL_PRODUCT_ECONOMY = Object.fromEntries(
   PRODUCTS.map(product => [product.id, {
     cost: product.cost,
@@ -5725,6 +5792,10 @@ const STARTER_ELECTRONICS_CLOTHING_BALANCE = {
   television: 'dress',
   desktop_pc: 'wallet',
   washing_machine: 'bag',
+  tablet: 'women_shoes',
+  smart_speaker: 'men_shoes',
+  robot_vacuum: 'watch',
+  camera: 'suit',
 };
 
 function configureStartingShopProductBalance(startingShopType) {
@@ -5745,7 +5816,14 @@ function configureStartingShopProductBalance(startingShopType) {
     const clothingProduct = PRODUCTS.find(product => product.id === clothingId);
     if (!electronicsProduct || !clothingProduct) return;
     electronicsProduct.cost = clothingProduct.cost;
-    electronicsProduct.sell = clothingProduct.sell;
+
+    // Сохраняем ту же чистую прибыль в минуту, что у парного товара одежды.
+    // Так электроника остаётся доступной по закупке, но длинный таймер продажи
+    // больше не делает её в несколько раз беднее магазина одежды.
+    const clothingProfitPerSecond = Math.max(0, clothingProduct.sell - clothingProduct.cost) / Math.max(1, clothingProduct.time || 1);
+    const electronicsProfit = Math.max(1, Math.round((clothingProfitPerSecond * Math.max(1, electronicsProduct.time || 1)) / 10) * 10);
+    electronicsProduct.sell = electronicsProduct.cost + electronicsProfit;
+
     // XP не копируем: у техники более длинные таймеры продажи,
     // поэтому остаётся её собственный XP из ORIGINAL_PRODUCT_ECONOMY.
   });
@@ -5942,6 +6020,10 @@ const PRODUCT_UNLOCK_LEVELS = {
     television: 4,
     desktop_pc: 5,
     washing_machine: 6,
+    tablet: 7,
+    smart_speaker: 8,
+    robot_vacuum: 9,
+    camera: 10,
   }
 };
 
@@ -12348,6 +12430,31 @@ function getLevelUnlockNotificationItems(level) {
     if (shelf) items.push({ icon:shelf.emoji || '🪟', name:shelf.name, type:'Новая витрина' });
   });
 
+  // Отдельно показываем вторые копии витрин. Раньше механика открывалась
+  // на 5/7/9... уровнях, но окно нового уровня об этом не сообщало.
+  getShelfVariantOrder().forEach(variantId => {
+    if (getShelfVariantSecondUnlockLevel(variantId) !== level) return;
+    const shelf = getShelfVariantById(variantId);
+    if (shelf) items.push({ icon:shelf.emoji || '🪟', name:'Вторая: ' + shelf.name, type:'Дополнительная витрина' });
+  });
+
+  // Новые цвета стен и пола тоже являются частью прогрессии.
+  const palette = getSurfacePalette(G.shopType);
+  (palette?.walls || []).forEach((surface, index) => {
+    if (index > 0 && getSurfaceUnlockLevel(index) === level) {
+      items.push({ icon:'🎨', name:'Стены: ' + surface.name, type:'Новый цвет' });
+    }
+  });
+  (palette?.floors || []).forEach((surface, index) => {
+    if (index > 0 && getSurfaceUnlockLevel(index) === level) {
+      items.push({ icon:'🟫', name:'Пол: ' + surface.name, type:'Новый вариант' });
+    }
+  });
+
+  if (level === EXTRA_CASH_REGISTER_UNLOCK_LEVEL) {
+    items.push({ icon:'💵', name:'Вторая касса', type:'Дополнительное оборудование' });
+  }
+
   // Показываем доступного работника на уровне, если он открывается именно сейчас.
   if (typeof WORKER_UNLOCK_LEVELS !== 'undefined') {
     Object.entries(WORKER_UNLOCK_LEVELS).forEach(([type, unlockLevel]) => {
@@ -13482,10 +13589,11 @@ function getShopSubcategories(categoryId = activeCat) {
   if (categoryId === 'products') {
     return [
       { id:'all', name:'Все категории' },
-      { id:'mobile', name:'📱 Мобильные', productIds:['phone','headphones'] },
+      { id:'mobile', name:'📱 Мобильные', productIds:['phone','headphones','tablet'] },
       { id:'computers', name:'💻 Компьютеры', productIds:['laptop','desktop_pc'] },
-      { id:'entertainment', name:'🎮 Развлечения', productIds:['television','game_console'] },
-      { id:'appliances', name:'☕ Бытовая техника', productIds:['washing_machine','coffee_machine'] },
+      { id:'entertainment', name:'🎮 Развлечения', productIds:['television','game_console','smart_speaker'] },
+      { id:'appliances', name:'☕ Бытовая техника', productIds:['washing_machine','coffee_machine','robot_vacuum'] },
+      { id:'gadgets', name:'📷 Гаджеты', productIds:['tablet','camera','smart_speaker'] },
     ];
   }
 
@@ -13942,9 +14050,32 @@ function speedUpShelfSale(slotIdx) {
   showToast('💎 Продажа ускорена');
 }
 
+const ELECTRONICS_DELIVERY_SECONDS = {
+  headphones: 45,
+  phone: 75,
+  coffee_machine: 90,
+  game_console: 105,
+  laptop: 135,
+  television: 150,
+  desktop_pc: 165,
+  washing_machine: 180,
+  tablet: 195,
+  smart_speaker: 210,
+  robot_vacuum: 225,
+  camera: 240,
+};
+
 function getDeliverySeconds(product) {
-  // Баланс стартовой электроники меняет цену, но не должен скрыто менять
-  // уже настроенную длительность доставки. Поэтому сортируем по исходной цене.
+  // У электроники длиннее цикл продажи, поэтому дополнительно заставлять игрока
+  // ждать 6–9 минут поставки в начале игры не нужно. Первая поставка приходит
+  // за 45 секунд, затем время постепенно растёт до 4 минут к 10 уровню.
+  if (product?.cat === 'Техника' && Number.isFinite(ELECTRONICS_DELIVERY_SECONDS[product.id])) {
+    return ELECTRONICS_DELIVERY_SECONDS[product.id];
+  }
+
+  // Для одежды сохраняем прежний алгоритм без изменения её баланса.
+  // Новые товары электроники имеют исходную цену выше всех товаров одежды,
+  // поэтому не сдвигают существующие интервалы поставок одежды 1–10 уровня.
   const originalCost = item => ORIGINAL_PRODUCT_ECONOMY[item.id]?.cost ?? item.cost;
   const sorted = [...PRODUCTS].sort((a, b) => originalCost(a) - originalCost(b));
   const idx = Math.max(0, sorted.findIndex(p => p.id === product.id));
