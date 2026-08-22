@@ -1379,6 +1379,19 @@
     --menu-profit:#27715d;
     --menu-close:#2f343c;
   }
+  /* Стандартная тема: весь текст игровых меню — чёрный. */
+  body[data-menu-style="standard"] .modal-box,
+  body[data-menu-style="standard"] .modal-box *,
+  body[data-menu-style="standard"] .shop-type-panel,
+  body[data-menu-style="standard"] .shop-type-panel *,
+  body[data-menu-style="standard"] #edit-menu-box,
+  body[data-menu-style="standard"] #edit-menu-box *,
+  body[data-menu-style="standard"] #object-actions,
+  body[data-menu-style="standard"] #object-actions *,
+  body[data-menu-style="standard"] #tutorial-card,
+  body[data-menu-style="standard"] #tutorial-card * {
+    color:#000000 !important;
+  }
   body[data-menu-style="sky"] {
     --menu-bg:linear-gradient(145deg,#154963 0%,#277ea2 55%,#54b6d6 100%);
     --menu-card:rgba(232,249,255,0.12);
