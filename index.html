@@ -2623,6 +2623,14 @@ body[data-menu-style="standard"] textarea::placeholder {
   color:#000000 !important;
   opacity:.72;
 }
+
+/* МЕНЮ «МАГАЗИН»: весь текст внутри этого окна всегда чёрный.
+   Правило специально ограничено #shopModal и не затрагивает другие HUD/окна. */
+#shopModal,
+#shopModal .modal-box,
+#shopModal .modal-box * {
+  color:#000000 !important;
+}
 </style>
 </head>
 <body data-menu-style="standard">
