@@ -1370,27 +1370,14 @@
     --menu-card:rgba(255,255,255,0.38);
     --menu-card-strong:rgba(255,255,255,0.56);
     --menu-border:rgba(48,51,58,0.23);
-    --menu-text:#111318;
-    --menu-muted:#2f343c;
+    --menu-text:#000000;
+    --menu-muted:#000000;
     --menu-accent:#818897;
-    --menu-accent-text:#111318;
-    --menu-secondary:#262b33;
-    --menu-secondary-text:#111318;
-    --menu-profit:#27715d;
-    --menu-close:#2f343c;
-  }
-  /* Стандартная тема: весь текст игровых меню — чёрный. */
-  body[data-menu-style="standard"] .modal-box,
-  body[data-menu-style="standard"] .modal-box *,
-  body[data-menu-style="standard"] .shop-type-panel,
-  body[data-menu-style="standard"] .shop-type-panel *,
-  body[data-menu-style="standard"] #edit-menu-box,
-  body[data-menu-style="standard"] #edit-menu-box *,
-  body[data-menu-style="standard"] #object-actions,
-  body[data-menu-style="standard"] #object-actions *,
-  body[data-menu-style="standard"] #tutorial-card,
-  body[data-menu-style="standard"] #tutorial-card * {
-    color:#000000 !important;
+    --menu-accent-text:#000000;
+    --menu-secondary:#000000;
+    --menu-secondary-text:#000000;
+    --menu-profit:#000000;
+    --menu-close:#000000;
   }
   body[data-menu-style="sky"] {
     --menu-bg:linear-gradient(145deg,#154963 0%,#277ea2 55%,#54b6d6 100%);
@@ -2612,6 +2599,29 @@
 @keyframes cashProfitPopupIn {
   from { opacity: 0; transform: translateY(8px) scale(.94); }
   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Финальный override стандартной темы.
+   Он расположен после остальных правил с !important, поэтому весь текст
+   стандартных игровых меню действительно остаётся чисто чёрным. */
+body[data-menu-style="standard"] .modal-box,
+body[data-menu-style="standard"] .modal-box *,
+body[data-menu-style="standard"] .shop-type-panel,
+body[data-menu-style="standard"] .shop-type-panel *,
+body[data-menu-style="standard"] #edit-menu-box,
+body[data-menu-style="standard"] #edit-menu-box *,
+body[data-menu-style="standard"] #object-actions,
+body[data-menu-style="standard"] #object-actions *,
+body[data-menu-style="standard"] #tutorial-card,
+body[data-menu-style="standard"] #tutorial-card *,
+body[data-menu-style="standard"] #cash-profit-popup,
+body[data-menu-style="standard"] #cash-profit-popup * {
+  color:#000000 !important;
+}
+body[data-menu-style="standard"] input::placeholder,
+body[data-menu-style="standard"] textarea::placeholder {
+  color:#000000 !important;
+  opacity:.72;
 }
 </style>
 </head>
