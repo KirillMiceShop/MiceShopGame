@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MiceShop build: tutorial-starter-equipment-v3 -->
+<!-- MiceShop build: ui-bugs-salary-pack4 -->
 <!-- BUILD: tutorial-starter-equipment-v2 -->
 <html lang="ru">
 <head>
@@ -830,6 +830,8 @@
   }
   .prod-row:active { border-color:#e94560; transform:scale(0.98); }
   .prod-row.cant { opacity:.35; pointer-events:none; }
+  .prod-row.store-locked { opacity:.52; }
+  .prod-row.store-info-card { cursor:pointer; }
   .prod-row .pr-emoji { font-size:28px; flex-shrink:0; }
   .prod-row .pr-info { flex:1; }
   .prod-row .pr-name { font-size:13px; font-weight:600; }
@@ -2596,6 +2598,44 @@
 #cash-profit-popup button:active {
   transform: scale(.97);
 }
+
+/* Подтверждение покупки оборудования после предварительного размещения. */
+#purchase-placement-controls {
+  position:fixed;
+  left:50%;
+  bottom:calc(env(safe-area-inset-bottom, 0px) + 18px);
+  transform:translateX(-50%);
+  z-index:2700;
+  display:none;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  width:min(330px, calc(100vw - 28px));
+  padding:8px;
+  border-radius:16px;
+  background:var(--menu-bg, rgba(20,20,40,.94));
+  border:1px solid var(--menu-border, rgba(255,255,255,.16));
+  box-shadow:0 10px 28px rgba(0,0,0,.34);
+  backdrop-filter:blur(10px);
+}
+#purchase-placement-controls.show { display:grid; }
+.purchase-placement-btn {
+  min-height:42px;
+  border-radius:12px;
+  border:1px solid var(--menu-border, rgba(255,255,255,.14));
+  font-size:12px;
+  font-weight:900;
+  cursor:pointer;
+}
+#purchase-placement-confirm { background:var(--menu-profit,#23c483); color:#fff; }
+#purchase-placement-cancel { background:var(--menu-card,rgba(255,255,255,.08)); color:var(--menu-text,#fff); }
+.purchase-placement-btn:active { transform:scale(.97); }
+.store-item-description {
+  margin:11px 0; padding:11px 12px; border-radius:12px;
+  background:var(--menu-card,rgba(255,255,255,.06));
+  border:1px solid var(--menu-border,rgba(255,255,255,.10));
+  color:var(--menu-text,#fff); font-size:11px; line-height:1.45;
+}
+.store-item-benefit { margin-top:7px; font-weight:900; color:var(--menu-profit,#23c483); }
 @keyframes cashProfitPopupIn {
   from { opacity: 0; transform: translateY(8px) scale(.94); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -2631,6 +2671,23 @@ body[data-menu-style="standard"] textarea::placeholder {
 #shopModal .modal-box * {
   color:#000000 !important;
 }
+
+
+  /* ПАКЕТ 4 — читаемая подсказка и старый золотой цвет рейтинга. */
+  #hud-level-box::before {
+    background:conic-gradient(from 180deg, #b98500 0deg, #f5c518 var(--ratingDeg), rgba(255,255,255,0.10) var(--ratingDeg), rgba(255,255,255,0.10) 360deg) !important;
+  }
+  .rating-bar-fill {
+    background:linear-gradient(90deg,#b98500,#f5c518,#ffe37a) !important;
+  }
+  body[data-menu-style="standard"] .quest-show-btn {
+    background:#c8ccd3 !important;
+    border:1px solid #7d848e !important;
+    color:#000000 !important;
+  }
+  body[data-menu-style="standard"] .quest-show-btn:active {
+    background:#b8bdc5 !important;
+  }
 </style>
 </head>
 <body data-menu-style="standard">
@@ -3014,6 +3071,12 @@ body[data-menu-style="standard"] textarea::placeholder {
   <button type="button" id="cash-profit-collect-btn" onclick="collectAllRevenue()">Забрать прибыль 💰</button>
 </div>
 
+<!-- Подтверждение предварительно размещённой покупки. -->
+<div id="purchase-placement-controls" role="dialog" aria-label="Подтверждение покупки">
+  <button id="purchase-placement-cancel" class="purchase-placement-btn" type="button" onclick="cancelPendingStorePurchase()">✕ Отмена</button>
+  <button id="purchase-placement-confirm" class="purchase-placement-btn" type="button" onclick="confirmPendingStorePurchase()">✓ Подтвердить</button>
+</div>
+
 <div id="toast"></div>
 
 <!-- THREE.JS -->
@@ -3056,9 +3119,13 @@ const G = {
   workerSalaryDebt: 0, // накопленная, но ещё не списанная зарплата
   workerSalaryLastAccrualAt: null, // время последнего расчётного периода
   workerSalaryHires: [], // купленные работники и их индивидуальные зарплаты
+  workerSalaryMissedPeriods: 0, // подряд пропущенные расчётные периоды
+  workerStrikeActive: false, // при двух невыплаченных игровых неделях работники бастуют
   decorXPMilestones: {}, // одноразовые награды XP за развитие декора и рейтинга
   claimedLevelRewards: [], // уровни, за которые награда уже была получена
   achievementClaims: {}, // полученные ступени достижений: achievementId -> количество ступеней
+  freeDeliveryAccelerationsUsed: 0, // бесплатные ускорения поставки в первых уровнях
+  freeSaleAccelerationsUsed: 0, // бесплатные ускорения продажи в первых уровнях
 };
 
 // Перемещаемый декор внутри магазина увеличен в 1,5 раза.
@@ -3126,6 +3193,32 @@ function getLevelFiveQuestShelfVariant(shopType = G.shopType) {
   return candidates[0] || variants[0] || null;
 }
 
+function getQuestProductsUnlockedAtLevel(level, shopType = G.shopType) {
+  return PRODUCTS.filter(product =>
+    isProductAllowedForShop(product)
+    && getProductUnlockLevel(product, shopType, 1) === level
+  );
+}
+
+function getQuestShelfUnlockedAtLevel(level, shopType = G.shopType) {
+  return SHELF_VARIANTS.find(variant =>
+    isShelfVariantAllowedForShop(variant)
+    && getShelfUnlockLevel(variant, shopType, 1) === level
+  ) || null;
+}
+
+function getLevelProductQuestLabel(level) {
+  const products = getQuestProductsUnlockedAtLevel(level);
+  if (!products.length) return 'новый товар';
+  if (products.length === 1) return '«' + products[0].name + '»';
+  return products.slice(0, 2).map(product => '«' + product.name + '»').join(' или ');
+}
+
+function isLevelUnlockProductEvent(data, level) {
+  const productId = data?.productId || null;
+  return !!productId && getQuestProductsUnlockedAtLevel(level).some(product => product.id === productId);
+}
+
 const QUEST_DEFINITIONS = [
   // Квесты 1 уровня. Первые пять проходят как обязательное начальное обучение.
   { id:'first_order', tutorial:true, minLevel:1, icon:'🚚', title:'Первая поставка', text:'Закажите любой доступный товар', event:'product_ordered', target:1, reward:{ money:100, xp:10 } },
@@ -3133,29 +3226,47 @@ const QUEST_DEFINITIONS = [
   { id:'first_stock', tutorial:true, minLevel:1, icon:'🪟', title:'Заполните витрину', text:'Выставьте товар со склада на витрину', event:'product_stocked', target:1, reward:{ money:150, xp:20 } },
   { id:'first_sale', tutorial:true, minLevel:1, icon:'🛍️', title:'Первая продажа', text:'Продайте первый товар покупателю', event:'product_sold', target:1, reward:{ money:200, xp:30 } },
   { id:'first_collection', tutorial:true, minLevel:1, icon:'💰', title:'Заберите выручку', text:'Нажмите на кассу и заберите деньги', event:'revenue_collected', target:1, reward:{ money:200, xp:20 } },
-  { id:'open_editor', minLevel:1, icon:'✏️', title:'Познакомьтесь с редактором', text:'Откройте режим редактора магазина', event:'editor_opened', target:1, reward:{ money:100, xp:10 } },
-  { id:'sell_three_level_one', minLevel:1, icon:'🛍️', title:'Первые продажи', text:'Продайте 3 товара', metric:'total_sold', target:3, absolute:true, reward:{ money:250, xp:30 } },
-  { id:'buy_first_decor', minLevel:1, icon:'🪴', title:'Первое украшение', text:'Купите и установите один объект декора', metric:'regular_decor_count', target:1, absolute:true, reward:{ money:200, xp:20 } },
-  { id:'decor_storage_cycle', minLevel:1, icon:'📦', title:'Декор на складе', text:'Уберите декор на склад, затем верните его обратно в зал', kind:'decor_storage_cycle', target:2, reward:{ money:200, xp:20 } },
-  { id:'sell_one_decor', minLevel:1, icon:'💰', title:'Продажа декора', text:'Продайте один установленный объект декора', event:'decor_sold', target:1, reward:{ money:200, xp:20 } },
+  { id:'open_editor', minLevel:1, icon:'✏️', title:'Познакомьтесь с редактором', text:'Откройте режим редактора магазина', event:'editor_opened', target:1, reward:{ money:100, xp:15 } },
+  { id:'sell_three_level_one', minLevel:1, icon:'🛍️', title:'Первые продажи', text:'После появления квеста продайте 3 товара', metric:'total_sold', target:3, fromActivation:true, reward:{ money:250, xp:40 } },
+  { id:'buy_first_decor', minLevel:1, icon:'🪴', title:'Первое украшение', text:'Купите и установите один объект декора', metric:'regular_decor_count', target:1, absolute:true, reward:{ money:200, xp:25 } },
+  { id:'decor_storage_cycle', minLevel:1, icon:'📦', title:'Декор на складе', text:'Уберите декор на склад, затем верните его обратно в зал', kind:'decor_storage_cycle', target:2, reward:{ money:200, xp:25 } },
+  { id:'sell_one_decor', minLevel:1, icon:'💰', title:'Продажа декора', text:'Продайте один установленный объект декора', event:'decor_sold', target:1, reward:{ money:200, xp:25 } },
   { id:'reach_level_2', minLevel:1, icon:'⭐', title:'Новый уровень', text:'Достигните 2 уровня магазина', event:'level_reached', metric:'level', target:2, absolute:true, reward:{ money:300, crystals:1 } },
-  { id:'rotate_shelf', minLevel:1, icon:'🔄', title:'Другой ракурс', text:'Поверните витрину в редакторе', event:'shelf_rotated', target:1, reward:{ money:100, xp:40 } },
+  { id:'rotate_shelf', minLevel:1, icon:'🔄', title:'Другой ракурс', text:'Поверните витрину в редакторе', event:'shelf_rotated', target:1, reward:{ money:100, xp:45 } },
 
   // Квесты 2 уровня.
-  { id:'change_floor_color', minLevel:2, icon:'🟫', title:'Новый пол', text:'Измените цвет пола', event:'floor_color_changed', target:1, reward:{ money:100, xp:40 } },
-  { id:'change_wall_color', minLevel:2, icon:'🎨', title:'Новый интерьер', text:'Измените цвет стен', event:'wall_color_changed', target:1, reward:{ money:150, xp:40 } },
-  { id:'move_shelf', minLevel:2, icon:'↔️', title:'Новая расстановка', text:'Переместите витрину на новое место', event:'shelf_moved', target:1, reward:{ money:100, xp:40 } },
-  { id:'rotate_cash', minLevel:2, icon:'💵', title:'Удобная касса', text:'Поверните кассу', event:'cash_rotated', target:1, reward:{ money:100, xp:40 } },
-  { id:'sell_five_level_two', minLevel:2, icon:'🛍️', title:'Первые продажи', text:'Продайте 5 товаров', metric:'total_sold', target:5, absolute:true, reward:{ money:250, xp:40 } },
+  { id:'change_floor_color', minLevel:2, icon:'🟫', title:'Новый пол', text:'Измените цвет пола', event:'floor_color_changed', target:1, reward:{ money:100, xp:45 } },
+  { id:'change_wall_color', minLevel:2, icon:'🎨', title:'Новый интерьер', text:'Измените цвет стен', event:'wall_color_changed', target:1, reward:{ money:150, xp:45 } },
+  { id:'invest_interior_level2', minLevel:2, icon:'🛋️', title:'Вложение в интерьер', text:'Потратьте 800 денег на интерьер после появления этого квеста', event:'money_spent', target:800, matchData:data => !!data?.capital && data?.category === 'interior', reward:{ money:150, xp:55 } },
+  { id:'move_shelf', minLevel:2, icon:'↔️', title:'Новая расстановка', text:'Переместите витрину на новое место', event:'shelf_moved', target:1, reward:{ money:100, xp:45 } },
+  { id:'rotate_cash', minLevel:2, icon:'💵', title:'Удобная касса', text:'Поверните кассу', event:'cash_rotated', target:1, reward:{ money:100, xp:45 } },
+  { id:'sell_five_level_two', minLevel:2, icon:'🛍️', title:'Новая серия продаж', text:'После появления квеста продайте ещё 5 товаров', metric:'total_sold', target:5, fromActivation:true, reward:{ money:250, xp:60 } },
   { id:'reach_level_3', minLevel:2, icon:'⭐', title:'Следующая ступень', text:'Достигните 3 уровня магазина', event:'level_reached', metric:'level', target:3, absolute:true, reward:{ money:250, xp:100 } },
 
-  // Квесты 3–4 уровней.
+  // Квесты 3 уровня.
   { id:'install_two_decor', minLevel:3, icon:'🛋️', title:'Оформляем магазин', text:'Купите и установите 2 объекта оформления', metric:'regular_decor_count', target:2, absolute:true, reward:{ money:350, xp:60 } },
   { id:'buy_wall_decor', minLevel:3, icon:'🖼️', title:'Новый декор', text:'Купите настенный декор', metric:'wall_decor_count', target:1, absolute:true, reward:{ money:320, xp:60 } },
   { id:'install_facility', minLevel:3, icon:'🚪', title:'Комфорт покупателей', text:() => G.shopType === 'electronics' ? 'Установите зону проверки техники' : 'Установите примерочную', metric:'facility_count', target:1, absolute:true, reward:{ money:300, xp:80 } },
-  { id:'sell_three_product_types', minLevel:3, icon:'🧺', title:'Разнообразный ассортимент', text:'Продайте товары 3 разных видов', metric:'distinct_products_sold', target:3, absolute:true, reward:{ money:400, xp:70 } },
-  { id:'sell_ten_products', minLevel:3, icon:'🛍️', title:'Первые покупатели', text:'Продайте суммарно 10 товаров', metric:'total_sold', target:10, absolute:true, reward:{ money:400, xp:60 } },
-  { id:'reach_level_5', minLevel:3, icon:'⭐', title:'Магазин развивается', text:'Достигните 5 уровня магазина', event:'level_reached', metric:'level', target:5, absolute:true, reward:{ money:750, xp:90 } },
+  { id:'invest_store_level3', minLevel:3, icon:'🏗️', title:'Развитие магазина', text:'Потратьте 2 500 денег на оборудование или интерьер после появления квеста', event:'money_spent', target:2500, matchData:data => !!data?.capital, reward:{ money:350, xp:70 } },
+  { id:'level3_order_new_product', minLevel:3, icon:'📦', title:'Новинка в ассортименте', text:() => 'Закажите товар, открывшийся на 3 уровне: ' + getLevelProductQuestLabel(3), event:'product_ordered', target:1, productUnlockLevel:3, matchData:data => isLevelUnlockProductEvent(data, 3), reward:{ money:250, xp:60 } },
+  { id:'level3_sell_new_product', minLevel:3, icon:'🛍️', title:'Спрос на новинку', text:() => 'Продайте 2 единицы товара 3 уровня: ' + getLevelProductQuestLabel(3), event:'product_sold', target:2, productUnlockLevel:3, matchData:data => isLevelUnlockProductEvent(data, 3), reward:{ money:350, xp:80 } },
+  { id:'sell_three_product_types', minLevel:3, icon:'🧺', title:'Разнообразный ассортимент', text:'После появления квеста продайте товары 3 разных видов', kind:'distinct_product_sales', event:'product_sold', target:3, reward:{ money:400, xp:80 } },
+  { id:'sell_ten_products', minLevel:3, icon:'🛍️', title:'Активные продажи', text:'После появления квеста продайте ещё 8 товаров', metric:'total_sold', target:8, fromActivation:true, reward:{ money:400, xp:80 } },
+  { id:'reach_level_4', minLevel:3, icon:'⭐', title:'Четвёртый уровень', text:'Достигните 4 уровня магазина', event:'level_reached', metric:'level', target:4, absolute:true, reward:{ money:450, xp:100 } },
+
+  // Квесты 4 уровня — отдельный активный блок, чтобы уровень не был пустым.
+  { id:'invest_store_level4', minLevel:4, icon:'💸', title:'Серьёзное вложение', text:'Потратьте 4 000 денег на развитие магазина после появления квеста', event:'money_spent', target:4000, matchData:data => !!data?.capital, reward:{ money:500, xp:90 } },
+  { id:'level4_install_new_shelf', minLevel:4, icon:'🪟', title:'Новое оборудование', text:() => {
+      const shelf = getQuestShelfUnlockedAtLevel(4);
+      return shelf ? ('Купите и установите «' + shelf.name + '»') : 'Купите и установите новую витрину 4 уровня';
+    }, event:'shelf_installed', target:1, shelfUnlockLevel:4, matchData:data => {
+      const shelf = getQuestShelfUnlockedAtLevel(4);
+      return !!shelf && data?.variantId === shelf.id;
+    }, reward:{ money:450, xp:100 } },
+  { id:'level4_order_new_product', minLevel:4, icon:'📦', title:'Товар четвёртого уровня', text:() => 'Закажите новый товар 4 уровня: ' + getLevelProductQuestLabel(4), event:'product_ordered', target:1, productUnlockLevel:4, matchData:data => isLevelUnlockProductEvent(data, 4), reward:{ money:350, xp:90 } },
+  { id:'level4_sell_new_product', minLevel:4, icon:'🔥', title:'Проверим спрос', text:() => 'Продайте 3 единицы товара 4 уровня: ' + getLevelProductQuestLabel(4), event:'product_sold', target:3, productUnlockLevel:4, matchData:data => isLevelUnlockProductEvent(data, 4), reward:{ money:550, xp:120 } },
+  { id:'sell_six_level_four', minLevel:4, icon:'🛍️', title:'Рабочий день', text:'После появления квеста продайте ещё 6 товаров', metric:'total_sold', target:6, fromActivation:true, reward:{ money:500, xp:100 } },
+  { id:'reach_level_5', minLevel:4, icon:'⭐', title:'Магазин развивается', text:'Достигните 5 уровня магазина', event:'level_reached', metric:'level', target:5, absolute:true, reward:{ money:750, xp:90 } },
 
   // Квесты 5–7 уровней.
   { id:'buy_new_shelf', minLevel:5, icon:'🪟', title:'Новая витрина', text:() => {
@@ -3168,13 +3279,13 @@ const QUEST_DEFINITIONS = [
   { id:'hire_cleaner', minLevel:5, icon:'🧹', title:'Чистый магазин', text:'Наймите уборщика', metric:'staff_cleaner', target:1, absolute:true, reward:{ money:500, xp:80 } },
   { id:'shelf_storage_cycle', minLevel:5, icon:'📦', title:'Перестановка оборудования', text:'Уберите витрину на склад, затем установите её обратно', kind:'shelf_storage_cycle', target:2, reward:{ money:300, xp:80 } },
   { id:'reach_rating_20', minLevel:5, icon:'💖', title:'Привлекательный магазин', text:'Достигните рейтинга магазина 20%', metric:'rating', target:20, absolute:true, reward:{ money:500, xp:80 } },
-  { id:'sell_twenty_five_products', minLevel:5, icon:'🛍️', title:'Стабильные продажи', text:'Продайте суммарно 25 товаров', metric:'total_sold', target:25, absolute:true, reward:{ money:800, xp:80 } },
-  { id:'earn_fifteen_thousand', minLevel:5, icon:'💰', title:'Растущий бизнес', text:'Получите суммарную выручку 15 000 денег', metric:'total_earned', target:15000, absolute:true, reward:{ money:1000, xp:80 } },
+  { id:'sell_twenty_five_products', minLevel:5, icon:'🛍️', title:'Стабильные продажи', text:'После появления квеста продайте 25 товаров', metric:'total_sold', target:25, fromActivation:true, reward:{ money:800, xp:80 } },
+  { id:'earn_fifteen_thousand', minLevel:5, icon:'💰', title:'Растущий бизнес', text:'После появления квеста получите 15 000 денег выручки', metric:'total_earned', target:15000, fromActivation:true, reward:{ money:1000, xp:80 } },
   { id:'reach_level_8', minLevel:5, icon:'⭐', title:'Опытный владелец', text:'Достигните 8 уровня магазина', event:'level_reached', metric:'level', target:8, absolute:true, reward:{ money:1250, xp:140 } },
 
   // Квесты 8–10 уровней.
   { id:'hire_extra_seller', minLevel:8, icon:'👕', title:'Помощник в торговом зале', text:'Наймите дополнительного продавца', metric:'extra_sellers', target:1, absolute:true, reward:{ money:700, xp:90 } },
-  { id:'sell_fifty_products', minLevel:8, icon:'🛍️', title:'Проверенный магазин', text:'Продайте суммарно 50 товаров', metric:'total_sold', target:50, absolute:true, reward:{ money:1500, xp:90 } },
+  { id:'sell_fifty_products', minLevel:8, icon:'🛍️', title:'Проверенный магазин', text:'После появления квеста продайте 50 товаров', metric:'total_sold', target:50, fromActivation:true, reward:{ money:1500, xp:90 } },
   { id:'reach_rating_40', minLevel:8, icon:'🌟', title:'Известный магазин', text:'Достигните рейтинга магазина 40%', metric:'rating', target:40, absolute:true, reward:{ money:1500, xp:90 } },
   { id:'reach_level_10', minLevel:8, icon:'🏆', title:'Владелец развивающегося бизнеса', text:'Достигните 10 уровня магазина', event:'level_reached', metric:'level', target:10, absolute:true, reward:{ money:2500, xp:120 } },
 ];
@@ -3198,9 +3309,14 @@ const QUEST_BATCHES = [
   ['buy_first_decor', 'decor_storage_cycle', 'sell_one_decor'],
   ['reach_level_2'],
   ['change_floor_color', 'change_wall_color', 'move_shelf'],
-  ['rotate_cash', 'sell_five_level_two', 'reach_level_3'],
-  ['install_two_decor', 'buy_wall_decor', 'install_facility'],
-  ['sell_three_product_types', 'sell_ten_products', 'reach_level_5'],
+  ['invest_interior_level2', 'rotate_cash', 'sell_five_level_two'],
+  ['reach_level_3'],
+  ['install_two_decor', 'buy_wall_decor', 'invest_store_level3'],
+  ['install_facility', 'level3_order_new_product', 'level3_sell_new_product'],
+  ['sell_three_product_types', 'sell_ten_products', 'reach_level_4'],
+  ['invest_store_level4', 'level4_install_new_shelf', 'level4_order_new_product'],
+  ['level4_sell_new_product', 'sell_six_level_four'],
+  ['reach_level_5'],
   ['buy_new_shelf', 'install_second_shelf', 'stock_two_product_types'],
   ['hire_cleaner', 'shelf_storage_cycle', 'reach_rating_20'],
   ['sell_twenty_five_products', 'earn_fifteen_thousand', 'reach_level_8'],
@@ -3227,7 +3343,7 @@ function isQuestUnlocked(quest) {
   return !!quest && (G.level || 1) >= (quest.minLevel || 1);
 }
 
-function getQuestMetricValue(quest) {
+function getQuestMetricRawValue(quest) {
   if (!quest?.metric) return null;
   if (quest.metric === 'level') return G.level || 1;
   if (quest.metric === 'total_sold') return Math.max(0, Number(G.totalSold) || 0);
@@ -3278,10 +3394,44 @@ function getQuestMetricValue(quest) {
   return null;
 }
 
+function getQuestMetricValue(quest) {
+  const raw = getQuestMetricRawValue(quest);
+  if (raw === null || raw === undefined) return null;
+  if (!quest?.fromActivation) return raw;
+
+  const state = questState[quest.id];
+  const baseline = Number(state?.meta?.baselineMetric);
+  if (!Number.isFinite(baseline)) return Math.max(0, Number(state?.progress) || 0);
+  return Math.max(0, Number(raw) - baseline);
+}
+
+function ensureQuestActivated(quest) {
+  const state = quest ? questState[quest.id] : null;
+  if (!quest || !state || state.completed || state.claimed) return state;
+  if (!state.meta || typeof state.meta !== 'object') state.meta = {};
+
+  if (!Number.isFinite(Number(state.meta.activatedAt))) {
+    state.meta.activatedAt = Date.now();
+  }
+
+  if (quest.fromActivation && !Number.isFinite(Number(state.meta.baselineMetric))) {
+    const raw = getQuestMetricRawValue(quest);
+    const preservedProgress = Math.max(0, Number(state.progress) || 0);
+    state.meta.baselineMetric = Math.max(0, (Number(raw) || 0) - preservedProgress);
+  }
+
+  if (quest.kind === 'distinct_product_sales' && !Array.isArray(state.meta.productIds)) {
+    state.meta.productIds = [];
+  }
+  return state;
+}
+
 function initQuestSystem() {
   if (questSystemReady) return;
   QUEST_DEFINITIONS.forEach(q => {
-    const metricValue = getQuestMetricValue(q);
+    const metricValue = q.fromActivation || q.kind === 'distinct_product_sales'
+      ? 0
+      : getQuestMetricRawValue(q);
     questState[q.id] = {
       progress: metricValue === null ? 0 : Math.min(q.target, metricValue),
       completed: false,
@@ -3323,7 +3473,9 @@ function getActiveQuests() {
     const quest = getQuestProgressTarget();
     return quest ? [quest] : [];
   }
-  return getCurrentQuestBatch().filter(quest => isQuestUnlocked(quest) && !isQuestFinishedForBatch(quest));
+  const active = getCurrentQuestBatch().filter(quest => isQuestUnlocked(quest) && !isQuestFinishedForBatch(quest));
+  active.forEach(ensureQuestActivated);
+  return active;
 }
 
 function getActiveQuestIndex() {
@@ -3415,7 +3567,7 @@ function completeQuest(quest) {
 
 function syncQuestProgressFromGameState(quest) {
   if (!quest || !quest.metric || !isQuestUnlocked(quest)) return false;
-  const state = questState[quest.id];
+  const state = ensureQuestActivated(quest);
   if (!state || state.completed || state.claimed) return false;
   const value = getQuestMetricValue(quest);
   if (value === null) return false;
@@ -3432,8 +3584,19 @@ function syncActiveQuestProgress() {
 
 function applyQuestEventProgress(quest, eventName, amount = 1, data = {}) {
   if (!quest || !isQuestUnlocked(quest)) return false;
-  const state = questState[quest.id];
+  const state = ensureQuestActivated(quest);
   if (!state || state.completed || state.claimed) return false;
+
+  if (quest.kind === 'distinct_product_sales') {
+    if (eventName !== 'product_sold' || !data?.productId) return false;
+    if (typeof quest.matchData === 'function' && !quest.matchData(data || {})) return false;
+    if (!Array.isArray(state.meta.productIds)) state.meta.productIds = [];
+    if (!state.meta.productIds.includes(data.productId)) state.meta.productIds.push(data.productId);
+    state.progress = Math.min(quest.target, state.meta.productIds.length);
+    if (state.progress >= quest.target) completeQuest(quest);
+    else updateQuestUI();
+    return true;
+  }
 
   if (quest.kind === 'decor_storage_cycle') {
     if (eventName === 'decor_stored' && (state.progress || 0) < 1) {
@@ -3950,6 +4113,65 @@ function showProductOrderQuestPath(quest, excludedIds = []) {
   );
 }
 
+function getLevelProductHelpCard(level) {
+  const ids = new Set(getQuestProductsUnlockedAtLevel(level).map(product => product.id));
+  return [...document.querySelectorAll('#products-list .prod-row[data-product-id], #products-list .prod-card[data-product-id]')]
+    .find(row => ids.has(row.dataset.productId) && !row.classList.contains('cant')) || null;
+}
+
+function showLevelProductOrderQuestPath(quest, level) {
+  const ids = new Set(getQuestProductsUnlockedAtLevel(level).map(product => product.id));
+  const itemOpen = document.getElementById('itemModal')?.classList.contains('show');
+  if (itemOpen) {
+    const product = PRODUCTS.find(item => item.id === activeProductId) || null;
+    if (!product || !ids.has(product.id)) {
+      showQuestHelpTarget(quest.title, 'Для этого квеста нужен товар, который открылся на ' + level + ' уровне. Вернитесь назад и выберите его.', () => document.querySelector('#itemModalBox .modal-close, #itemModalBox .btn-back'), 22000, quest.id);
+      return;
+    }
+    showQuestHelpTarget(quest.title, 'Выбран нужный новый товар. Укажите количество и нажмите кнопку покупки.', () => document.querySelector('#itemModalBox .btn-buy'), 22000, quest.id);
+    return;
+  }
+  showShopQuestPath(quest, 'products', 'all', () => getLevelProductHelpCard(level), 'Выберите товар, который открылся на ' + level + ' уровне.', 26000);
+}
+
+function getSellingShelfHelpTargetForProductIds(productIds = []) {
+  const ids = new Set(productIds || []);
+  const idx = (G.slots || []).findIndex(item => item && item.qty > 0 && !item.soldOut && item.nextSaleAt && item.product?.id && ids.has(item.product.id));
+  if (idx < 0) return null;
+  const shelf = shelfMeshes[idx];
+  return makeTutorialObjectTarget(shelf && (shelf.group || shelf.stand || shelf.base), 16);
+}
+
+function showLevelProductSalesQuestPath(quest, level) {
+  const products = getQuestProductsUnlockedAtLevel(level);
+  const ids = products.map(product => product.id);
+  const idSet = new Set(ids);
+  const sellingTarget = getSellingShelfHelpTargetForProductIds(ids);
+  if (sellingTarget) {
+    showQuestHelpTarget(quest.title, 'Нужный товар уже продаётся. Дождитесь следующих продаж или воспользуйтесь доступным ускорением.', () => getSellingShelfHelpTargetForProductIds(ids), 90000, quest.id);
+    return;
+  }
+
+  if (placingMode && pendingProduct && idSet.has(pendingProduct.id)) {
+    showQuestHelpTarget(quest.title, 'Поставьте новый товар на подходящую свободную витрину.', () => getProductPlacementHelpTarget(pendingProduct), 30000, quest.id);
+    return;
+  }
+
+  const delivery = (G.deliveries || []).find(item => item && item.readyAt > Date.now() && idSet.has(item.productId));
+  if (delivery) {
+    showWarehouseProductQuestPath(quest, 'transit', 'Нужный товар уже в пути. Дождитесь доставки или ускорьте её.', () => document.querySelector(`#warehouse-list .prod-row[data-delivery-id="${delivery.id}"]`), 90000);
+    return;
+  }
+
+  const storedProductId = Object.entries(G.storage || {}).find(([productId, qty]) => Number(qty) > 0 && idSet.has(productId))?.[0] || null;
+  if (storedProductId) {
+    showWarehouseProductQuestPath(quest, 'stock', 'Нажмите «Поставить» у нового товара и выберите подходящую витрину.', () => document.querySelector(`#warehouse-list .prod-row[data-product-id="${storedProductId}"] .btn-buy`), 30000);
+    return;
+  }
+
+  showLevelProductOrderQuestPath(quest, level);
+}
+
 function getSellingShelfHelpTarget(excludedProductIds = []) {
   const excluded = new Set(excludedProductIds || []);
   const idx = (G.slots || []).findIndex(item => item && item.qty > 0 && !item.soldOut && item.nextSaleAt && item.product?.id && !excluded.has(item.product.id));
@@ -4020,6 +4242,22 @@ function showQuestHelp(questId) {
   const metric = quest.metric || '';
   const state = questState[id] || { progress:0 };
 
+  if (quest.shelfUnlockLevel) {
+    const shelf = getQuestShelfUnlockedAtLevel(quest.shelfUnlockLevel);
+    showShopQuestPath(quest, 'shelves', 'all', () => shelf ? document.querySelector(`#products-list [data-shelf-variant-id="${shelf.id}"]`) : getFirstPurchasableShopRow('#products-list .prod-row[data-shelf-variant-id]'), 'Выберите новую витрину, открывшуюся на этом уровне, и установите её.');
+    return;
+  }
+
+  if (quest.productUnlockLevel && eventName === 'product_ordered') {
+    showLevelProductOrderQuestPath(quest, quest.productUnlockLevel);
+    return;
+  }
+
+  if (quest.productUnlockLevel && eventName === 'product_sold') {
+    showLevelProductSalesQuestPath(quest, quest.productUnlockLevel);
+    return;
+  }
+
   if (metric === 'level' || id.startsWith('reach_level_')) {
     showQuestHelpTarget(quest.title, 'Получайте XP за продажи и задания. Следите за шкалой уровня здесь.', () => document.getElementById('hud-level-box'), 22000, quest.id);
     return;
@@ -4027,6 +4265,11 @@ function showQuestHelp(questId) {
 
   if (metric === 'rating' || id.includes('rating')) {
     showQuestHelpTarget(quest.title, 'Нажмите на панель уровня, чтобы открыть рейтинг и посмотреть, что на него влияет.', () => document.getElementById('hud-level-box'), 22000, quest.id);
+    return;
+  }
+
+  if (eventName === 'money_spent') {
+    showShopQuestPath(quest, 'design', 'ordinary', () => getRegularDecorCard(false), 'Покупайте доступный интерьер или оборудование. В прогресс идут только новые траты после появления квеста.');
     return;
   }
 
@@ -4185,7 +4428,7 @@ function showQuestHelp(questId) {
     showWarehouseProductQuestPath(
       quest,
       'transit',
-      'Следите за таймером доставки. Ускорение за 1💎 необязательно.',
+      'Следите за таймером доставки. На первых уровнях доступно несколько бесплатных ускорений.',
       () => document.querySelector('#warehouse-list .prod-row[data-delivery-id]') || document.querySelector('#warehouse-product-tabs [data-product-tab="transit"]'),
       90000
     );
@@ -4209,7 +4452,7 @@ function showQuestHelp(questId) {
   }
 
   if (metric === 'total_sold' || metric === 'distinct_products_sold' || eventName === 'product_sold') {
-    showSalesQuestPath(quest, metric === 'distinct_products_sold');
+    showSalesQuestPath(quest, metric === 'distinct_products_sold' || quest.kind === 'distinct_product_sales');
     return;
   }
 
@@ -4416,6 +4659,10 @@ function isTutorialFreeStarterCashPurchase(variant) {
 }
 
 function getTutorialStorePurchaseTarget(kind) {
+  if (document.getElementById('itemModal')?.classList.contains('show') && activeStoreItemDetail) {
+    const expectedKind = kind === 'cash' ? 'cash' : 'shelf';
+    if (activeStoreItemDetail.kind === expectedKind) return document.querySelector('#itemModalBox .btn-buy');
+  }
   const shopOpen = document.getElementById('shopModal')?.classList.contains('show');
   if (!shopOpen) return document.getElementById('shop-main-btn');
 
@@ -4634,11 +4881,11 @@ function advancePastSatisfiedTutorialSteps() {
 const TUTORIAL_STEPS = [
   { id:'welcome', title:'Добро пожаловать в MiceShop!', text:'Магазин пока пустой. Сначала бесплатно купим стартовую витрину и кассу, затем закажем первый товар.', manual:true, button:'Начать' },
   { id:'shop', title:'Откройте магазин', text:'Нажмите кнопку «Магазин». Затем слева выберите нужный раздел, а справа — подраздел.', event:'shop_opened', target:() => document.getElementById('shop-main-btn') },
-  { id:'buy_shelf', title:'Купите и поставьте витрину', text:'Слева откройте «Витрины», справа выберите «Все витрины», затем купите бесплатную стартовую витрину. После покупки редактор откроется автоматически.', event:'starter_shelf_placed', target:() => getTutorialEquipmentStepTarget('shelf') },
-  { id:'buy_cash', title:'Купите и поставьте кассу', text:'Слева откройте «Кассы», справа выберите «Все кассы», затем купите бесплатную стартовую кассу. После покупки редактор откроется автоматически.', event:'starter_cash_placed', target:() => getTutorialEquipmentStepTarget('cash') },
+  { id:'buy_shelf', title:'Купите и поставьте витрину', text:'Слева откройте «Витрины», справа выберите «Все витрины», затем нажмите на бесплатную стартовую витрину. В окне описания нажмите «Получить бесплатно», после чего откроется редактор.', event:'starter_shelf_placed', target:() => getTutorialEquipmentStepTarget('shelf') },
+  { id:'buy_cash', title:'Купите и поставьте кассу', text:'Слева откройте «Кассы», справа выберите «Все кассы», затем нажмите на бесплатную стартовую кассу. В окне описания нажмите «Получить бесплатно», после чего откроется редактор.', event:'starter_cash_placed', target:() => getTutorialEquipmentStepTarget('cash') },
   { id:'product', title:'Выберите первый товар', text:'Слева откройте «Товары», справа выберите «Все товары», затем нажмите на первый доступный товар.', event:'product_viewed', target:() => getTutorialProductTarget() },
   { id:'order', title:'Закажите товар', text:'Оставьте количество 1 и нажмите кнопку покупки. Товар отправится на склад.', event:'product_ordered', target:() => document.querySelector('#itemModalBox .btn-buy') },
-  { id:'delivery', title:'Дождитесь доставки', text:'Откройте склад и следите за таймером во вкладке «В пути». При желании доставку можно ускорить за 1💎 — это необязательно.', event:'delivery_arrived', target:() => {
+  { id:'delivery', title:'Дождитесь доставки', text:'Откройте склад и следите за таймером во вкладке «В пути». На первых уровнях несколько поставок можно ускорить бесплатно.', event:'delivery_arrived', target:() => {
       const warehouseOpen = document.getElementById('warehouseModal')?.classList.contains('show');
       if (!warehouseOpen) return document.getElementById('warehouse-main-btn');
 
@@ -4676,7 +4923,7 @@ const TUTORIAL_STEPS = [
       return [...document.querySelectorAll('#warehouse-list button')]
         .find(btn => btn.textContent.includes('Поставить')) || null;
     } },
-  { id:'sale', title:'Первая продажа', text:'Товар уже на витрине. Для обучения первая продажа произойдёт быстрее обычного.', event:'product_sold', target:null },
+  { id:'sale', title:'Первая продажа', text:'Товар уже на витрине. Для обучения первая продажа произойдёт быстрее обычного. На первых уровнях несколько продаж также можно ускорять бесплатно, нажав на витрину.', event:'product_sold', target:null },
   { id:'collect', title:'Заберите выручку', text:'Нажмите на кассу внутри магазина, затем нажмите «Забрать прибыль 💰» в небольшом окне над кассой.', event:'revenue_collected', target:() => {
       if (document.getElementById('cash-profit-popup')?.classList.contains('show')) {
         return document.getElementById('cash-profit-collect-btn');
@@ -5692,10 +5939,12 @@ function shopLimit(margin = 0) {
 // сколько опыта нужно заработать от текущего уровня до следующего.
 const MAX_LEVEL = 100;
 const EARLY_LEVEL_XP = {
-  2: 450,
-  3: 650,
-  4: 1400,
-  5: 1600,
+  // После плейтеста первых уровней старт ускорен: первый уровень должен
+  // обучать циклу игры, а не заставлять долго ждать следующего открытия.
+  2: 300,
+  3: 550,
+  4: 700,
+  5: 1000,
   6: 1900,
   7: 2200,
   8: 2600,
@@ -7605,23 +7854,33 @@ let pendingInternalWallAxis = 'x'; // x = горизонтально, z = вер
 let pendingInternalWallStorageKey = null; // если ставим стену со склада
 
 // ── ДЕКОРАЦИИ ──
-const DECOR_PRICE = 150;
+const DECOR_PRICE = 350;
 const DECOR_VARIANTS = [
-  { id:'glass_elevator', name:'Стеклянный лифт', emoji:'🛗', place:'floor', width:2.0, depth:2.0, scale:1, price:LIFT_BUILD_COST, special:true, desc:'Лифт между первым и вторым этажом' },
-  { id:'fitting_room', name:'Примерочная', emoji:'🚪', place:'floor', width:1.80, depth:1.80, scale:1, price:250, facility:true, shopType:'clothing', ratingBonus:5, unlockLevel:3, secondUnlockLevel:10, desc:'Кабина для примерки одежды · +5% к рейтингу магазина' },
-  { id:'tech_check_zone', name:'Зона проверки техники', emoji:'🧪', place:'floor', width:1.80, depth:1.20, scale:1, price:250, facility:true, shopType:'electronics', ratingBonus:5, unlockLevel:3, secondUnlockLevel:10, desc:'Стол для проверки работоспособности техники · +5% к рейтингу магазина' },
-  { id:'wall_lamp',   name:'Настенная лампа', emoji:'💡', place:'wall',  width:0.65, height:0.80, depth:0.16, desc:'Лампа на стену' },
-  { id:'floor_lamp',  name:'Напольная лампа', emoji:'🪔', place:'floor', width:0.70, depth:0.70, desc:'Лампа на полу' },
-  { id:'painting_wide',   name:'Широкая картина', emoji:'🖼️', place:'wall',  width:1.80, height:0.85, depth:0.12, desc:'Широкая картина на стену' },
-  { id:'painting_narrow', name:'Узкая картина',   emoji:'🖼️', place:'wall',  width:0.80, height:1.25, depth:0.12, desc:'Узкая картина на стену' },
-  { id:'rug_orange_wide', name:'Оранжевый ковёр широкий', emoji:'🟧', place:'floor', width:2.40, depth:1.40, rug:true, color:0xd9822b, desc:'Можно ставить под витрину, кассу или лампу' },
-  { id:'rug_blue_narrow', name:'Голубой ковёр узкий',      emoji:'🟦', place:'floor', width:1.40, depth:0.80, rug:true, color:0x4aa3df, desc:'Можно ставить под оборудование' },
-  { id:'sofa_small',  name:'Маленький диван', emoji:'🛋️', place:'floor', width:1.30, depth:0.70, desc:'Коричневый маленький диван' },
-  { id:'sofa_big',    name:'Большой диван',   emoji:'🛋️', place:'floor', width:2.20, depth:0.80, desc:'Коричневый большой диван' },
-  { id:'coffee_table',name:'Кофейный столик', emoji:'☕', place:'floor', width:1.10, depth:0.70, desc:'Бежевый кофейный столик' },
-  { id:'plant_tall',  name:'Высокое дерево в горшке', emoji:'🌳', place:'floor', width:0.75, depth:0.75, desc:'Высокое растение' },
-  { id:'plant_short', name:'Низкое дерево в горшке',  emoji:'🪴', place:'floor', width:0.65, depth:0.65, desc:'Низкое растение' },
+  { id:'glass_elevator', name:'Стеклянный лифт', emoji:'🛗', place:'floor', width:2.0, depth:2.0, scale:1, price:LIFT_BUILD_COST, special:true, unlockLevel:25, desc:'Лифт между первым и вторым этажом' },
+  { id:'fitting_room', name:'Примерочная', emoji:'🚪', place:'floor', width:1.80, depth:1.80, scale:1, price:3000, facility:true, shopType:'clothing', ratingBonus:5, unlockLevel:3, secondUnlockLevel:10, desc:'Кабина для примерки одежды' },
+  { id:'tech_check_zone', name:'Зона проверки техники', emoji:'🧪', place:'floor', width:1.80, depth:1.20, scale:1, price:3000, facility:true, shopType:'electronics', ratingBonus:5, unlockLevel:3, secondUnlockLevel:10, desc:'Стол для проверки работоспособности техники' },
+  { id:'wall_lamp',   name:'Настенная лампа', emoji:'💡', place:'wall',  width:0.65, height:0.80, depth:0.16, price:350, unlockLevel:1, desc:'Компактное настенное освещение' },
+  { id:'floor_lamp',  name:'Напольная лампа', emoji:'🪔', place:'floor', width:0.70, depth:0.70, price:450, unlockLevel:1, desc:'Напольный светильник для торгового зала' },
+  { id:'plant_short', name:'Низкое дерево в горшке',  emoji:'🪴', place:'floor', width:0.65, depth:0.65, price:500, unlockLevel:1, desc:'Небольшое растение для оформления магазина' },
+  { id:'sofa_small',  name:'Маленький диван', emoji:'🛋️', place:'floor', width:1.30, depth:0.70, price:900, unlockLevel:2, desc:'Небольшая зона отдыха для покупателей' },
+  { id:'rug_blue_narrow', name:'Голубой ковёр узкий', emoji:'🟦', place:'floor', width:1.40, depth:0.80, rug:true, color:0x4aa3df, price:700, unlockLevel:2, desc:'Узкий ковёр, можно ставить под оборудование' },
+  { id:'coffee_table',name:'Кофейный столик', emoji:'☕', place:'floor', width:1.10, depth:0.70, price:1200, unlockLevel:3, desc:'Столик для оформления зоны отдыха' },
+  { id:'painting_narrow', name:'Узкая картина', emoji:'🖼️', place:'wall', width:0.80, height:1.25, depth:0.12, price:1400, unlockLevel:3, desc:'Вертикальная картина для стены' },
+  { id:'rug_orange_wide', name:'Оранжевый ковёр широкий', emoji:'🟧', place:'floor', width:2.40, depth:1.40, rug:true, color:0xd9822b, price:1600, unlockLevel:3, desc:'Большой ковёр, можно ставить под витрину, кассу или лампу' },
+  { id:'painting_wide', name:'Широкая картина', emoji:'🖼️', place:'wall', width:1.80, height:0.85, depth:0.12, price:2200, unlockLevel:4, desc:'Большая горизонтальная картина для стены' },
+  { id:'plant_tall', name:'Высокое дерево в горшке', emoji:'🌳', place:'floor', width:0.75, depth:0.75, price:2000, unlockLevel:4, desc:'Высокое растение для заметного оформления зала' },
+  { id:'sofa_big', name:'Большой диван', emoji:'🛋️', place:'floor', width:2.20, depth:0.80, price:3000, unlockLevel:4, desc:'Большая зона отдыха для покупателей' },
 ];
+
+function getDecorUnlockLevel(defOrId) {
+  const def = typeof defOrId === 'string' ? DECOR_VARIANTS.find(item => item.id === defOrId) : defOrId;
+  return Math.max(1, Number(def?.unlockLevel) || 1);
+}
+
+function isDecorUnlocked(defOrId) {
+  return (G.level || 1) >= getDecorUnlockLevel(defOrId);
+}
+
 function getStoreFacilityDef(shopType = G.shopType) {
   return DECOR_VARIANTS.find(def => def.facility && def.shopType === shopType) || null;
 }
@@ -7672,8 +7931,13 @@ let pendingDecorId = null;
 let pendingDecorStorageKey = null;
 
 const DOOR_TYPES = [
-  { id: 'single', name: 'Стеклянная дверь одностворчатая', price: 500, width: 2.0, emoji: '🚪', kindLabel: 'single' },
-  { id: 'double', name: 'Стеклянная дверь двустворчатая', price: 500, width: 2.4, emoji: '🚪', kindLabel: 'double' },
+  { id: 'single', name: 'Стеклянная дверь одностворчатая', price: 500, width: 2.0, emoji: '🚪', kindLabel: 'single', desc:'Дополнительный проход через внешнюю стену' },
+  { id: 'double', name: 'Стеклянная дверь двустворчатая', price: 500, width: 2.4, emoji: '🚪', kindLabel: 'double', desc:'Широкий дополнительный проход через внешнюю стену' },
+];
+
+const STORE_WINDOW_TYPES = [
+  { id:'grid', name:'Окно с перекладинами', emoji:'🪟', desc:'Классическое окно из четырёх секций', price:3000, unlockLevel:3 },
+  { id:'solid', name:'Панорамное окно', emoji:'🔲', desc:'Большое сплошное стекло в рамке', price:5000, unlockLevel:4 },
 ];
 
 const FRAME = 0xdec5a8;
@@ -8783,13 +9047,24 @@ function canPlaceFloorDecor(def, x, z, ignoreId = null, rotation = 0) {
   return true;
 }
 
+function wallOpeningOverlapsDecor(axis, pos, width, ignoreDecorId = null) {
+  return decorations.some(decor => {
+    if (!decor || decor.id === ignoreDecorId || decor.axis !== axis) return false;
+    const def = getDecorDef(decor.type);
+    if (!def || def.place !== 'wall') return false;
+    const minDist = (getDecorScaledWidth(def) + width) / 2 + 0.30;
+    return Math.abs((Number(decor.pos) || 0) - pos) < minDist;
+  });
+}
+
 function canPlaceWallDecor(def, axis, pos, ignoreId = null) {
   const width = getDecorScaledWidth(def);
   pos = clampOpeningPos(pos, width);
 
+  // Ни новый, ни перемещаемый настенный декор не может пересекать окно или дверь.
   for (const o of openingsOnWalls()) {
     if (o.axis !== axis) continue;
-    const minDist = (getOpeningWidth(o) + width) / 2 + 0.25;
+    const minDist = (getOpeningWidth(o) + width) / 2 + 0.30;
     if (Math.abs(o.pos - pos) < minDist) return false;
   }
 
@@ -9098,8 +9373,10 @@ function startDecorPlacement(type, storageKey = null) {
   const def = getDecorDef(type);
   const fromStorage = !!storageKey;
   const purchasePrice = def.price ?? DECOR_PRICE;
+  if (!fromStorage && !isDecorUnlocked(def)) { showToast('🔒 ' + def.name + ' откроется на уровне ' + getDecorUnlockLevel(def), '#e94560ee'); return false; }
   if (!validateStoreFacilityPlacement(def, fromStorage)) return false;
   if (!fromStorage && G.money < purchasePrice) { showToast('❌ Нужно ' + fmt(purchasePrice) + '₽'); return false; }
+  closeItemModal();
   pendingDecorId = def.id;
   pendingDecorStorageKey = storageKey;
   decorPlaceMode = true;
@@ -9172,28 +9449,29 @@ function placeDecorFromTap(clientX, clientY) {
     }
   }
 
+  const elevatorPlaced = isGlassElevatorDecor(placedDecor);
+
   if (fromStorage) {
     removeEquipmentFromStorage(pendingDecorStorageKey, 1);
     updateHUD();
     renderWarehouseModal();
-  } else {
-    G.money -= purchasePrice;
-    updateHUD();
-    showToast('✅ Объект куплен и поставлен');
+    if (placedDecor) {
+      notifyGameEvent('decor_installed', 1, { type:def.id, facility:!!def.facility, fromStorage:true });
+      notifyGameEvent('decor_restored_from_storage', 1, { type:def.id });
+    }
+    stopDecorPlaceMode();
+    enterEditorMode();
+    if (elevatorPlaced) completeGlassElevatorPlacement(placedDecor);
+    return;
   }
 
-  const elevatorPlaced = isGlassElevatorDecor(placedDecor);
-  if (placedDecor) {
-    notifyGameEvent('decor_installed', 1, { type:def.id, facility:!!def.facility, fromStorage });
-    if (fromStorage) notifyGameEvent('decor_restored_from_storage', 1, { type:def.id });
-    else {
-      G.decorPurchasedCount = Math.max(0, Number(G.decorPurchasedCount) || 0) + 1;
-      notifyGameEvent('decor_purchased', 1, { type:def.id, place:def.place });
-    }
-  }
+  // Новая покупка пока является только предпросмотром: деньги и квесты
+  // применятся после явного подтверждения игроком.
+  const placedId = placedDecor?.id;
   stopDecorPlaceMode();
-  enterEditorMode();
-  if (elevatorPlaced) completeGlassElevatorPlacement(placedDecor);
+  if (placedId !== undefined && placedId !== null) {
+    beginPendingStorePurchase('decor', placedId, def.id, purchasePrice);
+  }
 }
 
 function makeWindowMesh(win) {
@@ -9411,7 +9689,7 @@ function previewWindowMove(id, target) {
   const next = normalizeWindowTarget(win, target);
   if (!next) return false;
 
-  if (isWindowCollision(id, next.axis, next.pos)) {
+  if (isWindowCollision(id, next.axis, next.pos) || wallOpeningOverlapsDecor(next.axis, next.pos, WINDOW_W)) {
     return false;
   }
 
@@ -9442,8 +9720,8 @@ function moveWindowTo(id, target, maybePos) {
   const next = normalizeWindowTarget(win, target, maybePos);
   if (!next) return false;
 
-  if (isWindowCollision(id, next.axis, next.pos)) {
-    showToast('❌ Слишком близко к другому окну', '#e94560ee');
+  if (isWindowCollision(id, next.axis, next.pos) || wallOpeningOverlapsDecor(next.axis, next.pos, WINDOW_W)) {
+    showToast('❌ Слишком близко к окну, двери или настенному декору', '#e94560ee');
     rebuildWindowVisual(win);
     applyWindowHoles();
     return false;
@@ -9465,7 +9743,7 @@ function findFreeWindowPlace() {
     for (let rawPos = WALL_MIN; rawPos <= WALL_MAX + 0.001; rawPos += PANEL_SIZE) {
       const pos = clampWindowPos(rawPos);
 
-      if (!isWindowCollision(null, axis, pos)) {
+      if (!isWindowCollision(null, axis, pos) && !wallOpeningOverlapsDecor(axis, pos, WINDOW_W)) {
         return {
           axis: axis,
           pos: pos
@@ -9743,7 +10021,7 @@ function previewDoorMove(id, target) {
   const door = doors.find(d => d.id === id);
   if (!door || !target) return false;
   const next = { axis: target.axis || door.axis, pos: clampOpeningPos(target.pos, door.width) };
-  if (isDoorCollision(id, next.axis, next.pos, door.width)) return false;
+  if (isDoorCollision(id, next.axis, next.pos, door.width) || wallOpeningOverlapsDecor(next.axis, next.pos, door.width)) return false;
   if (isDoorClearanceBlockedByPlacedObjects(next.axis, next.pos, door.width)) return false;
   const axisChanged = door.axis !== next.axis;
   const oldAxis = door.axis, oldPos = door.pos;
@@ -9758,8 +10036,8 @@ function moveDoorTo(id, target) {
   const door = doors.find(d => d.id === id);
   if (!door || !target) return false;
   const next = { axis: target.axis || door.axis, pos: clampOpeningPos(target.pos, door.width) };
-  if (isDoorCollision(id, next.axis, next.pos, door.width)) {
-    showToast('❌ Слишком близко к окну или двери', '#e94560ee');
+  if (isDoorCollision(id, next.axis, next.pos, door.width) || wallOpeningOverlapsDecor(next.axis, next.pos, door.width)) {
+    showToast('❌ Слишком близко к окну, двери или настенному декору', '#e94560ee');
     rebuildDoorVisual(door);
     applyWindowHoles();
     return false;
@@ -9784,6 +10062,7 @@ function findFreeDoorPlace(type='single') {
     for (let rawPos = WALL_MIN; rawPos <= WALL_MAX + 0.001; rawPos += PANEL_SIZE) {
       const pos = clampOpeningPos(rawPos, variant.width);
       if (!isDoorCollision(null, axis, pos, variant.width) &&
+          !wallOpeningOverlapsDecor(axis, pos, variant.width) &&
           !isDoorClearanceBlockedByPlacedObjects(axis, pos, variant.width)) {
         return { axis, pos };
       }
@@ -10043,9 +10322,10 @@ SHELF_POSITIONS.forEach((pos, i) => {
   // Верхняя полка
   const topShelf = box(SHELF_TOP_W, SHELF_TOP_H, SHELF_TOP_D, 0x4a3828, x, SHELF_TOP_Y, z);
 
-  // Номер-метка (маленький куб)
-  const label = box(SHELF_LABEL_SIZE, SHELF_LABEL_SIZE, 0.04 * SHELF_SIZE_MULT, 0x9c27b0, x - SHELF_STAND_W / 2 + 0.16, SHELF_LABEL_Y, z - SHELF_STAND_D / 2 + 0.02);
-  label.visible = false; // служебная метка скрыта, чтобы при развороте не появлялся квадратик
+  // Служебная метка полностью невидима: цветной квадратик на витрине удалён.
+  const label = box(SHELF_LABEL_SIZE, SHELF_LABEL_SIZE, 0.04 * SHELF_SIZE_MULT, 0x000000, x - SHELF_STAND_W / 2 + 0.16, SHELF_LABEL_Y, z - SHELF_STAND_D / 2 + 0.02);
+  if (label.material) { label.material.transparent = true; label.material.opacity = 0; }
+  label.visible = false;
 
   // Невидимая зона клика
   const hitGeo = new THREE.BoxGeometry(SHELF_HIT_W, SHELF_HIT_H, SHELF_HIT_D);
@@ -10070,8 +10350,8 @@ SHELF_POSITIONS.forEach((pos, i) => {
 // Кассы теперь являются объектами магазина: их можно двигать и покупать.
 const MAX_CASH_REGISTERS = 2;
 const CASH_REGISTER_VARIANTS = [
-  { id:'cash_classic', name:'Касса классик',  color:0x4a3828, topColor:0x5c4a32, emoji:'💵', price:700 },
-  { id:'cash_orange',  name:'Касса оранжевая',color:0xb05a10, topColor:0xff8a00, emoji:'🟧', price:700 },
+  { id:'cash_classic', name:'Касса классик', color:0x4a3828, topColor:0x5c4a32, emoji:'💵', price:10000, desc:'Надёжная касса для обслуживания покупателей' },
+  { id:'cash_orange', name:'Касса оранжевая', color:0xb05a10, topColor:0xff8a00, emoji:'🟧', price:20000, desc:'Более дорогой вариант кассы с ярким оформлением' },
 ];
 let cashRegisters = [];
 let cashRegisterTargets = [];
@@ -10213,31 +10493,38 @@ function buyCashRegister(variant) {
   if (G.money < price) { showToast('❌ Недостаточно денег'); return; }
   if (cashRegisters.length >= MAX_CASH_REGISTERS) { showToast('❌ Можно поставить максимум 2 кассы'); return; }
 
-  G.money -= price;
-  updateHUD();
-
   const idx = cashRegisters.length;
   const side = Math.min(2.0, SHOP_HALF - 1.6);
   const x = tutorialFree && idx === 0 ? -1.8 : (idx === 0 ? -side : side);
   const z = tutorialFree && idx === 0 ? 2.0 : SHOP_HALF - 2.0;
   addCashRegister(variant, x, z);
-  const routeStatus = getShopRouteConnectivityStatus();
-  if (!routeStatus.ok) {
-    removeCashRegisterForStorage(idx, true);
-    G.money += price;
-    updateHUD();
-    showRouteConnectivityBlockedToast(routeStatus);
+
+  if (tutorialFree) {
+    closeItemModal();
+    beginTutorialEquipmentPlacement('cash', idx);
+    showToast('✅ Касса получена бесплатно — теперь поставьте её');
     return;
   }
 
-  if (tutorialFree) {
-    beginTutorialEquipmentPlacement('cash', idx);
-  } else {
-    closeShopModal();
-    enterEditorMode();
-  }
-  showToast(tutorialFree ? '✅ Касса куплена бесплатно — теперь поставьте её' : '✅ Касса куплена');
+  beginPendingStorePurchase('cash', idx, variant.id, price);
 }
+
+function buyStoreWindow(variant) {
+  const unlockLevel = Math.max(1, Number(variant?.unlockLevel) || 1);
+  if ((G.level || 1) < unlockLevel) { showToast('🔒 Окно откроется на уровне ' + unlockLevel); return; }
+  if (G.money < variant.price) { showToast('❌ Недостаточно денег'); return; }
+  const place = findFreeWindowPlace();
+  if (!place) { showToast('❌ На стенах нет места для нового окна'); return; }
+  G.money -= variant.price;
+  updateHUD();
+  addWindow(place.axis, place.pos, variant.id);
+  notifyGameEvent('money_spent', variant.price, { capital:true, category:'interior', kind:'window', variantId:variant.id });
+  closeItemModal();
+  closeShopModal();
+  enterEditorMode();
+  showToast('✅ Окно куплено');
+}
+
 function buyDoor(variant) {
   if ((G.currentFloor || 1) === 2) {
     showToast('🛗 На втором этаже вход выполняется через лифт — двери не нужны');
@@ -10252,7 +10539,9 @@ function buyDoor(variant) {
   G.money -= variant.price;
   updateHUD();
   addDoor(place.axis, place.pos, variant.id);
+  notifyGameEvent('money_spent', variant.price, { capital:true, category:'interior', kind:'door', variantId:variant.id });
 
+  closeItemModal();
   closeShopModal();
   enterEditorMode();
   showToast('✅ Дверь куплена');
@@ -10420,7 +10709,10 @@ function getCashCustomerPoint(cr, ignoreGroup = null, queueIndex = 0) {
       const db = (b.x - service.x) ** 2 + (b.z - service.z) ** 2;
       return db - da;
     });
-    base = candidates.find(p => isCharacterPointFree(ignoreGroup, p.x, p.z, 0.42 * CHARACTER_SIZE_MULT)) || candidates[0];
+    // Основание очереди должно быть стабильным. Раньше оно перескакивало на другую
+    // сторону кассы, если первый слот был временно занят человеком, и вся очередь
+    // начинала перестраиваться и скапливаться. Люди учитываются уже при движении.
+    base = candidates[0];
   }
 
   if (!base) base = findNearestFreeWalkPoint(cr.x, cr.z, 0.14, service, 4.0) || randomCustomerPoint();
@@ -10470,6 +10762,7 @@ function requestVisualCheckout(product = null) {
 }
 
 function isSellerNearCashRegister(cr) {
+  if (isWorkerStrikeActive()) return false;
   if (!cr || sellers.length === 0) return false;
   const service = getCashServicePoint(cr);
   return sellers.some(seller => {
@@ -10519,7 +10812,18 @@ function updateSellerMovement(seller) {
       if (seller.stuck > 105) {
         clearGroupNavigation(seller.group);
         if (seller.role === 'floor') {
-          seller.target = chooseSellerFloorTarget(seller.group);
+          const recovery = findCharacterAwareRecoveryPoint(seller.group, seller.target, 1.65);
+          if (recovery) {
+            seller.recoveryTarget = seller.target ? seller.target.clone() : null;
+            seller.target = recovery;
+            seller.recovering = true;
+          } else {
+            seller.target = chooseSellerFloorTarget(seller.group);
+          }
+        } else {
+          // Рабочую цель кассира/уборщика/продавца не подменяем: он лишь
+          // отходит в сторону, пропускает препятствие и продолжает ту же задачу.
+          beginCharacterYield(seller.group, dx, dz, 0.18 * CHARACTER_SIZE_MULT);
         }
         seller.stuck = 0;
       }
@@ -10537,6 +10841,12 @@ function updateSellerMovement(seller) {
     }
     if (seller.group.children[2]) seller.group.children[2].rotation.x = seller.legAngle;
     if (seller.group.children[3]) seller.group.children[3].rotation.x = -seller.legAngle;
+  } else if (seller.recovering) {
+    stopNavigationMotion(seller.group);
+    seller.recovering = false;
+    if (seller.recoveryTarget) seller.target = seller.recoveryTarget;
+    seller.recoveryTarget = null;
+    clearGroupNavigation(seller.group);
   } else if (seller.role === 'floor') {
     stopNavigationMotion(seller.group);
     seller.wait -= getFrameTimeUnits();
@@ -10625,6 +10935,21 @@ function finishAutoStock(slotIdx, productId) {
 function updateSellers() {
   if (sellers.length === 0) return;
 
+  if (isWorkerStrikeActive()) {
+    sellers.forEach(worker => {
+      worker.role = 'strike';
+      worker.roleKey = 'strike';
+      worker.target = null;
+      worker.stockingTask = null;
+      clearGroupNavigation(worker.group);
+      stopNavigationMotion(worker.group);
+      worker.legAngle *= 0.72;
+      if (worker.group.children[2]) worker.group.children[2].rotation.x = worker.legAngle;
+      if (worker.group.children[3]) worker.group.children[3].rotation.x = -worker.legAngle;
+    });
+    return;
+  }
+
   const busy = [];
 
   // Авто-уборка: уборщик сам ищет распроданные витрины.
@@ -10661,26 +10986,34 @@ function updateSellers() {
     }
   }
 
-  // Кассир подходит к кассе только когда есть покупательская активность.
+  // Кассиры обслуживают реальные очереди. Если касс несколько, доступные
+  // кассиры распределяются по ним, начиная с покупателя, который ждёт дольше всех.
   const requestedCash = getRequestedCashRegister();
-  if (requestedCash) {
-    const servicePoint = getCashServicePoint(requestedCash);
+  const cashDemand = cashRegisters.map(cash => {
+    const queue = typeof getCheckoutQueueCustomers === 'function' ? getCheckoutQueueCustomers(cash) : [];
+    const requested = requestedCash?.id === cash.id;
+    const oldest = queue.length ? (queue[0].checkoutJoinedAt || Date.now()) : (requested ? Date.now() : Infinity);
+    return { cash, queueLength:queue.length, requested, oldest };
+  }).filter(item => item.queueLength > 0 || item.requested)
+    .sort((a, b) => (a.oldest - b.oldest) || (b.queueLength - a.queueLength));
+
+  cashDemand.forEach(demand => {
+    const servicePoint = getCashServicePoint(demand.cash);
     const cashierIndex = getNearestSellerIndexTo(servicePoint, busy, ['cashier']);
-    if (cashierIndex >= 0) {
-      busy.push(cashierIndex);
-      const cashier = sellers[cashierIndex];
-      const roleKey = 'cash-service:' + requestedCash.id;
-      const targetChanged = !cashier.target || Math.hypot(cashier.target.x - servicePoint.x, cashier.target.z - servicePoint.z) > 0.18;
-      if (cashier.roleKey !== roleKey || targetChanged) {
-        cashier.role = 'cash-service';
-        cashier.roleKey = roleKey;
-        cashier.wait = 80;
-        cashier.target = servicePoint;
-        clearGroupNavigation(cashier.group);
-      }
-      updateSellerMovement(cashier);
+    if (cashierIndex < 0) return;
+    busy.push(cashierIndex);
+    const cashier = sellers[cashierIndex];
+    const roleKey = 'cash-service:' + demand.cash.id;
+    const targetChanged = !cashier.target || Math.hypot(cashier.target.x - servicePoint.x, cashier.target.z - servicePoint.z) > 0.18;
+    if (cashier.roleKey !== roleKey || targetChanged) {
+      cashier.role = 'cash-service';
+      cashier.roleKey = roleKey;
+      cashier.wait = 80;
+      cashier.target = servicePoint;
+      clearGroupNavigation(cashier.group);
     }
-  }
+    updateSellerMovement(cashier);
+  });
 
   // Продавцы автоматически разносят доставленный товар со склада на свободные витрины.
   sellers.forEach((worker, i) => {
@@ -10852,11 +11185,12 @@ function getAgentPriority(agent) {
   }
 
   const state = agent.ref.state || 'wandering';
-  if (state === 'checkout_wait') return 105;
+  if (state === 'checkout_wait' || state === 'facility_use') return 105;
+  if (state === 'facility_wait') return 98;
   if (state === 'browsing' || state === 'wandering_pause') return 92;
   if (state === 'leaving_wait' || state === 'leaving_to_door' || state === 'leaving_outside') return 82;
   if (state === 'entering_door') return 80;
-  if (state === 'checkout' || state === 'entering_checkout') return 74;
+  if (state === 'checkout' || state === 'facility_queue' || state === 'entering_checkout') return 74;
   if (state === 'entering' || state === 'entering_wait') return 66;
   if (state === 'walking') return 52;
   return 46;
@@ -11137,7 +11471,7 @@ function isCharacterAnchored(agent) {
   if (agent.kind === 'staff') {
     return ['cash-service','cleaning','stocking'].includes(agent.ref.role);
   }
-  return ['checkout_wait','browsing','wandering_pause'].includes(agent.ref.state);
+  return ['checkout_wait','facility_wait','facility_use','browsing','wandering_pause'].includes(agent.ref.state);
 }
 
 function resolveCharacterOverlaps() {
@@ -11252,12 +11586,18 @@ function getShelfApproachPoint(idx, fromPos = null, ignoreGroup = null) {
     new THREE.Vector3(sx - gapX, 0.6, sz + gapZ),
     new THREE.Vector3(sx + gapX, 0.6, sz - gapZ),
     new THREE.Vector3(sx - gapX, 0.6, sz - gapZ),
-  ].filter(p => isCustomerPointFree(p.x, p.z, 0.12) && isCharacterPointFree(ignoreGroup, p.x, p.z));
+  ].filter(p => isCustomerPointFree(p.x, p.z, 0.12) &&
+    isCharacterPointFree(ignoreGroup, p.x, p.z) &&
+    !isCustomerTargetPointReserved(ignoreGroup, p.x, p.z, 0.64 * CHARACTER_SIZE_MULT));
 
   if (candidates.length === 0) {
-    // Если все удобные места временно заняты людьми, берём ближайшую свободную
-    // точку рядом с витриной, а не отправляем работника случайно через весь магазин.
-    return findNearestFreeWalkPoint(sx, sz, 0.16 * CHARACTER_SIZE_MULT, fromPos, 3.0) || randomCustomerPoint();
+    // Если все стандартные точки заняты людьми или уже зарезервированы другими
+    // покупателями, ищем отдельную свободную точку рядом, чтобы не сваливать всех
+    // в одну координату у витрины.
+    const reservedSafe = ignoreGroup
+      ? findCharacterAwareRecoveryPoint(ignoreGroup, new THREE.Vector3(sx, 0.6, sz), 2.4)
+      : null;
+    return reservedSafe || findNearestFreeWalkPoint(sx, sz, 0.16 * CHARACTER_SIZE_MULT, fromPos, 3.0) || randomCustomerPoint(ignoreGroup);
   }
 
   if (fromPos) {
@@ -11303,6 +11643,34 @@ function findNearestFreeWalkPoint(x, z, padding = 0.16 * CHARACTER_SIZE_MULT, pr
   return null;
 }
 
+
+function findCharacterAwareRecoveryPoint(group, preferredTarget = null, maxRadius = 1.8) {
+  if (!group) return null;
+  const x = group.position.x;
+  const z = group.position.z;
+  let best = null;
+  let bestScore = Infinity;
+
+  for (let r = 0.38; r <= maxRadius + 0.001; r += 0.24) {
+    const steps = Math.max(12, Math.ceil(r * 20));
+    for (let i = 0; i < steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      const px = x + Math.sin(a) * r;
+      const pz = z + Math.cos(a) * r;
+      if (!isCustomerPointFree(px, pz, 0.14 * CHARACTER_SIZE_MULT)) continue;
+      if (!isCharacterPointFree(group, px, pz, CHARACTER_MIN_DISTANCE * 0.92)) continue;
+      if (isCustomerTargetPointReserved(group, px, pz, 0.52 * CHARACTER_SIZE_MULT)) continue;
+      let score = r;
+      if (preferredTarget) score += Math.hypot(preferredTarget.x - px, preferredTarget.z - pz) * 0.12;
+      if (score < bestScore) {
+        bestScore = score;
+        best = new THREE.Vector3(px, 0.6, pz);
+      }
+    }
+    if (best) return best;
+  }
+  return null;
+}
 
 function buildStaticNavigationSnapshot(padding = 0.16) {
   const rects = [];
@@ -11906,16 +12274,31 @@ function moveGroupDirect(group, target, speed) {
   return true;
 }
 
-function randomCustomerPoint() {
+function isCustomerTargetPointReserved(ignoreGroup, x, z, minDistance = 0.72 * CHARACTER_SIZE_MULT) {
+  const minSq = minDistance * minDistance;
+  return customers.some(customer => {
+    if (!customer || customer.state === 'removed' || customer.group === ignoreGroup || !customer.targetPos) return false;
+    // Очереди имеют собственные фиксированные слоты и здесь не участвуют.
+    if (['checkout','checkout_wait','facility_queue','facility_wait','facility_use','entering_wait','entering_door','entering_checkout','leaving_wait','leaving_to_door','leaving_outside'].includes(customer.state)) return false;
+    const dx = customer.targetPos.x - x;
+    const dz = customer.targetPos.z - z;
+    return dx * dx + dz * dz < minSq;
+  });
+}
+
+function randomCustomerPoint(ignoreGroup = null) {
   for (let tries = 0; tries < 60; tries++) {
     const x = (Math.random() - 0.5) * (SHOP_HALF * 1.5);
     const z = (Math.random() - 0.5) * (SHOP_HALF * 1.5);
-    if (isCustomerPointFree(x, z, 0.45)) {
+    if (isCustomerPointFree(x, z, 0.45) &&
+        isCharacterPointFree(ignoreGroup, x, z) &&
+        !isCustomerTargetPointReserved(ignoreGroup, x, z)) {
       return new THREE.Vector3(x, 0.6, z);
     }
   }
 
-  return new THREE.Vector3(0, 0.6, 3);
+  return findCharacterAwareRecoveryPoint(ignoreGroup, new THREE.Vector3(0, 0.6, 3), 3.0)
+    || new THREE.Vector3(0, 0.6, 3);
 }
 
 function getCustomerBrowsePoint(ignoreGroup = null) {
@@ -11931,9 +12314,11 @@ function getCustomerBrowsePoint(ignoreGroup = null) {
     new THREE.Vector3( 6.0, 0.6, -5.8),
     new THREE.Vector3( 6.0, 0.6, -1.0),
     new THREE.Vector3( 6.0, 0.6,  3.0),
-  ].filter(p => isCustomerPointFree(p.x, p.z, 0.12) && isCharacterPointFree(ignoreGroup, p.x, p.z));
+  ].filter(p => isCustomerPointFree(p.x, p.z, 0.12) &&
+    isCharacterPointFree(ignoreGroup, p.x, p.z) &&
+    !isCustomerTargetPointReserved(ignoreGroup, p.x, p.z));
 
-  if (points.length === 0) return randomCustomerPoint();
+  if (points.length === 0) return randomCustomerPoint(ignoreGroup);
   return points[Math.floor(Math.random() * points.length)].clone();
 }
 
@@ -12004,13 +12389,130 @@ function customerPayForProduct(product) {
   requestVisualCheckout(product);
 }
 
+let nextCheckoutQueueOrder = 1;
+let nextFacilityQueueOrder = 1;
+const facilityQueueLayoutCache = new Map();
+
+function getCheckoutQueueCustomers(cash) {
+  if (!cash) return [];
+  return customers
+    .filter(c => c && c.checkoutCashRegisterId === cash.id && (
+      ['checkout','checkout_wait'].includes(c.state) ||
+      (c.state === 'recovery' && ['checkout','checkout_wait'].includes(c.recoveryResumeState))
+    ))
+    .sort((a, b) => ((a.checkoutQueueOrder || 0) - (b.checkoutQueueOrder || 0)) || ((a.checkoutJoinedAt || 0) - (b.checkoutJoinedAt || 0)));
+}
+
 function getCheckoutQueueIndex(cash, customer) {
   if (!cash || !customer) return 0;
-  const queue = customers
-    .filter(c => c && c.checkoutCashRegisterId === cash.id && ['checkout','checkout_wait'].includes(c.state))
-    .sort((a, b) => (a.checkoutJoinedAt || 0) - (b.checkoutJoinedAt || 0));
+  const queue = getCheckoutQueueCustomers(cash);
   const index = queue.indexOf(customer);
   return index < 0 ? queue.length : index;
+}
+
+function getBestCashRegisterForCustomer(customer) {
+  if (!cashRegisters.length) return null;
+  let best = cashRegisters[0];
+  let bestScore = Infinity;
+  cashRegisters.forEach(cash => {
+    const queueLength = getCheckoutQueueCustomers(cash).length;
+    const distance = customer?.group ? Math.hypot(customer.group.position.x - cash.x, customer.group.position.z - cash.z) : 0;
+    const score = queueLength * 4.0 + distance * 0.18;
+    if (score < bestScore) {
+      bestScore = score;
+      best = cash;
+    }
+  });
+  return best;
+}
+
+function getInstalledStoreFacilities() {
+  return decorations.filter(decor => {
+    const def = getDecorDef(decor.type);
+    return !!(def?.facility && (!def.shopType || def.shopType === G.shopType));
+  });
+}
+
+function getFacilityQueueCustomers(facility) {
+  if (!facility) return [];
+  return customers
+    .filter(c => c && c.facilityDecorId === facility.id && (
+      ['facility_queue','facility_wait','facility_use'].includes(c.state) ||
+      (c.state === 'recovery' && ['facility_queue','facility_wait','facility_use'].includes(c.recoveryResumeState))
+    ))
+    .sort((a, b) => ((a.facilityQueueOrder || 0) - (b.facilityQueueOrder || 0)) || ((a.facilityJoinedAt || 0) - (b.facilityJoinedAt || 0)));
+}
+
+function getFacilityQueueIndex(facility, customer) {
+  const queue = getFacilityQueueCustomers(facility);
+  const index = queue.indexOf(customer);
+  return index < 0 ? queue.length : index;
+}
+
+function getFacilityQueueLayout(facility) {
+  if (!facility) return null;
+  const def = getDecorDef(facility.type);
+  if (!def?.facility) return null;
+  const signature = [facility.x, facility.z, normalizeRotation(facility.rotation || 0), facility.type].join(':');
+  const cached = facilityQueueLayoutCache.get(facility.id);
+  if (cached?.signature === signature) return cached.layout;
+
+  const rotation = normalizeRotation(facility.rotation || 0);
+  const footprint = getDecorFootprint(def, rotation, 0);
+  const angles = [rotation, rotation + Math.PI, rotation + Math.PI / 2, rotation - Math.PI / 2];
+  let best = null;
+
+  angles.forEach((angle, angleIndex) => {
+    const dirX = Math.sin(angle);
+    const dirZ = Math.cos(angle);
+    const half = Math.abs(dirX) * footprint.w / 2 + Math.abs(dirZ) * footprint.d / 2;
+    const baseDistance = half + 0.58 * CHARACTER_SIZE_MULT;
+    const serviceX = facility.x + dirX * baseDistance;
+    const serviceZ = facility.z + dirZ * baseDistance;
+    let freeSlots = 0;
+    for (let i = 0; i < 5; i++) {
+      const spacing = 0.76 * CHARACTER_SIZE_MULT * i;
+      const qx = serviceX + dirX * spacing;
+      const qz = serviceZ + dirZ * spacing;
+      if (isCustomerPointFree(qx, qz, 0.13 * CHARACTER_SIZE_MULT)) freeSlots++;
+      else break;
+    }
+    const score = freeSlots * 100 - angleIndex * 4;
+    if (!best || score > best.score) best = { score, dirX, dirZ, serviceX, serviceZ };
+  });
+
+  if (!best) return null;
+  const layout = { dirX:best.dirX, dirZ:best.dirZ, serviceX:best.serviceX, serviceZ:best.serviceZ };
+  facilityQueueLayoutCache.set(facility.id, { signature, layout });
+  return layout;
+}
+
+function getFacilityQueuePoint(facility, customer = null, queueIndex = 0) {
+  const layout = getFacilityQueueLayout(facility);
+  if (!layout) return randomCustomerPoint(customer?.group || null);
+  const spacing = 0.76 * CHARACTER_SIZE_MULT;
+  const qx = layout.serviceX + layout.dirX * spacing * Math.max(0, queueIndex);
+  const qz = layout.serviceZ + layout.dirZ * spacing * Math.max(0, queueIndex);
+  if (isCustomerPointFree(qx, qz, 0.13 * CHARACTER_SIZE_MULT)) return new THREE.Vector3(qx, 0.6, qz);
+  return findNearestFreeWalkPoint(qx, qz, 0.13 * CHARACTER_SIZE_MULT, new THREE.Vector3(layout.serviceX, 0.6, layout.serviceZ), 1.8)
+    || randomCustomerPoint(customer?.group || null);
+}
+
+function getBestFacilityForCustomer(customer) {
+  const facilities = getInstalledStoreFacilities();
+  if (!facilities.length) return null;
+  let best = null;
+  let bestScore = Infinity;
+  facilities.forEach(facility => {
+    const queueLength = getFacilityQueueCustomers(facility).length;
+    const distance = customer?.group ? Math.hypot(customer.group.position.x - facility.x, customer.group.position.z - facility.z) : 0;
+    const score = queueLength * 3.5 + distance * 0.16;
+    if (score < bestScore) {
+      bestScore = score;
+      best = facility;
+    }
+  });
+  return best;
 }
 
 class Customer {
@@ -12068,6 +12570,16 @@ class Customer {
     this.waitTimer = 0;
     this.legAngle = 0;
     this.legDir = 1;
+    this.browseStops = 0;
+    this.facilityInterest = Math.random() < 0.55;
+    this.facilityVisited = false;
+    this.facilityDecorId = null;
+    this.facilityJoinedAt = 0;
+    this.facilityQueueOrder = 0;
+    this.facilityQueueRefresh = 0;
+    this.recoveryCount = 0;
+    this.recoveryResumeState = null;
+    this.recoveryResumeTarget = null;
     // Покупатель гуляет визуально случайное время: от 20 до 90 секунд.
     // Реальные продажи товара идут отдельно по таймеру витрин.
     const visualStayMs = 20000 + Math.floor(Math.random() * 70000);
@@ -12076,6 +12588,17 @@ class Customer {
 
   chooseTarget() {
     this.stuckTimer = 0;
+
+    // После хотя бы одной остановки часть покупателей пользуется примерочной
+    // или зоной проверки техники. Это визуальная механика и не меняет таймер продаж.
+    const facility = (!this.facilityVisited && this.facilityInterest && this.browseStops >= 1)
+      ? getBestFacilityForCustomer(this)
+      : null;
+    if (facility && (Date.now() >= this.visualShoppingUntil || Math.random() < 0.42)) {
+      this.targetShelf = null;
+      this.goToFacility(facility);
+      return;
+    }
 
     // Визуальный покупатель не связан с продажей по таймеру:
     // он гуляет, смотрит витрины, потом сам идёт к кассе и выходит.
@@ -12122,14 +12645,82 @@ class Customer {
     clearGroupNavigation(this.group);
   }
 
+  goToFacility(facility = null) {
+    const targetFacility = facility || getBestFacilityForCustomer(this);
+    if (!targetFacility) {
+      this.facilityVisited = true;
+      this.chooseTarget();
+      return;
+    }
+    this.facilityDecorId = targetFacility.id;
+    this.facilityJoinedAt = Date.now();
+    this.facilityQueueOrder = nextFacilityQueueOrder++;
+    this.facilityQueueRefresh = 0;
+    this.targetPos = getFacilityQueuePoint(targetFacility, this, getFacilityQueueIndex(targetFacility, this));
+    this.state = 'facility_queue';
+    clearGroupNavigation(this.group);
+  }
+
+  beginRecovery() {
+    if (this.state === 'recovery' || this.group.userData?.doorCorridorActive) return false;
+    const recovery = findCharacterAwareRecoveryPoint(this.group, this.targetPos, 1.8);
+    if (!recovery) return false;
+    this.recoveryResumeState = this.state;
+    this.recoveryResumeTarget = this.targetPos ? this.targetPos.clone() : null;
+    this.state = 'recovery';
+    this.targetPos = recovery;
+    this.recoveryCount = (this.recoveryCount || 0) + 1;
+    clearGroupNavigation(this.group);
+    return true;
+  }
+
+  resumeAfterRecovery() {
+    const resumeState = this.recoveryResumeState;
+    const resumeTarget = this.recoveryResumeTarget ? this.recoveryResumeTarget.clone() : null;
+    this.recoveryResumeState = null;
+    this.recoveryResumeTarget = null;
+    if (resumeState === 'checkout' || resumeState === 'checkout_wait') {
+      const cash = cashRegisters.find(c => c.id === this.checkoutCashRegisterId) || getBestCashRegisterForCustomer(this);
+      if (cash) {
+        this.checkoutCashRegisterId = cash.id;
+        this.targetPos = getCashCustomerPoint(cash, this.group, getCheckoutQueueIndex(cash, this));
+        this.state = 'checkout';
+        clearGroupNavigation(this.group);
+        return;
+      }
+      this.goToExit();
+      return;
+    }
+    if (resumeState === 'facility_queue' || resumeState === 'facility_wait' || resumeState === 'facility_use') {
+      const facility = decorations.find(d => d.id === this.facilityDecorId && getDecorDef(d.type)?.facility);
+      if (facility) {
+        this.targetPos = getFacilityQueuePoint(facility, this, getFacilityQueueIndex(facility, this));
+        this.state = 'facility_queue';
+        clearGroupNavigation(this.group);
+        return;
+      }
+      this.facilityVisited = true;
+      this.facilityDecorId = null;
+      this.state = 'wandering';
+      this.targetPos = getCustomerBrowsePoint(this.group);
+      clearGroupNavigation(this.group);
+      return;
+    }
+    this.state = resumeState && resumeState !== 'recovery' ? resumeState : 'wandering';
+    this.targetPos = resumeTarget || getCustomerBrowsePoint(this.group);
+    if (!this.targetPos) this.targetPos = getCustomerBrowsePoint(this.group);
+    clearGroupNavigation(this.group);
+  }
+
   goToCheckout(cr = null, product = null) {
-    const cash = cr || getDutyCashRegister() || cashRegisters[0] || null;
+    const cash = cr || getBestCashRegisterForCustomer(this) || getDutyCashRegister() || cashRegisters[0] || null;
     if (!cash) { this.goToExit(); return; }
     this.checkoutCashRegisterId = cash.id;
     this.checkoutProductName = product ? product.name : 'товар';
     this.checkoutSoundPlayed = false;
     this.checkoutTimer = 70;
     this.checkoutJoinedAt = Date.now();
+    this.checkoutQueueOrder = nextCheckoutQueueOrder++;
     this.checkoutQueueRefresh = 0;
     this.targetPos = getCashCustomerPoint(cash, this.group, getCheckoutQueueIndex(cash, this));
     this.state = 'checkout';
@@ -12208,13 +12799,22 @@ class Customer {
       }
 
       if (this.stuckTimer > 120) {
+        const recoverableState = !['entering_wait','entering_door','entering_checkout','leaving_wait','leaving_to_door','leaving_outside','facility_use'].includes(this.state);
+        if (recoverableState && this.beginRecovery()) {
+          this.stuckTimer = 0;
+          return false;
+        }
         if (this.state === 'walking' && this.targetShelf !== null) {
           this.targetPos = getShelfApproachPoint(this.targetShelf, this.group.position, this.group);
         } else if (this.state === 'wandering' || this.state === 'wandering_pause' || this.state === 'browsing') {
           this.chooseTarget();
         } else if (this.state === 'checkout' || this.state === 'checkout_wait') {
-          const cash = cashRegisters.find(c => c.id === this.checkoutCashRegisterId) || getDutyCashRegister();
+          const cash = cashRegisters.find(c => c.id === this.checkoutCashRegisterId) || getBestCashRegisterForCustomer(this);
           if (cash) this.targetPos = getCashCustomerPoint(cash, this.group, getCheckoutQueueIndex(cash, this)); else this.goToExit();
+        } else if (this.state === 'facility_queue' || this.state === 'facility_wait') {
+          const facility = decorations.find(d => d.id === this.facilityDecorId && getDecorDef(d.type)?.facility);
+          if (facility) this.targetPos = getFacilityQueuePoint(facility, this, getFacilityQueueIndex(facility, this));
+          else { this.facilityVisited = true; this.facilityDecorId = null; this.chooseTarget(); }
         } else if ((this.state === 'leaving_wait' || this.state === 'leaving_to_door') && this.exitDoor) {
           this.targetPos = getDoorQueuePoint(this.exitDoor, 'exit', getDoorQueueIndexForCustomer(this, 'exit'));
           clearGroupNavigation(this.group);
@@ -12267,6 +12867,7 @@ class Customer {
       this.waitTimer -= getFrameTimeUnits();
       if (this.waitTimer <= 0) {
         customerTakeProductFromShelf(this.targetShelf);
+        this.browseStops++;
         this.chooseTarget();
       }
     } else if (this.state === 'wandering') {
@@ -12274,15 +12875,90 @@ class Customer {
       this.waitTimer = 105 + Math.floor(Math.random() * 150);
     } else if (this.state === 'wandering_pause') {
       this.waitTimer -= getFrameTimeUnits();
-      if (this.waitTimer <= 0) this.chooseTarget();
+      if (this.waitTimer <= 0) {
+        this.browseStops++;
+        this.chooseTarget();
+      }
+    } else if (this.state === 'facility_queue') {
+      const facility = decorations.find(d => d.id === this.facilityDecorId && getDecorDef(d.type)?.facility);
+      if (!facility) {
+        this.facilityVisited = true;
+        this.facilityDecorId = null;
+        this.chooseTarget();
+      } else {
+        this.state = 'facility_wait';
+        this.facilityQueueRefresh = 0;
+        stopNavigationMotion(this.group);
+      }
+    } else if (this.state === 'facility_wait') {
+      const facility = decorations.find(d => d.id === this.facilityDecorId && getDecorDef(d.type)?.facility);
+      if (!facility) {
+        this.facilityVisited = true;
+        this.facilityDecorId = null;
+        this.chooseTarget();
+      } else {
+        const queueIndex = getFacilityQueueIndex(facility, this);
+        this.facilityQueueRefresh -= getFrameTimeUnits();
+        if (this.facilityQueueRefresh <= 0) {
+          this.facilityQueueRefresh = 16;
+          const point = getFacilityQueuePoint(facility, this, queueIndex);
+          if (Math.hypot(point.x - this.group.position.x, point.z - this.group.position.z) > 0.18) {
+            this.targetPos = point;
+            this.state = 'facility_queue';
+            clearGroupNavigation(this.group);
+            return false;
+          }
+        }
+        if (queueIndex === 0) {
+          this.state = 'facility_use';
+          this.waitTimer = 150 + Math.floor(Math.random() * 100);
+          stopNavigationMotion(this.group);
+        }
+      }
+    } else if (this.state === 'facility_use') {
+      const facility = decorations.find(d => d.id === this.facilityDecorId && getDecorDef(d.type)?.facility);
+      if (!facility) {
+        this.waitTimer = 0;
+      } else {
+        this.waitTimer -= getFrameTimeUnits();
+      }
+      if (this.waitTimer <= 0) {
+        this.facilityVisited = true;
+        this.facilityDecorId = null;
+        this.facilityJoinedAt = 0;
+        this.facilityQueueOrder = 0;
+        this.browseStops++;
+        this.chooseTarget();
+      }
+    } else if (this.state === 'recovery') {
+      this.resumeAfterRecovery();
     } else if (this.state === 'checkout') {
-      const cash = cashRegisters.find(c => c.id === this.checkoutCashRegisterId) || getDutyCashRegister();
+      let cash = cashRegisters.find(c => c.id === this.checkoutCashRegisterId) || null;
+      if (!cash) {
+        cash = getBestCashRegisterForCustomer(this);
+        if (!cash) { this.goToExit(); return false; }
+        this.checkoutCashRegisterId = cash.id;
+        this.checkoutJoinedAt = Date.now();
+        this.checkoutQueueOrder = nextCheckoutQueueOrder++;
+        this.targetPos = getCashCustomerPoint(cash, this.group, getCheckoutQueueIndex(cash, this));
+        clearGroupNavigation(this.group);
+        return false;
+      }
       requestCashService(cash);
       this.state = 'checkout_wait';
       this.waitTimer = 70;
       this.checkoutStartedAt = Date.now();
     } else if (this.state === 'checkout_wait') {
-      const cash = cashRegisters.find(c => c.id === this.checkoutCashRegisterId) || getDutyCashRegister();
+      let cash = cashRegisters.find(c => c.id === this.checkoutCashRegisterId) || null;
+      if (!cash) {
+        cash = getBestCashRegisterForCustomer(this);
+        if (cash) {
+          this.checkoutCashRegisterId = cash.id;
+          this.checkoutJoinedAt = Date.now();
+          this.checkoutQueueOrder = nextCheckoutQueueOrder++;
+        }
+      }
+      if (!cash) { this.goToExit(); return false; }
       requestCashService(cash);
 
       // Только первый покупатель в очереди обслуживается. Остальные занимают
@@ -13344,7 +14020,7 @@ function renderRatingChart() {
       <text x="10" y="${padT+(H-padT-padB)*.5+4}" fill="rgba(255,255,255,.45)" font-size="10">50</text>
       <text x="16" y="${H-padB+4}" fill="rgba(255,255,255,.45)" font-size="10">0</text>
       <polyline points="${points}" fill="none" stroke="#f5c518" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-      <polyline points="${points}" fill="none" stroke="#c53cff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <polyline points="${points}" fill="none" stroke="#8b6a00" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       <text x="${W-padR-48}" y="${padT+16}" fill="#f5c518" font-size="16" font-weight="900">${last}%</text>
     </svg>`;
 }
@@ -13394,6 +14070,9 @@ function getWorkerSalaryDisplay(type, count = getStaffCount(type), floorNumber =
   if (type === 'guard' || count === 0) {
     return '<div class="worker-salary empty">💼 Зарплата: работников нет</div>';
   }
+  if ((G.level || 1) <= WORKER_SALARY_FREE_UNTIL_LEVEL) {
+    return '<div class="worker-salary empty">💼 Зарплата: бесплатно до 3 уровня</div>';
+  }
 
   ensureWorkerSalaryHireRecords();
   const salaries = [];
@@ -13409,7 +14088,8 @@ function getWorkerSalaryDisplay(type, count = getStaffCount(type), floorNumber =
 
   while (salaries.length < count) salaries.push(WORKER_BASE_SALARY);
   const workers = salaries.map((salary, index) => `№${index + 1} — ${fmtFull(salary)}₽`).join(' · ');
-  return `<div class="worker-salary">💼 Зарплата: ${workers} / 10 мин</div>`;
+  const strike = isWorkerStrikeActive() ? (' · 🪧 забастовка · долг ' + fmtFull(G.workerSalaryDebt) + '₽') : '';
+  return `<div class="worker-salary">💼 Зарплата: ${workers} / игровую неделю${strike}</div>`;
 }
 
 function renderWorkersModal() {
@@ -13537,18 +14217,21 @@ function updateHUD() {
   document.getElementById('levelLabel').textContent = 'Уровень ' + safeLevel + ' — ' + getLevelTitle(safeLevel);
   updateLiftButton();
 
-  // XP хранится и показывается накопительно: опыт прошлых уровней не обнуляется.
-  // Например: 2 уровень — 300 XP, 3 уровень — 650 XP общей суммы.
+  // XP по-прежнему хранится общей суммой для сохранений и расчёта уровня,
+  // но полоска показывает только прогресс внутри текущего уровня.
   const totalXP = Math.max(0, Number(G.xp) || 0);
+  const currentLevelStartXP = LEVELS[safeLevel]?.xp || 0;
   const nextTotalThreshold = safeLevel < MAX_LEVEL ? LEVELS[safeLevel + 1].xp : LEVELS[MAX_LEVEL].xp;
-  const pct = safeLevel >= MAX_LEVEL
-    ? 100
-    : Math.max(0, Math.min(100, (totalXP / Math.max(1, nextTotalThreshold)) * 100));
+  const levelXPNeeded = Math.max(1, nextTotalThreshold - currentLevelStartXP);
+  const levelXPProgress = safeLevel >= MAX_LEVEL
+    ? levelXPNeeded
+    : Math.max(0, Math.min(levelXPNeeded, totalXP - currentLevelStartXP));
+  const pct = safeLevel >= MAX_LEVEL ? 100 : (levelXPProgress / levelXPNeeded) * 100;
 
   document.getElementById('xp-fill').style.width = pct+'%';
   document.getElementById('xp-label').textContent = safeLevel >= MAX_LEVEL
     ? 'Максимальный уровень · ' + fmtFull(totalXP) + ' XP'
-    : fmtFull(totalXP)+' / '+fmtFull(nextTotalThreshold)+' XP';
+    : fmtFull(levelXPProgress)+' / '+fmtFull(levelXPNeeded)+' XP';
   updateRatingUI();
 }
 
@@ -13704,19 +14387,31 @@ function productMatchesActiveSubcategory(product) {
 
 // Доступные витрины для покупки
 const SHELF_VARIANTS = [
-  { id: 'shelf_brown',  name: 'Прилавок классик', color: 0x6b5640, topColor: 0x6b5640, emoji: '🟫', price: 500, shelfKind:'classic_counter', desc:'Для джинсов и шорт' },
-  { id: 'shoe_cubby',   name: 'Стеллаж для обуви', color: 0xd8c2a0, topColor: 0xd8c2a0, emoji: '👞', price: 500, shelfKind:'shoe_cubby', desc:'Высокий стеллаж с открытыми ячейками для обуви' },
-  { id: 'rack_simple',  name: 'Простая стойка-вешалка', color: 0xb58b5d, topColor: 0xb58b5d, emoji: '👕', price: 500, shelfKind:'hanging_rack', desc:'Для футболок, курток, платьев и костюмов' },
-  { id: 'rack_wardrobe',name: 'Шкаф-вешалка', color: 0xc8ad8a, topColor: 0xc8ad8a, emoji: '🧥', price: 500, shelfKind:'hanging_rack', desc:'Закрытая стойка-вешалка для одежды' },
-  { id: 'tech_island',  name: 'Техно-витрина', color: 0xcfc7bc, topColor: 0xcfc7bc, emoji: '📱', price: 500, shelfKind:'tech_island', desc:'Стойка с вырезом для смартфонов, наушников и ноутбуков' },
-  { id: 'tv_low_stand', name: 'Низкая ТВ-витрина', color: 0xb9c2cc, topColor: 0xd9e0e6, emoji: '📺', price: 500, shelfKind:'tv_low_stand', desc:'Низкая квадратная витрина для телевизоров' },
-  { id: 'appliance_pedestal', name: 'Низкая стойка для техники', color: 0xb7b7bd, topColor: 0xd6d6db, emoji: '🧺', price: 500, shelfKind:'appliance_pedestal', desc:'Очень низкая стойка для стиральной машины' },
-  { id: 'tech_backstand', name: 'Техно-стойка со стенкой', color: 0xc8c8ce, topColor: 0xdcdce2, emoji: '🖥️', price: 500, shelfKind:'tech_backstand', desc:'Витрина с задней стенкой для кофемашины, приставки и компьютера' },
-  { id: 'glass_case',   name: 'Стеклянный прилавок', color: 0xa87c52, topColor: 0xa87c52, emoji: '💎', price: 500, shelfKind:'glass_case', desc:'Деревянный прилавок со стеклом для духов, сумок, часов, украшений, кошельков и очков' },
+  { id: 'shelf_brown',  name: 'Прилавок классик', color: 0x6b5640, topColor: 0x6b5640, emoji: '🟫', price: 1500, shelfKind:'classic_counter', desc:'Базовый прилавок для джинсов и шорт' },
+  { id: 'rack_simple',  name: 'Простая стойка-вешалка', color: 0xb58b5d, topColor: 0xb58b5d, emoji: '👕', price: 2500, shelfKind:'hanging_rack', desc:'Стойка для футболок, курток, платьев и костюмов' },
+  { id: 'shoe_cubby',   name: 'Стеллаж для обуви', color: 0xd8c2a0, topColor: 0xd8c2a0, emoji: '👞', price: 4000, shelfKind:'shoe_cubby', desc:'Высокий стеллаж с открытыми ячейками для обуви' },
+  { id: 'rack_wardrobe',name: 'Шкаф-вешалка', color: 0xc8ad8a, topColor: 0xc8ad8a, emoji: '🧥', price: 6000, shelfKind:'hanging_rack', desc:'Закрытая стойка-вешалка для более дорогой одежды' },
+  { id: 'tech_island',  name: 'Техно-витрина', color: 0xcfc7bc, topColor: 0xcfc7bc, emoji: '📱', price: 1500, shelfKind:'tech_island', desc:'Базовая стойка для смартфонов, наушников и ноутбуков' },
+  { id: 'tech_backstand', name: 'Техно-стойка со стенкой', color: 0xc8c8ce, topColor: 0xdcdce2, emoji: '🖥️', price: 2500, shelfKind:'tech_backstand', desc:'Витрина с задней стенкой для кофемашины, приставки и компьютера' },
+  { id: 'tv_low_stand', name: 'Низкая ТВ-витрина', color: 0xb9c2cc, topColor: 0xd9e0e6, emoji: '📺', price: 6000, shelfKind:'tv_low_stand', desc:'Низкая квадратная витрина для телевизоров' },
+  { id: 'appliance_pedestal', name: 'Низкая стойка для техники', color: 0xb7b7bd, topColor: 0xd6d6db, emoji: '🧺', price: 9000, shelfKind:'appliance_pedestal', desc:'Усиленная низкая стойка для крупной бытовой техники' },
+  { id: 'glass_case',   name: 'Стеклянный прилавок', color: 0xa87c52, topColor: 0xa87c52, emoji: '💎', price: 8000, shelfKind:'glass_case', desc:'Стеклянный прилавок для аксессуаров, духов и украшений' },
 ];
 
 function getShelfVariantById(id) {
   return SHELF_VARIANTS.find(v => v.id === id) || SHELF_VARIANTS[0];
+}
+
+function getShelfDisplayName(idx) {
+  const variantId = getShelfVariantIdForIndex(idx);
+  const variant = getShelfVariantById(variantId);
+  const totalSame = (G.shelfVariants || []).slice(0, SHELF_POSITIONS.length).filter(id => id === variantId).length;
+  if (totalSame <= 1) return variant.name;
+  let occurrence = 0;
+  for (let i = 0; i <= idx; i++) {
+    if (getShelfVariantIdForIndex(i) === variantId) occurrence++;
+  }
+  return variant.name + ' #' + Math.max(1, occurrence);
 }
 
 function getShelfKindForIndex(idx) {
@@ -13846,6 +14541,7 @@ let placingMode = false;
 let placementInputGuardUntil = 0;
 
 let activeProductId = null;
+let activeStoreItemDetail = null; // { kind, id } — окно описания оборудования/интерьера
 let buyQty = 1;
 let warehouseTab = 'products';
 let warehouseProductTab = 'transit';
@@ -13899,12 +14595,21 @@ const WORKER_UNLOCK_LEVELS = { cleaner: 5, seller: 8, cashier: 11, guard: MAX_LE
 const EXTRA_CASH_REGISTER_UNLOCK_LEVEL = 10;
 
 // ── ЗАРПЛАТЫ РАБОТНИКОВ ──
-// Два стартовых работника каждого этажа получают по 100₽.
-// Первый купленный работник получает 200₽, а каждый следующий — в 2 раза больше.
-const WORKER_SALARY_INTERVAL_MS = 10 * 60 * 1000;
+// На уровнях 1–2 зарплата не начисляется: игрок спокойно осваивает магазин.
+// С 3 уровня расчёт идёт раз в игровую неделю (30 минут активной игры).
+// Если две игровые недели подряд зарплата не оплачена, сотрудники бастуют до погашения долга.
+const WORKER_SALARY_INTERVAL_MS = 30 * 60 * 1000;
+const WORKER_SALARY_FREE_UNTIL_LEVEL = 2;
+const WORKER_SALARY_MISSED_PERIODS_FOR_STRIKE = 2;
 const WORKER_BASE_SALARY = 100;
 const WORKER_BASELINE_COUNTS = { cashier:1, seller:1, cleaner:0, guard:0 };
 let salaryNotificationCounter = 0;
+
+function isWorkerStrikeActive() {
+  return (G.level || 1) > WORKER_SALARY_FREE_UNTIL_LEVEL
+    && !!G.workerStrikeActive
+    && (Number(G.workerSalaryDebt) || 0) > 0;
+}
 
 function getSalaryStaffSnapshots() {
   const floors = new Map();
@@ -13981,6 +14686,18 @@ function showSalaryNotification(text, kind = 'paid') {
 function initializeWorkerSalarySystem(now = Date.now()) {
   ensureWorkerSalaryHireRecords();
   if (!Number.isFinite(Number(G.workerSalaryDebt)) || G.workerSalaryDebt < 0) G.workerSalaryDebt = 0;
+  if (!Number.isFinite(Number(G.workerSalaryMissedPeriods)) || G.workerSalaryMissedPeriods < 0) G.workerSalaryMissedPeriods = 0;
+  G.workerStrikeActive = !!G.workerStrikeActive;
+
+  // Пока зарплаты выключены, не копим скрытое время и не переносим старый долг в обучение.
+  if ((G.level || 1) <= WORKER_SALARY_FREE_UNTIL_LEVEL) {
+    G.workerSalaryDebt = 0;
+    G.workerSalaryMissedPeriods = 0;
+    G.workerStrikeActive = false;
+    G.workerSalaryLastAccrualAt = now;
+    return;
+  }
+
   if (G.workerSalaryLastAccrualAt === null
       || G.workerSalaryLastAccrualAt === undefined
       || !Number.isFinite(Number(G.workerSalaryLastAccrualAt))) {
@@ -13992,16 +14709,22 @@ function tryPayWorkerSalaryDebt() {
   const debt = Math.max(0, Math.round(Number(G.workerSalaryDebt) || 0));
   if (debt <= 0 || G.money < debt) return false;
 
+  const strikeWasActive = !!G.workerStrikeActive;
   G.money -= debt;
   G.workerSalaryDebt = 0;
+  G.workerSalaryMissedPeriods = 0;
+  G.workerStrikeActive = false;
   updateHUD();
-  showSalaryNotification('💼 Списание зарплаты — ' + fmtFull(debt) + '₽');
+  showSalaryNotification('💼 Зарплата выплачена — ' + fmtFull(debt) + '₽');
+  if (strikeWasActive) showSalaryNotification('✅ Забастовка закончена — сотрудники вернулись к работе');
+  if (typeof scheduleAutosave === 'function') scheduleAutosave();
   return true;
 }
 
 function updateWorkerSalarySystem(now = Date.now()) {
   if (!gameStarted) return;
   initializeWorkerSalarySystem(now);
+  if ((G.level || 1) <= WORKER_SALARY_FREE_UNTIL_LEVEL) return;
 
   const elapsed = now - Number(G.workerSalaryLastAccrualAt);
   if (elapsed >= WORKER_SALARY_INTERVAL_MS) {
@@ -14013,14 +14736,21 @@ function updateWorkerSalarySystem(now = Date.now()) {
     if (accrued > 0) {
       G.workerSalaryDebt = Math.max(0, Number(G.workerSalaryDebt) || 0) + accrued;
       if (!tryPayWorkerSalaryDebt()) {
+        G.workerSalaryMissedPeriods = Math.max(0, Number(G.workerSalaryMissedPeriods) || 0) + periods;
         showSalaryNotification(
-          '💼 Зарплата начислена — ' + fmtFull(accrued) + '₽ · долг ' + fmtFull(G.workerSalaryDebt) + '₽',
+          '💼 Игровая неделя завершена — начислено ' + fmtFull(accrued) + '₽ · долг ' + fmtFull(G.workerSalaryDebt) + '₽',
           'debt'
         );
+
+        if (!G.workerStrikeActive && G.workerSalaryMissedPeriods >= WORKER_SALARY_MISSED_PERIODS_FOR_STRIKE) {
+          G.workerStrikeActive = true;
+          showSalaryNotification('🪧 Забастовка работников — погасите долг ' + fmtFull(G.workerSalaryDebt) + '₽', 'debt');
+        }
+        if (typeof scheduleAutosave === 'function') scheduleAutosave();
       }
     }
   } else if ((Number(G.workerSalaryDebt) || 0) > 0) {
-    // Долг списывается целиком сразу после появления достаточной суммы.
+    // Как только денег достаточно для полного погашения, долг списывается и забастовка заканчивается.
     tryPayWorkerSalaryDebt();
   }
 }
@@ -14037,6 +14767,9 @@ const DELIVERY_BASE_SECONDS = 30;
 const DELIVERY_STEP_SECONDS = 15;
 const CRYSTAL_ACCEL_DELIVERY_COST = 1;
 const CRYSTAL_ACCEL_SALE_COST = 1;
+const FREE_EARLY_ACCEL_LEVEL_MAX = 2;
+const FREE_EARLY_DELIVERY_ACCELERATIONS = 3;
+const FREE_EARLY_SALE_ACCELERATIONS = 3;
 const STORAGE_EXPIRY_MS = 60 * 60 * 1000; // 1 час на складе до уценки
 const DEFECT_UNLOCK_LEVEL = 5;
 const DEFECT_CHANCE = 0.005; // 0,5% на каждую доставленную единицу
@@ -14062,24 +14795,45 @@ function spendCrystals(amount, reason = '') {
   return true;
 }
 
+function canUseFreeEarlyAcceleration(kind) {
+  if ((G.level || 1) > FREE_EARLY_ACCEL_LEVEL_MAX) return false;
+  if (kind === 'delivery') return Math.max(0, Number(G.freeDeliveryAccelerationsUsed) || 0) < FREE_EARLY_DELIVERY_ACCELERATIONS;
+  if (kind === 'sale') return Math.max(0, Number(G.freeSaleAccelerationsUsed) || 0) < FREE_EARLY_SALE_ACCELERATIONS;
+  return false;
+}
+
+function consumeFreeEarlyAcceleration(kind) {
+  if (!canUseFreeEarlyAcceleration(kind)) return false;
+  if (kind === 'delivery') G.freeDeliveryAccelerationsUsed = Math.max(0, Number(G.freeDeliveryAccelerationsUsed) || 0) + 1;
+  if (kind === 'sale') G.freeSaleAccelerationsUsed = Math.max(0, Number(G.freeSaleAccelerationsUsed) || 0) + 1;
+  if (typeof scheduleAutosave === 'function') scheduleAutosave();
+  return true;
+}
+
+function getAccelerationButtonLabel(kind) {
+  return canUseFreeEarlyAcceleration(kind) ? '⚡ Бесплатно' : '⚡ 1💎';
+}
+
 function speedUpDelivery(deliveryId) {
   const d = (G.deliveries || []).find(x => x.id === deliveryId);
   if (!d) return;
-  if (!spendCrystals(CRYSTAL_ACCEL_DELIVERY_COST, 'delivery')) return;
+  const free = consumeFreeEarlyAcceleration('delivery');
+  if (!free && !spendCrystals(CRYSTAL_ACCEL_DELIVERY_COST, 'delivery')) return;
   d.readyAt = Date.now();
   updateDeliveries();
   renderWarehouseModal();
-  showToast('💎 Доставка ускорена');
+  showToast(free ? '⚡ Доставка ускорена бесплатно' : '💎 Доставка ускорена');
 }
 
 function speedUpShelfSale(slotIdx) {
   const item = G.slots[slotIdx];
   if (!item || item.soldOut || item.qty <= 0) return;
-  if (!spendCrystals(CRYSTAL_ACCEL_SALE_COST, 'sale')) return;
+  const free = consumeFreeEarlyAcceleration('sale');
+  if (!free && !spendCrystals(CRYSTAL_ACCEL_SALE_COST, 'sale')) return;
   item.nextSaleAt = Date.now();
-  sellOneUnitFromShelf(slotIdx, 'crystal');
+  sellOneUnitFromShelf(slotIdx, free ? 'free_early' : 'crystal');
   renderShelfDetailModal();
-  showToast('💎 Продажа ускорена');
+  showToast(free ? '⚡ Продажа ускорена бесплатно' : '💎 Продажа ускорена');
 }
 
 const ELECTRONICS_DELIVERY_SECONDS = {
@@ -14617,11 +15371,6 @@ function renderProductList() {
     const palette = getSurfacePalette(G.shopType);
     const WALL_COLORS = palette.walls;
     const FLOOR_COLORS = palette.floors;
-    const WIN_TYPES = [
-      { id:'grid',  name:'Окно с перекладинами', emoji:'🪟', desc:'Классическое, 4 секции', price:250 },
-      { id:'solid', name:'Панорамное окно',       emoji:'🔲', desc:'Сплошное стекло в рамке', price:250 },
-    ];
-
     if (showSubcat('walls')) {
       WALL_COLORS.forEach((c, colorIndex) => {
         const unlockLevel = getSurfaceUnlockLevel(colorIndex);
@@ -14643,6 +15392,7 @@ function renderProductList() {
           if (Number(WALL) === Number(c.hex)) { showToast('ℹ️ Этот цвет стен уже выбран'); return; }
           if (G.money < 100) { showToast('❌ Нужно 100₽'); return; }
           G.money -= 100; updateHUD();
+          notifyGameEvent('money_spent', 100, { capital:true, category:'interior', kind:'wall_surface' });
           recolorWalls(c.hex);
           const floorState = shopFloorStates?.[G.currentFloor || 1];
           if (floorState) floorState.wallColor = c.hex;
@@ -14675,6 +15425,7 @@ function renderProductList() {
           if (floorMat.color.getHex() === c.hex) { showToast('ℹ️ Этот цвет пола уже выбран'); return; }
           if (G.money < 50) { showToast('❌ Нужно 50₽'); return; }
           G.money -= 50; updateHUD();
+          notifyGameEvent('money_spent', 50, { capital:true, category:'interior', kind:'floor_surface' });
           floorMat.color.setHex(c.hex);
           tileMeshes.forEach(m => m.material.color.setHex(c.hex));
           const floorState = shopFloorStates?.[G.currentFloor || 1];
@@ -14694,52 +15445,46 @@ function renderProductList() {
       ].forEach(wallOpt => {
         const can = G.crystals >= INTERNAL_WALL_CRYSTAL_PRICE;
         const el = document.createElement('div');
-        el.className = 'prod-row' + (can ? '' : ' cant');
+        el.className = 'prod-row store-info-card' + (can ? '' : ' store-locked');
         el.innerHTML = `
           <div class="pr-emoji">🧱</div>
           <div class="pr-info"><div class="pr-name">${wallOpt.name}</div><div class="pr-sub">${wallOpt.desc}</div></div>
           <div class="pr-right"><div class="pr-price">💎${INTERNAL_WALL_CRYSTAL_PRICE}</div></div>`;
-        el.onclick = () => startInternalWallBuild(wallOpt.axis);
+        el.onclick = () => showStoreItemDetail('innerWall', wallOpt.axis);
         list.appendChild(el);
       });
     }
 
     if (showSubcat('decor')) {
       DECOR_VARIANTS.filter(dv => !dv.special && !dv.facility).forEach(dv => {
-        const can = G.money >= DECOR_PRICE;
+        const unlockLevel = getDecorUnlockLevel(dv);
+        const unlocked = isDecorUnlocked(dv);
+        const price = dv.price ?? DECOR_PRICE;
+        const can = unlocked && G.money >= price;
         const el = document.createElement('div');
         el.dataset.decorVariantId = dv.id;
         el.dataset.decorPlace = dv.place || 'floor';
-        el.className = 'prod-row' + (can ? '' : ' cant');
+        el.className = 'prod-row store-info-card' + (unlocked ? '' : ' store-locked');
         el.innerHTML = `
-          <div class="pr-emoji">${dv.emoji}</div>
-          <div class="pr-info"><div class="pr-name">${dv.name}</div><div class="pr-sub">${dv.desc}</div></div>
-          <div class="pr-right"><div class="pr-price">💰${DECOR_PRICE}</div></div>`;
-        el.onclick = () => startDecorPlacement(dv.id);
+          <div class="pr-emoji">${unlocked ? dv.emoji : '🔒'}</div>
+          <div class="pr-info"><div class="pr-name">${dv.name}</div><div class="pr-sub">${unlocked ? (dv.desc + ' · +2% к рейтингу') : ('Откроется на уровне ' + unlockLevel)}</div></div>
+          <div class="pr-right"><div class="pr-price">${unlocked ? ('💰' + fmt(price)) : ('🔒 Ур.' + unlockLevel)}</div></div>`;
+        el.onclick = () => showStoreItemDetail('decor', dv.id);
         list.appendChild(el);
       });
     }
 
     if (showSubcat('windows')) {
-      WIN_TYPES.forEach(wt => {
-        const can = G.money >= wt.price;
+      STORE_WINDOW_TYPES.forEach(wt => {
+        const unlockLevel = Math.max(1, Number(wt.unlockLevel) || 1);
+        const unlocked = (G.level || 1) >= unlockLevel;
         const el = document.createElement('div');
-        el.className = 'prod-row' + (can ? '' : ' cant');
+        el.className = 'prod-row store-info-card' + (unlocked ? '' : ' store-locked');
         el.innerHTML = `
-          <div class="pr-emoji">${wt.emoji}</div>
-          <div class="pr-info"><div class="pr-name">${wt.name}</div><div class="pr-sub">${wt.desc}</div></div>
-          <div class="pr-right"><div class="pr-price">💰${wt.price}</div></div>`;
-        el.onclick = () => {
-          if (G.money < wt.price) { showToast('❌ Недостаточно денег'); return; }
-          const place = findFreeWindowPlace();
-          if (!place) { showToast('❌ На стенах нет места для нового окна'); return; }
-          G.money -= wt.price;
-          updateHUD();
-          addWindow(place.axis, place.pos, wt.id);
-          closeShopModal();
-          enterEditorMode();
-          showToast('✅ Окно куплено');
-        };
+          <div class="pr-emoji">${unlocked ? wt.emoji : '🔒'}</div>
+          <div class="pr-info"><div class="pr-name">${wt.name}</div><div class="pr-sub">${unlocked ? wt.desc : ('Откроется на уровне ' + unlockLevel)}</div></div>
+          <div class="pr-right"><div class="pr-price">${unlocked ? ('💰' + fmt(wt.price)) : ('🔒 Ур.' + unlockLevel)}</div></div>`;
+        el.onclick = () => showStoreItemDetail('window', wt.id);
         list.appendChild(el);
       });
     }
@@ -14748,7 +15493,7 @@ function renderProductList() {
       DOOR_TYPES.forEach(dv => {
         const can = G.money >= dv.price && doors.length < MAX_DOORS;
         const el = document.createElement('div');
-        el.className = 'prod-row' + (can ? '' : ' cant');
+        el.className = 'prod-row store-info-card' + (can ? '' : ' store-locked');
         el.innerHTML = `
           <div class="pr-emoji" style="width:36px;height:36px;background:#b8dff0;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${dv.emoji}</div>
           <div class="pr-info">
@@ -14759,7 +15504,7 @@ function renderProductList() {
             <div class="pr-price">💰${fmt(dv.price)}</div>
             <div class="pr-profit" style="color:#aaa">${doors.length}/${MAX_DOORS}</div>
           </div>`;
-        el.onclick = () => buyDoor(dv);
+        el.onclick = () => showStoreItemDetail('door', dv.id);
         list.appendChild(el);
       });
     }
@@ -14789,7 +15534,7 @@ function renderProductList() {
         const el = document.createElement('div');
         el.dataset.decorVariantId = facility.id;
         el.dataset.facilityType = facility.id;
-        el.className = 'prod-row' + (canBuy ? '' : ' cant');
+        el.className = 'prod-row store-info-card' + (unlocked ? '' : ' store-locked');
         el.innerHTML = `
           <div class="pr-emoji">${unlocked ? facility.emoji : '🔒'}</div>
           <div class="pr-info">
@@ -14800,7 +15545,7 @@ function renderProductList() {
             <div class="pr-price">${unlocked ? ('💰' + fmt(facility.price)) : ('🔒 Ур.' + unlockLevel)}</div>
             <div class="pr-profit" style="color:#aaa">${owned}/${limit || 1}</div>
           </div>`;
-        if (unlocked && !limitReached) el.onclick = () => startStoreFacilityPlacement(facility.id);
+        el.onclick = () => showStoreItemDetail('facility', facility.id);
         list.appendChild(el);
       }
     }
@@ -14826,7 +15571,7 @@ function renderProductList() {
           : 'достигнут лимит 2 витрины этого вида';
         const el = document.createElement('div');
         el.dataset.shelfVariantId = sv.id;
-        el.className = 'prod-row' + (can ? '' : ' cant');
+        el.className = 'prod-row store-info-card' + (unlocked ? '' : ' store-locked');
         el.innerHTML = `
           <div class="pr-emoji" style="width:36px;height:36px;background:#${sv.color.toString(16).padStart(6,'0')};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${unlocked ? sv.emoji : '🔒'}</div>
           <div class="pr-info">
@@ -14841,7 +15586,7 @@ function renderProductList() {
             <div class="pr-price">${tutorialFree ? 'Бесплатно' : (limitReached ? (typeLimit < 2 ? ('🔒 Ур.' + secondUnlockLevel) : 'Лимит') : (unlocked ? ('💰' + fmt(sv.price)) : ('🔒 Ур.' + unlockLevel)))}</div>
             <div class="pr-profit" style="color:#aaa">${unlocked ? (ownedOfType + '/' + typeLimit) : ''}</div>
           </div>`;
-        if (unlocked && !limitReached) el.onclick = () => buyShelf(sv);
+        el.onclick = () => showStoreItemDetail('shelf', sv.id);
         list.appendChild(el);
       });
     }
@@ -14886,7 +15631,7 @@ function renderProductList() {
         const can = unlocked && !limitReached && (tutorialFree || G.money >= cv.price);
         const el = document.createElement('div');
         el.dataset.cashVariantId = cv.id;
-        el.className = 'prod-row' + (can ? '' : ' cant');
+        el.className = 'prod-row store-info-card' + (unlocked ? '' : ' store-locked');
         el.innerHTML = `
           <div class="pr-emoji" style="width:36px;height:36px;background:#${cv.color.toString(16).padStart(6,'0')};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">${unlocked ? cv.emoji : '🔒'}</div>
           <div class="pr-info">
@@ -14897,7 +15642,7 @@ function renderProductList() {
             <div class="pr-price">${tutorialFree ? 'Бесплатно' : (unlocked ? ('💰' + fmt(cv.price)) : ('🔒 Ур.' + EXTRA_CASH_REGISTER_UNLOCK_LEVEL))}</div>
             <div class="pr-profit" style="color:#aaa">${cashRegisters.length}/${MAX_CASH_REGISTERS}</div>
           </div>`;
-        if (unlocked && !limitReached) el.onclick = () => buyCashRegister(cv);
+        el.onclick = () => showStoreItemDetail('cash', cv.id);
         list.appendChild(el);
       });
     }
@@ -15132,7 +15877,176 @@ function initPhone3DPreview() {
   render();
 }
 
+function getShelfSupportedProductNames(variant) {
+  const kind = variant?.shelfKind;
+  if (!kind) return [];
+  return PRODUCTS
+    .filter(product => isProductAllowedForShop(product) && getProductShelfKinds(product).includes(kind))
+    .sort((a,b) => getProductUnlockLevel(a) - getProductUnlockLevel(b))
+    .map(product => product.name);
+}
+
+function getStoreItemDetail(kind, id) {
+  if (kind === 'shelf') {
+    const item = getShelfVariantById(id);
+    if (!item) return null;
+    const tutorialFree = isTutorialFreeStarterShelfPurchase(item);
+    const unlockLevel = getShelfUnlockLevel(item);
+    const unlocked = tutorialFree || isShelfVariantUnlocked(item);
+    const owned = getOwnedShelfVariantCount(item);
+    const limit = tutorialFree ? 1 : getShelfVariantPurchaseLimit(item);
+    const limitReached = !tutorialFree && owned >= limit;
+    const supported = getShelfSupportedProductNames(item);
+    return {
+      kind, id:item.id, item, name:item.name, emoji:item.emoji, category:'Витрина',
+      description:item.desc || 'Торговое оборудование для размещения товаров.',
+      benefit:'Вместимость: ' + getShelfVariantCapacity(item) + ' шт. Подходит для: ' + (supported.length ? supported.join(', ') : shelfKindLabel(item.shelfKind)) + '.',
+      unlockLevel, unlocked, price:tutorialFree ? 0 : item.price,
+      priceLabel:tutorialFree ? 'Бесплатно в обучении' : ('💰' + fmt(item.price)),
+      available:unlocked && !limitReached && SHELF_POSITIONS.length < MAX_SHELVES && (tutorialFree || G.money >= item.price),
+      blockedText:!unlocked ? ('Откроется на уровне ' + unlockLevel) : (limitReached ? 'Достигнут текущий лимит этого вида' : (SHELF_POSITIONS.length >= MAX_SHELVES ? 'Достигнут общий лимит витрин' : (G.money < item.price && !tutorialFree ? 'Недостаточно денег' : ''))),
+      extra:'Установлено этого вида: ' + owned + ' / ' + limit,
+    };
+  }
+
+  if (kind === 'cash') {
+    const item = CASH_REGISTER_VARIANTS.find(v => v.id === id);
+    if (!item) return null;
+    const tutorialFree = isTutorialFreeStarterCashPurchase(item);
+    const unlockLevel = tutorialFree ? 1 : EXTRA_CASH_REGISTER_UNLOCK_LEVEL;
+    const unlocked = tutorialFree || (G.level || 1) >= unlockLevel;
+    const limitReached = cashRegisters.length >= MAX_CASH_REGISTERS;
+    return {
+      kind, id:item.id, item, name:item.name, emoji:item.emoji, category:'Касса',
+      description:item.desc || 'Касса для оплаты покупок.',
+      benefit:'Точка оплаты покупателей. В магазине можно установить до ' + MAX_CASH_REGISTERS + ' касс.',
+      unlockLevel, unlocked, price:tutorialFree ? 0 : item.price,
+      priceLabel:tutorialFree ? 'Бесплатно в обучении' : ('💰' + fmt(item.price)),
+      available:unlocked && !limitReached && (tutorialFree || G.money >= item.price),
+      blockedText:!unlocked ? ('Дополнительная касса откроется на уровне ' + unlockLevel) : (limitReached ? 'Достигнут лимит касс' : (G.money < item.price && !tutorialFree ? 'Недостаточно денег' : '')),
+      extra:'Установлено: ' + cashRegisters.length + ' / ' + MAX_CASH_REGISTERS,
+    };
+  }
+
+  if (kind === 'decor' || kind === 'facility') {
+    const item = getDecorDef(id);
+    if (!item) return null;
+    const unlockLevel = getDecorUnlockLevel(item);
+    const unlocked = isDecorUnlocked(item);
+    const facilityLimit = item.facility ? getStoreFacilityLimit(G.level || 1) : null;
+    const owned = item.facility ? countOwnedStoreFacility(item.id) : null;
+    const limitReached = item.facility ? owned >= facilityLimit : false;
+    const price = item.price ?? DECOR_PRICE;
+    const rating = item.facility ? (item.ratingBonus || 5) : 2;
+    return {
+      kind:item.facility ? 'facility' : 'decor', id:item.id, item, name:item.name, emoji:item.emoji, category:item.facility ? (G.shopType === 'electronics' ? 'Проверка техники' : 'Примерочная') : 'Интерьер',
+      description:item.desc || 'Предмет оформления магазина.',
+      benefit:'Даёт +' + rating + '% к рейтингу магазина. Размещение: ' + (item.place === 'wall' ? 'на стене' : 'на полу') + '.',
+      unlockLevel, unlocked, price, priceLabel:'💰' + fmt(price),
+      available:unlocked && !limitReached && G.money >= price,
+      blockedText:!unlocked ? ('Откроется на уровне ' + unlockLevel) : (limitReached ? 'Достигнут текущий лимит' : (G.money < price ? 'Недостаточно денег' : '')),
+      extra:item.facility ? ('Установлено: ' + owned + ' / ' + (facilityLimit || 1)) : ('Уровень открытия: ' + unlockLevel),
+    };
+  }
+
+  if (kind === 'window') {
+    const item = STORE_WINDOW_TYPES.find(v => v.id === id);
+    if (!item) return null;
+    const unlockLevel = Math.max(1, Number(item.unlockLevel) || 1);
+    const unlocked = (G.level || 1) >= unlockLevel;
+    return {
+      kind, id:item.id, item, name:item.name, emoji:item.emoji, category:'Окно',
+      description:item.desc, benefit:'Изменяет внешний вид магазина. Устанавливается только в свободный участок внешней стены.',
+      unlockLevel, unlocked, price:item.price, priceLabel:'💰' + fmt(item.price),
+      available:unlocked && G.money >= item.price,
+      blockedText:!unlocked ? ('Откроется на уровне ' + unlockLevel) : (G.money < item.price ? 'Недостаточно денег' : ''),
+      extra:'Уровень открытия: ' + unlockLevel,
+    };
+  }
+
+  if (kind === 'door') {
+    const item = DOOR_TYPES.find(v => v.id === id);
+    if (!item) return null;
+    return {
+      kind, id:item.id, item, name:item.name, emoji:item.emoji, category:'Дверь',
+      description:item.desc || 'Дополнительный вход в магазин.',
+      benefit:'Создаёт дополнительный проход во внешней стене. Можно установить только там, где нет других проёмов.',
+      unlockLevel:1, unlocked:true, price:item.price, priceLabel:'💰' + fmt(item.price),
+      available:doors.length < MAX_DOORS && G.money >= item.price,
+      blockedText:doors.length >= MAX_DOORS ? 'Достигнут лимит дверей' : (G.money < item.price ? 'Недостаточно денег' : ''),
+      extra:'Установлено: ' + doors.length + ' / ' + MAX_DOORS,
+    };
+  }
+
+  if (kind === 'innerWall') {
+    const axis = id === 'z' ? 'z' : 'x';
+    return {
+      kind, id:axis, item:{ axis }, name:axis === 'x' ? 'Внутренняя стена ↔' : 'Внутренняя стена ↕', emoji:'🧱', category:'Интерьер',
+      description:'Отдельный участок внутренней стены размером примерно с окно.',
+      benefit:'Позволяет делить торговый зал на зоны и менять планировку магазина.',
+      unlockLevel:1, unlocked:true, price:INTERNAL_WALL_CRYSTAL_PRICE, priceLabel:'💎' + INTERNAL_WALL_CRYSTAL_PRICE,
+      available:G.crystals >= INTERNAL_WALL_CRYSTAL_PRICE,
+      blockedText:G.crystals < INTERNAL_WALL_CRYSTAL_PRICE ? 'Недостаточно кристаллов' : '',
+      extra:'Размещение: внутри магазина',
+    };
+  }
+
+  return null;
+}
+
+function showStoreItemDetail(kind, id) {
+  const detail = getStoreItemDetail(kind, id);
+  if (!detail) return;
+  activeProductId = null;
+  activeStoreItemDetail = { kind:detail.kind, id:detail.id };
+  renderStoreItemDetail();
+  document.getElementById('itemModal')?.classList.add('show');
+  resetModalViewState('itemModal');
+  updateTutorialSpotlight();
+}
+
+function renderStoreItemDetail() {
+  if (!activeStoreItemDetail) return;
+  const detail = getStoreItemDetail(activeStoreItemDetail.kind, activeStoreItemDetail.id);
+  const box = document.getElementById('itemModalBox');
+  if (!detail || !box) return;
+  const buttonText = !detail.unlocked
+    ? ('🔒 Уровень ' + detail.unlockLevel)
+    : (detail.available ? (detail.price === 0 ? 'Получить бесплатно' : ('Купить · ' + detail.priceLabel)) : (detail.blockedText || 'Недоступно'));
+  box.innerHTML = `
+    <button type="button" class="modal-close" onclick="closeItemModal()" aria-label="Закрыть">✕</button>
+    <span class="item-big-emoji">${detail.unlocked ? detail.emoji : '🔒'}</span>
+    <div class="item-modal-title">${detail.name}</div>
+    <div class="item-modal-cat">${detail.category}</div>
+    <div class="store-item-description">
+      <div>${detail.description}</div>
+      <div class="store-item-benefit">${detail.benefit}</div>
+    </div>
+    <div class="item-stats">
+      <div class="item-stat"><div class="item-stat-val">${detail.priceLabel}</div><div class="item-stat-lbl">Цена</div></div>
+      <div class="item-stat"><div class="item-stat-val">⭐ ${detail.unlockLevel}</div><div class="item-stat-lbl">Уровень</div></div>
+      <div class="item-stat" style="grid-column:1/-1"><div class="item-stat-val" style="font-size:12px">${detail.extra || ''}</div><div class="item-stat-lbl">Состояние</div></div>
+    </div>
+    <button class="btn-buy" ${detail.available ? 'onclick="purchaseStoreItemFromDetail()"' : 'style="background:#777;pointer-events:none"'}>${buttonText}</button>
+    <button class="btn-back" onclick="closeItemModal()">← Назад</button>`;
+}
+
+function purchaseStoreItemFromDetail() {
+  if (!activeStoreItemDetail) return;
+  const detail = getStoreItemDetail(activeStoreItemDetail.kind, activeStoreItemDetail.id);
+  if (!detail || !detail.available) { renderStoreItemDetail(); return; }
+  const kind = detail.kind;
+  const item = detail.item;
+  if (kind === 'shelf') return buyShelf(item);
+  if (kind === 'cash') return buyCashRegister(item);
+  if (kind === 'decor' || kind === 'facility') return startDecorPlacement(item.id);
+  if (kind === 'window') return buyStoreWindow(item);
+  if (kind === 'door') return buyDoor(item);
+  if (kind === 'innerWall') { closeItemModal(); return startInternalWallBuild(item.axis); }
+}
+
 function showItemDetail(p) {
+  activeStoreItemDetail = null;
   activeProductId = p.id;
   buyQty = 1;
   renderItemDetail();
@@ -15201,6 +16115,7 @@ function changeBuyQty(delta) {
 function closeItemModal() {
   disposePhone3DPreview();
   document.getElementById('itemModal').classList.remove('show');
+  activeStoreItemDetail = null;
 }
 document.getElementById('itemModal').addEventListener('click', e => {
   if (e.target === document.getElementById('itemModal')) closeItemModal();
@@ -15249,6 +16164,129 @@ function getAutoShelfPosition(idx) {
   return { x, z };
 }
 
+// ── ПРЕДВАРИТЕЛЬНОЕ РАЗМЕЩЕНИЕ ПОКУПКИ ──
+// Платное оборудование сначала существует как предпросмотр. Деньги и квестовые
+// события применяются только после явного подтверждения игроком.
+let pendingStorePurchase = null;
+
+function setPurchasePlacementControlsVisible(visible) {
+  document.getElementById('purchase-placement-controls')?.classList.toggle('show', !!visible);
+}
+
+function beginPendingStorePurchase(kind, indexOrId, variantId, price) {
+  pendingStorePurchase = {
+    kind,
+    index: (kind === 'shelf' || kind === 'cash') ? Number(indexOrId) : null,
+    objectId: kind === 'decor' ? Number(indexOrId) : null,
+    variantId,
+    price:Math.max(0, Number(price) || 0),
+  };
+  closeItemModal();
+  closeShopModal();
+  closeWarehouseModal();
+  if (!editorMode) enterEditorMode();
+
+  if (kind === 'shelf') editorSelection = { type:'shelf', index:pendingStorePurchase.index };
+  else if (kind === 'cash') editorSelection = { type:'cash', index:pendingStorePurchase.index };
+  else if (kind === 'decor') editorSelection = { type:'decor', id:pendingStorePurchase.objectId };
+
+  setPurchasePlacementControlsVisible(true);
+  if (kind === 'shelf' || kind === 'cash') editorActionMove();
+  showToast('↔️ Выберите место, затем нажмите «Подтвердить» или «Отмена»');
+}
+
+function validatePendingStorePurchasePosition() {
+  const pending = pendingStorePurchase;
+  if (!pending) return false;
+  if (pending.kind === 'shelf') {
+    const pos = SHELF_POSITIONS[pending.index];
+    if (!pos || !canPlaceShelfAt(pending.index, pos[0], pos[2])) return false;
+    return getShopRouteConnectivityStatus().ok;
+  }
+  if (pending.kind === 'cash') {
+    const cr = cashRegisters[pending.index];
+    if (!cr || !canPlaceCashRegister(pending.index, cr.x, cr.z)) return false;
+    return getShopRouteConnectivityStatus().ok;
+  }
+  if (pending.kind === 'decor') {
+    const decor = decorations.find(item => item.id === pending.objectId);
+    if (!decor) return false;
+    const def = getDecorDef(decor.type);
+    const placeOk = def.place === 'wall'
+      ? canPlaceWallDecor(def, decor.axis, decor.pos, decor.id)
+      : canPlaceFloorDecor(def, decor.x, decor.z, decor.id, decor.rotation || 0);
+    if (!placeOk) return false;
+    if (def.place === 'floor' && !def.rug) return getShopRouteConnectivityStatus().ok;
+    return true;
+  }
+  return false;
+}
+
+function confirmPendingStorePurchase() {
+  const pending = pendingStorePurchase;
+  if (!pending) return;
+  if (G.money < pending.price) {
+    showToast('❌ Недостаточно денег для подтверждения покупки', '#e94560ee');
+    return;
+  }
+  if (!validatePendingStorePurchasePosition()) {
+    showToast('❌ Здесь объект мешает проходу или пересекается с другим объектом', '#e94560ee');
+    return;
+  }
+
+  G.money -= pending.price;
+  updateHUD();
+  if (pending.price > 0) {
+    const category = pending.kind === 'decor' ? 'interior' : pending.kind;
+    notifyGameEvent('money_spent', pending.price, { capital:true, category, kind:pending.kind, variantId:pending.variantId });
+  }
+
+  if (pending.kind === 'shelf') {
+    notifyGameEvent('shelf_installed', 1, { index:pending.index, variantId:pending.variantId, tutorialFree:false });
+  } else if (pending.kind === 'cash') {
+    notifyGameEvent('cash_installed', 1, { index:pending.index, variantId:pending.variantId });
+  } else if (pending.kind === 'decor') {
+    const decor = decorations.find(item => item.id === pending.objectId);
+    const def = decor ? getDecorDef(decor.type) : null;
+    if (decor && def) {
+      G.decorPurchasedCount = Math.max(0, Number(G.decorPurchasedCount) || 0) + 1;
+      notifyGameEvent('decor_installed', 1, { type:def.id, facility:!!def.facility, fromStorage:false });
+      notifyGameEvent('decor_purchased', 1, { type:def.id, place:def.place, facility:!!def.facility });
+    }
+  }
+
+  const confirmedKind = pending.kind;
+  const confirmedName = pending.kind === 'shelf'
+    ? getShelfVariantById(pending.variantId).name
+    : pending.kind === 'cash'
+      ? (CASH_REGISTER_VARIANTS.find(item => item.id === pending.variantId)?.name || 'Касса')
+      : (getDecorDef(pending.variantId)?.name || 'Предмет');
+
+  pendingStorePurchase = null;
+  setPurchasePlacementControlsVisible(false);
+  if (editorMode) exitEditorMode();
+  renderProductList();
+  showToast('✅ ' + confirmedName + ' куплен' + (confirmedKind === 'decor' ? ' и установлен' : ' и размещён'));
+  if (typeof scheduleAutosave === 'function') scheduleAutosave();
+}
+
+function cancelPendingStorePurchase(silent = false) {
+  const pending = pendingStorePurchase;
+  if (!pending) return false;
+  pendingStorePurchase = null;
+  setPurchasePlacementControlsVisible(false);
+
+  if (pending.kind === 'shelf') removeShelfForStorage(pending.index);
+  else if (pending.kind === 'cash') removeCashRegisterForStorage(pending.index, true);
+  else if (pending.kind === 'decor') removeDecorById(pending.objectId, true);
+
+  if (editorMode) exitEditorMode();
+  updateHUD();
+  renderProductList();
+  if (!silent) showToast('↩️ Покупка отменена — деньги не списаны');
+  return true;
+}
+
 // ── ПОКУПКА ВИТРИНЫ ──
 function buyShelf(sv) {
   if (!isShelfVariantAllowedForShop(sv)) return;
@@ -15272,33 +16310,24 @@ function buyShelf(sv) {
     showToast('❌ Достигнут общий технический лимит витрин', '#6b6b86');
     return;
   }
-  G.money -= price;
-  updateHUD();
+
   const idx = SHELF_POSITIONS.length;
   const shelfPlace = tutorialFree && idx === 0 ? { x:0, z:-1.0 } : getAutoShelfPosition(idx);
-  const nx = shelfPlace.x, nz = shelfPlace.z;
-  SHELF_POSITIONS.push([nx, 0, nz]);
+  SHELF_POSITIONS.push([shelfPlace.x, 0, shelfPlace.z]);
   G.slots.push(null);
   G.shelfVariants.push(sv.id);
   if (!G.shelfRotations) G.shelfRotations = [];
   G.shelfRotations.push(0);
-  addShelfMesh(idx, nx, nz, sv.color, sv.topColor, sv.id);
-  const routeStatus = getShopRouteConnectivityStatus();
-  if (!routeStatus.ok) {
-    removeShelfForStorage(idx);
-    G.money += price;
-    updateHUD();
-    showRouteConnectivityBlockedToast(routeStatus);
+  addShelfMesh(idx, shelfPlace.x, shelfPlace.z, sv.color, sv.topColor, sv.id);
+
+  if (tutorialFree) {
+    closeItemModal();
+    beginTutorialEquipmentPlacement('shelf', idx);
+    showToast('✅ Витрина получена бесплатно — теперь поставьте её');
     return;
   }
-  if (tutorialFree) {
-    beginTutorialEquipmentPlacement('shelf', idx);
-  } else {
-    closeShopModal();
-    enterEditorMode();
-  }
-  notifyGameEvent('shelf_installed', 1, { index:idx, variantId:sv.id, tutorialFree });
-  showToast(tutorialFree ? '✅ Витрина куплена бесплатно — теперь поставьте её' : ('✅ ' + sv.name + ' куплена!'));
+
+  beginPendingStorePurchase('shelf', idx, sv.id, price);
 }
 
 function addShelfMesh(i, x, z, bodyColor, topColor, variantId = 'shelf_brown') {
@@ -15425,7 +16454,10 @@ function addShelfMesh(i, x, z, bodyColor, topColor, variantId = 'shelf_brown') {
 
   if (group) group.scale.setScalar(SHELF_SIZE_MULT);
 
-  const label = box(SHELF_LABEL_SIZE, SHELF_LABEL_SIZE, 0.04 * SHELF_SIZE_MULT, 0x9c27b0, x - SHELF_STAND_W / 2 + 0.16, SHELF_LABEL_Y, z - SHELF_STAND_D / 2 + 0.02);
+  // Служебная метка витрины остаётся только как невидимый технический объект.
+  // Розовый/фиолетовый квадратик больше никогда не показывается в игровом мире.
+  const label = box(SHELF_LABEL_SIZE, SHELF_LABEL_SIZE, 0.04 * SHELF_SIZE_MULT, 0x000000, x - SHELF_STAND_W / 2 + 0.16, SHELF_LABEL_Y, z - SHELF_STAND_D / 2 + 0.02);
+  if (label.material) { label.material.transparent = true; label.material.opacity = 0; }
   label.visible = false;
   const fp = getShelfBaseFootprint(i);
   const hitZone = new THREE.Mesh(new THREE.BoxGeometry(fp.w + 0.25, 2.1 * SHELF_SIZE_MULT, fp.d + 0.35), new THREE.MeshBasicMaterial({ visible: false }));
@@ -16462,7 +17494,7 @@ function openShelvesModal() {
     if (!item) {
       div.innerHTML = `
         <div style="font-size:22px;opacity:.3">🪟</div>
-        <div style="flex:1"><div style="font-size:13px;font-weight:600;color:#555">Витрина ${i+1} · ${shelfVariant.name}</div>
+        <div style="flex:1"><div style="font-size:13px;font-weight:600;color:#555">${getShelfDisplayName(i)}</div>
         <div style="font-size:10px;color:#444">Пусто · вместимость ${shelfCapacity} шт</div></div>`;
     } else {
       const wait = item.soldOut ? 0 : Math.max(0, Math.ceil((item.nextSaleAt - Date.now()) / 1000));
@@ -16473,7 +17505,7 @@ function openShelvesModal() {
         <div style="font-size:26px">${item.product.emoji}</div>
         <div style="flex:1">
           <div style="font-size:13px;font-weight:600">${item.product.name}</div>
-          <div style="font-size:10px;color:#888">Витрина ${i+1} · ${shelfVariant.name} · ${item.soldOut ? 'распродано, нужна уборка' : 'осталось ' + item.qty + ' шт · вместимость ' + shelfCapacity + ' шт'} · выручка ${fmt(shelfSalePrice)}₽ / шт${(item.discountedQty || 0) > 0 ? ' · уценено ' + item.discountedQty : ''}</div>
+          <div style="font-size:10px;color:#888">${getShelfDisplayName(i)} · ${item.soldOut ? 'распродано, нужна уборка' : 'осталось ' + item.qty + ' шт · вместимость ' + shelfCapacity + ' шт'} · выручка ${fmt(shelfSalePrice)}₽ / шт${(item.discountedQty || 0) > 0 ? ' · уценено ' + item.discountedQty : ''}</div>
           <div style="height:3px;background:#222;border-radius:2px;margin-top:5px;overflow:hidden">
             <div style="height:100%;width:${pct}%;background:#00c896;border-radius:2px"></div>
           </div>
@@ -16503,6 +17535,7 @@ let editorMode = false;
 let editorSelection = null;
 
 function toggleEditorMode() {
+  if (editorMode && pendingStorePurchase) { cancelPendingStorePurchase(); return; }
   if (editorMode) exitEditorMode();
   else enterEditorMode();
 }
@@ -16540,6 +17573,7 @@ function enterEditorMode() {
 }
 
 function exitEditorMode() {
+  if (pendingStorePurchase) { cancelPendingStorePurchase(); return; }
   editorMode = false;
   setEditorPlacementGridVisible(false);
   editorSelection = null;
@@ -17334,7 +18368,7 @@ function placeItem(productId, slotIdx, qty = 1, fromStorage = false) {
       existing.activeSalePrice = getSeasonalSellPrice(p);
     }
     refreshShelfItemVisual(slotIdx);
-    showToast('📦 Товар выставлен: ' + p.name + ' ×' + qty + ' → витрина ' + (slotIdx+1));
+    showToast('📦 Товар выставлен: ' + p.name + ' ×' + qty + ' → ' + getShelfDisplayName(slotIdx));
     logEvent('📦 Пополнение: ' + p.emoji + ' ' + p.name + ' +' + qty + ' шт');
   } else {
     G.slots[slotIdx] = {
@@ -17348,8 +18382,8 @@ function placeItem(productId, slotIdx, qty = 1, fromStorage = false) {
       defectiveQty: storageTake.defectiveQty || 0
     };
     createItemMesh(p, slotIdx);
-    showToast('📦 Товар выставлен: ' + p.name + ' ×' + qty + ' → витрина ' + (slotIdx+1));
-    logEvent('📦 ' + p.emoji + ' ' + p.name + ' ×' + qty + ' → витрина ' + (slotIdx+1));
+    showToast('📦 Товар выставлен: ' + p.name + ' ×' + qty + ' → ' + getShelfDisplayName(slotIdx));
+    logEvent('📦 ' + p.emoji + ' ' + p.name + ' ×' + qty + ' → ' + getShelfDisplayName(slotIdx));
   }
 
   updateHUD();
@@ -17389,10 +18423,9 @@ function renderShelfDetailModal() {
     box.innerHTML = `
       <button type="button" class="modal-close" onclick="closeShelfDetailModal()" aria-label="Закрыть">✕</button>
       <div style="font-size:34px;text-align:center;margin-bottom:8px">🧹</div>
-      <div class="item-modal-title">Витрина ${idx + 1}</div>
+      <div class="item-modal-title">${getShelfDisplayName(idx)}</div>
       <div style="font-size:13px;color:#888;text-align:center;margin-bottom:14px">${item.product.name} распродан</div>
       <button class="btn-buy" onclick="startShelfCleanup(${idx})">Позвать продавца убрать витрину</button>
-      ${wait > 0 ? `<button class="btn-buy" onclick="speedUpShelfSale(${idx})">⚡ Ускорить продажу · 1💎</button>` : `<button class="btn-buy" onclick="sellOneUnitFromShelf(${idx}, 'manual'); renderShelfDetailModal();">Продать сейчас</button>`}
     `;
     return;
   }
@@ -17406,7 +18439,7 @@ function renderShelfDetailModal() {
   box.innerHTML = `
     <button type="button" class="modal-close" onclick="closeShelfDetailModal()" aria-label="Закрыть">✕</button>
     <span class="item-big-emoji">${item.product.emoji}</span>
-    <div class="item-modal-title">Витрина ${idx + 1}</div>
+    <div class="item-modal-title">${getShelfDisplayName(idx)}</div>
     <div class="item-modal-cat">${item.product.name}</div>
     <div class="item-stats">
       <div class="item-stat"><div class="item-stat-val" style="color:#f5c518">${item.qty}/${shelfCapacity}</div><div class="item-stat-lbl">товар / вместимость</div></div>
@@ -17429,6 +18462,7 @@ function renderShelfDetailModal() {
       </div>
       <button class="btn-buy" onclick="moveShelfQtyToStorage(${idx})">Убрать ${shelfMoveQty} шт на склад</button>`
       : `<div style="font-size:12px;color:#888;text-align:center;margin:14px 0">На витрине 1 шт — он продолжает продаваться</div>`}
+    ${wait > 0 ? `<button class="btn-buy" onclick="speedUpShelfSale(${idx})">${getAccelerationButtonLabel('sale')}</button>` : `<button class="btn-buy" onclick="sellOneUnitFromShelf(${idx}, 'manual'); renderShelfDetailModal();">Продать сейчас</button>`}
     `;
 }
 
@@ -17477,7 +18511,7 @@ function startShelfCleanup(slotIdx) {
   }
   cleanupTask = { slotIdx, wait: 45 };
   closeShelfDetailModal();
-  showToast('🧹 Свободный продавец идёт убрать витрину ' + (slotIdx + 1));
+  showToast('🧹 Свободный продавец идёт убрать «' + getShelfDisplayName(slotIdx) + '»');
 }
 
 function finishShelfCleanup(slotIdx) {
@@ -17486,7 +18520,8 @@ function finishShelfCleanup(slotIdx) {
   G.slots[slotIdx] = null;
   removeItemMesh(slotIdx);
   if (shelfMeshes[slotIdx] && shelfMeshes[slotIdx].label) {
-    shelfMeshes[slotIdx].label.material.color.setHex(0x9c27b0);
+    shelfMeshes[slotIdx].label.material.color.setHex(0x000000);
+    shelfMeshes[slotIdx].label.visible = false;
   }
   cleanupTask = null;
   showToast('✅ Витрина убрана и снова свободна');
@@ -17594,7 +18629,7 @@ function renderWarehouseModal() {
         </div>
         <div class="pr-right" style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
           <div class="pr-price">⏱${fmtTime(left)}</div>
-          <button class="btn-buy" style="padding:8px 10px;font-size:12px" onclick="speedUpDelivery(${d.id})">⚡ 1💎</button>
+          <button class="btn-buy" style="padding:8px 10px;font-size:12px" onclick="speedUpDelivery(${d.id})">${getAccelerationButtonLabel('delivery')}</button>
         </div>`;
       list.appendChild(row);
     });
@@ -18137,7 +19172,7 @@ function isAutosaveStateStable() {
 
   // Не фиксируем промежуточный кадр перетаскивания/размещения. В такой момент
   // безопаснее оставить последнее стабильное сохранение, чем записать полупоставленный объект.
-  if (placingMode || decorPlaceMode || internalWallBuildMode || tutorialEquipmentPlacement) return false;
+  if (placingMode || decorPlaceMode || internalWallBuildMode || tutorialEquipmentPlacement || pendingStorePurchase) return false;
   if (dragWinIdx !== null || dragDoorIdx !== null) return false;
   if (typeof dragShelfIdx !== 'undefined' && dragShelfIdx !== null) return false;
   if (typeof dragCashierIdx !== 'undefined' && dragCashierIdx !== null) return false;
@@ -18439,7 +19474,9 @@ function restoreQuestAndTutorialProgress(payload) {
   const savedQuestState = payload.quests?.state || {};
   QUEST_DEFINITIONS.forEach(quest => {
     const source = savedQuestState[quest.id];
-    const metricValue = getQuestMetricValue(quest);
+    const metricValue = quest.fromActivation || quest.kind === 'distinct_product_sales'
+      ? 0
+      : getQuestMetricRawValue(quest);
     questState[quest.id] = source ? {
       progress: Math.max(0, Number(source.progress) || 0),
       completed: !!source.completed,
@@ -18676,6 +19713,9 @@ function animate(now = performance.now()) {
   G.slots.forEach((item, i) => {
     if (!shelfMeshes[i] || !shelfMeshes[i].label) return;
 
+    // Цветные служебные квадраты на витринах полностью отключены.
+    shelfMeshes[i].label.visible = false;
+
     if (item && item.qty > 0 && !item.soldOut) {
       const ready = Date.now() >= item.nextSaleAt;
 
@@ -18684,25 +19724,13 @@ function animate(now = performance.now()) {
       }
 
       const waitReady = item.nextSaleAt && Date.now() >= item.nextSaleAt;
-      const pulse = waitReady ? (Math.sin(animationTick * 0.08) * 0.5 + 0.5) : 0;
-
-      if (waitReady) {
-        shelfMeshes[i].label.material.color.setRGB(0.8 + pulse * 0.2, 0.75 + pulse * 0.2, 0);
-      } else {
-        shelfMeshes[i].label.material.color.setHex(0x00c896);
-      }
-
       if (shelfItemMeshes[i]) {
         const geo = shelfItemMeshes[i].children[0]?.geometry?.parameters;
         const h = geo ? geo.height : 0.3;
         shelfItemMeshes[i].position.y = getShelfDisplayTopY(i) + h / 2 + 0.02 + (waitReady ? Math.sin(animationTick * 0.12) * 0.035 : 0);
       }
     } else if (item && item.soldOut) {
-      const pulse = Math.sin(animationTick * 0.12) * 0.5 + 0.5;
-      shelfMeshes[i].label.material.color.setRGB(0.9, 0.25 + pulse * 0.25, 0.15);
       if (shelfItemMeshes[i]) shelfItemMeshes[i].scale.set(0.55, 0.55, 0.55);
-    } else {
-      shelfMeshes[i].label.material.color.setHex(0x9c27b0);
     }
   });
 
