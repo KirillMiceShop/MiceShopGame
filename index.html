@@ -2863,6 +2863,13 @@ body[data-menu-style="standard"] textarea::placeholder {
     </div>
     <div class="developer-settings-card">
       <div class="developer-settings-title">🛠 Для разработчика</div>
+      <div class="setting-row" style="margin-top:10px">
+        <div>
+          <div class="setting-title">💾 Автосохранение</div>
+          <div class="setting-sub">Если выключить, текущее сохранение удалится и после перезагрузки игра начнётся заново.</div>
+        </div>
+        <button id="autosaveToggle" class="toggle-switch" onclick="toggleAutosave()" aria-label="Автосохранение" aria-pressed="true"></button>
+      </div>
       <div class="setting-sub">Установите уровень магазина от 1 до 100 для проверки всех разблокировок.</div>
       <div class="developer-level-controls">
         <button class="developer-level-step" type="button" onclick="adjustDeveloperLevel(-1)" aria-label="Уменьшить уровень">−</button>
@@ -5482,6 +5489,7 @@ const MUSIC_FADE_MS = 1600;
 let musicEnabled = false;
 let sfxEnabled = true;
 let internalWallsTransparent = false;
+let autosaveEnabled = true;
 let musicUnlockBound = false;
 let musicFadeTimer = null;
 
@@ -5499,7 +5507,7 @@ function getClickSound() {
 
 function saveSettings() {
   try {
-    localStorage.setItem(SETTINGS_SAVE_KEY, JSON.stringify({ musicEnabled, sfxEnabled, internalWallsTransparent }));
+    localStorage.setItem(SETTINGS_SAVE_KEY, JSON.stringify({ musicEnabled, sfxEnabled, internalWallsTransparent, autosaveEnabled }));
   } catch (e) {}
 }
 
@@ -5511,15 +5519,18 @@ function loadSettings() {
       musicEnabled = !!data.musicEnabled;
       sfxEnabled = data.sfxEnabled !== false;
       internalWallsTransparent = data.internalWallsTransparent === true;
+      autosaveEnabled = data.autosaveEnabled !== false;
     }
   } catch (e) {
     musicEnabled = false;
     sfxEnabled = true;
     internalWallsTransparent = false;
+    autosaveEnabled = true;
   }
   updateMusicToggleUI();
   updateSfxToggleUI();
   updateInternalWallTransparencyToggleUI();
+  updateAutosaveToggleUI();
   bindMusicUnlock();
 }
 
@@ -5651,6 +5662,48 @@ function setInternalWallsTransparent(value) {
 
 function toggleInternalWallTransparency() {
   setInternalWallsTransparent(!internalWallsTransparent);
+}
+
+function updateAutosaveToggleUI() {
+  const btn = document.getElementById('autosaveToggle');
+  if (!btn) return;
+  btn.classList.toggle('on', autosaveEnabled);
+  btn.setAttribute('aria-pressed', autosaveEnabled ? 'true' : 'false');
+  btn.title = autosaveEnabled ? 'Автосохранение включено' : 'Автосохранение выключено';
+}
+
+function setAutosaveEnabled(value) {
+  autosaveEnabled = !!value;
+
+  if (!autosaveEnabled) {
+    if (autosaveDebounceId !== null) {
+      clearTimeout(autosaveDebounceId);
+      autosaveDebounceId = null;
+    }
+    if (autosaveIntervalId !== null) {
+      clearInterval(autosaveIntervalId);
+      autosaveIntervalId = null;
+    }
+    try {
+      localStorage.removeItem(GAME_SAVE_KEY);
+    } catch (e) {}
+    lastAutosaveAt = 0;
+  }
+
+  saveSettings();
+  updateAutosaveToggleUI();
+
+  if (autosaveEnabled) {
+    if (typeof startAutosaveLoop === 'function') startAutosaveLoop();
+    if (typeof scheduleAutosave === 'function' && gameStarted) scheduleAutosave(180);
+    showToast('💾 Автосохранение включено', '#23c483');
+  } else {
+    showToast('💾 Автосохранение выключено. После перезагрузки игра начнётся заново.', '#e94560');
+  }
+}
+
+function toggleAutosave() {
+  setAutosaveEnabled(!autosaveEnabled);
 }
 
 function playClickSound() {
@@ -5846,6 +5899,7 @@ function openSettingsModal() {
   updateMusicToggleUI();
   updateSfxToggleUI();
   updateInternalWallTransparencyToggleUI();
+  updateAutosaveToggleUI();
   updateDeveloperLevelUI();
   updateDeveloperXPUI();
   updateDeveloperMoneyUI();
@@ -19182,6 +19236,7 @@ function isAutosaveStateStable() {
 }
 
 function saveGameNow() {
+  if (!autosaveEnabled) return false;
   if (!isAutosaveStateStable()) return false;
   const payload = captureAutosavePayload();
   if (!payload) return false;
@@ -19196,7 +19251,7 @@ function saveGameNow() {
 }
 
 function scheduleAutosave(delay = AUTOSAVE_DEBOUNCE_MS) {
-  if (!gameStarted || gameRestoreInProgress) return;
+  if (!autosaveEnabled || !gameStarted || gameRestoreInProgress) return;
   if (autosaveDebounceId !== null) clearTimeout(autosaveDebounceId);
   autosaveDebounceId = setTimeout(() => {
     autosaveDebounceId = null;
@@ -19205,12 +19260,16 @@ function scheduleAutosave(delay = AUTOSAVE_DEBOUNCE_MS) {
 }
 
 function startAutosaveLoop() {
-  if (autosaveIntervalId !== null) return;
+  if (!autosaveEnabled || autosaveIntervalId !== null) return;
   autosaveIntervalId = setInterval(() => saveGameNow(), AUTOSAVE_INTERVAL_MS);
 }
 
 function readAutosavePayload() {
   try {
+    if (!autosaveEnabled) {
+      localStorage.removeItem(GAME_SAVE_KEY);
+      return null;
+    }
     const raw = localStorage.getItem(GAME_SAVE_KEY);
     if (!raw) return null;
     const payload = JSON.parse(raw);
