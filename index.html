@@ -3217,7 +3217,7 @@ body[data-menu-style="standard"] .achievement-claim-btn {
 <audio id="bgMusic2" src="music-2.mp3" preload="metadata"></audio>
 <!-- Старые файлы эффектов оставлены как необязательный fallback. Основные игровые SFX генерируются Web Audio. -->
 <audio id="cashSound" src="cash-sound.mp3" preload="none"></audio>
-<audio id="clickSound" src="click-sound.mp3" preload="none"></audio>
+<audio id="clickSound" src="click-sound.mp3" preload="auto"></audio>
 
 <!-- Старое окно кассы оставлено скрытым для совместимости со старыми сохранениями/вызовами. -->
 <div class="modal-bg" id="cashModal">
@@ -6092,7 +6092,17 @@ function playGameSfx(kind) {
 }
 
 function playClickSound() {
-  playGameSfx('click');
+  if (!sfxEnabled) return;
+  const audio = getClickSound();
+  if (!audio) return;
+
+  try {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.volume = CLICK_SOUND_VOLUME;
+    const p = audio.play();
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) {}
 }
 
 function playCashSound() {
