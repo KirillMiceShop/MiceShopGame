@@ -8,9 +8,16 @@
 <title>MiceShop</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#0a0a1a; color:#eee; font-family:'Segoe UI',sans-serif; overflow:hidden; height:100vh; }
+  body { background:#0a0a1a; color:#eee; font-family:'Segoe UI',sans-serif; overflow:hidden; height:100vh; height:100dvh; }
 
   #canvas-wrap { position:fixed; inset:0; }
+  /* Браузер не должен сам прокручивать или масштабировать страницу под пальцем: жесты на поле обрабатывает игра. */
+  /* iPhone (Safari): без «резиновой» прокрутки страницы, без увеличения от двойного нажатия,
+     без выделения текста и меню по долгому нажатию на кнопки — всё это сбивало нажатия. */
+  html, body { overscroll-behavior:none; touch-action:manipulation; -webkit-text-size-adjust:100%; }
+  body { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  input, textarea, [contenteditable="true"] { -webkit-user-select:text; user-select:text; -webkit-touch-callout:default; }
+  #c { display:block; touch-action:none; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
   canvas { display:block; width:100%!important; height:100%!important; }
 
   /* HUD — название магазина объединено с карточкой уровня */
@@ -1315,7 +1322,7 @@
     bottom:calc(env(safe-area-inset-bottom, 0px) + 72px);
     transform:none;
     width:min(220px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 20px));
-    max-height:calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 20px);
+    max-height:calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 20px); max-height:calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 20px);
     overflow-y:auto;
     display:none;
     padding:9px;
@@ -1756,7 +1763,7 @@
     #warehouseModal .modal-box {
       width:min(660px, calc(100vw - 20px));
       max-width:none;
-      max-height:calc(100vh - 12px);
+      max-height:calc(100vh - 12px); max-height:calc(100dvh - 12px);
       padding:11px 12px 13px;
       border-radius:16px;
     }
@@ -2215,11 +2222,27 @@
   }
   #shelves-main-btn { z-index:5; }
 
+  /* В горизонтальном режиме «ступеньки» больше не уменьшаем: при 26 px по высоте
+     в них было почти невозможно попасть пальцем. Сдвигаем их под витрину 82 px. */
   @media (orientation:landscape) and (max-height:600px) {
-    #warehouse-main-btn { right:79px; bottom:0; width:58px; height:27px; font-size:9px; }
-    #editor-toggle-btn { right:62px; bottom:23px; width:62px; height:27px; font-size:9px; }
-    #walls-toggle-btn { right:45px; bottom:46px; width:58px; height:26px; font-size:9px; }
+    #warehouse-main-btn { right:79px; bottom:0; width:66px; height:32px; font-size:10px; }
+    #editor-toggle-btn { right:59px; bottom:26px; width:70px; height:31px; font-size:10px; }
+    #walls-toggle-btn { right:39px; bottom:52px; width:66px; height:30px; font-size:10px; }
   }
+
+  /* Невидимая увеличенная зона нажатия у маленьких кнопок справа внизу.
+     Видно кнопку как раньше, но засчитывается и нажатие рядом — на пустом месте слева/сверху. */
+  #warehouse-main-btn::after,
+  #editor-toggle-btn::after,
+  #walls-toggle-btn::after {
+    content:'';
+    position:absolute;
+    top:0; right:0; bottom:0; left:0;
+  }
+  #warehouse-main-btn::after { left:-12px; }
+  #editor-toggle-btn::after { left:-36px; }
+  #walls-toggle-btn::after { left:-34px; top:-12px; }
+  #editor-toggle-btn.editor-active::after { left:-8px; right:-8px; top:-10px; bottom:-8px; }
 
 
   /* КОМПАКТНОЕ ОКНО КАЖДОГО ТОВАРА В ГОРИЗОНТАЛЬНОМ РЕЖИМЕ */
@@ -2230,7 +2253,7 @@
     #itemModal .modal-box {
       width:min(620px, calc(100vw - 20px));
       max-width:none;
-      max-height:calc(100vh - 12px);
+      max-height:calc(100vh - 12px); max-height:calc(100dvh - 12px);
       padding:9px 12px 10px;
       border-radius:15px;
     }
@@ -3563,7 +3586,7 @@ const QUEST_DEFINITIONS = [
   { id:'second_rack_shelf', minLevel:6, icon:'🪟', title:'Расширяем зал', text:() => getQuestShelfGoalText('level6'), metric:'shelf_goal', shelfGoal:'level6', target:1, absolute:true, reward:{ money:1000, xp:160 } },
   { id:'install_facility', minLevel:6, icon:'🚪', title:'Комфорт покупателей', text:() => G.shopType === 'electronics' ? 'Установите зону проверки техники' : 'Установите примерочную', metric:'facility_count', target:1, absolute:true, reward:{ money:3000, xp:300 } },
   { id:'decor_six', minLevel:6, icon:'🛋️', title:'Уютный зал', text:'Держите в зале 6 предметов декора', metric:'regular_decor_count', target:6, absolute:true, reward:{ money:1500, xp:180 } },
-  { id:'earn_twenty_thousand', minLevel:6, icon:'💰', title:'Растущий бизнес', text:() => 'После появления квеста получите ' + fmt(getQuestTarget('earn_twenty_thousand')) + ' денег выручки', metric:'total_earned', target:35000, electronicsTarget:20000, fromActivation:true, reward:{ money:2000, xp:200 } },
+  { id:'earn_twenty_thousand', minLevel:6, icon:'💰', title:'Растущий бизнес', text:() => 'Заберите с кассы ещё ' + fmt(getQuestTarget('earn_twenty_thousand')) + ' ₽ выручки', metric:'total_earned', target:35000, electronicsTarget:20000, fromActivation:true, reward:{ money:2000, xp:200 } },
   { id:'collect_cash_l6', minLevel:6, icon:'🛍️', title:'Полный зал', text:() => questSellText('collect_cash_l6'), metric:'total_sold', target:20, electronicsTarget:7, fromActivation:true, reward:{ money:2500, xp:300 } },
   { id:'reach_level_7', minLevel:6, icon:'⭐', title:'Седьмой уровень', text:'Достигните 7 уровня магазина', event:'level_reached', metric:'level', target:7, absolute:true, reward:{ money:1200 } },
 
@@ -3577,7 +3600,7 @@ const QUEST_DEFINITIONS = [
     }, event:'wish_fulfilled', target:1, reward:{ money:1500, xp:180 } },
   { id:'rating_25', minLevel:7, icon:'💖', title:'На слуху', text:'Достигните рейтинга магазина 25%', metric:'rating', target:25, absolute:true, reward:{ money:3000, xp:350 } },
   { id:'premium_sign', minLevel:7, icon:'✨', title:'Светящаяся вывеска', text:'Купите и повесьте светящуюся вывеску', metric:'decor_type_count', decorType:'neon_sign', target:1, absolute:true, reward:{ money:6000, xp:400 } },
-  { id:'earn_l7', minLevel:7, icon:'💰', title:'Хорошая неделя', text:() => 'После появления квеста получите ' + fmt(getQuestTarget('earn_l7')) + ' денег выручки', metric:'total_earned', target:45000, electronicsTarget:25000, fromActivation:true, reward:{ money:4000, xp:400 } },
+  { id:'earn_l7', minLevel:7, icon:'💰', title:'Хорошая неделя', text:() => 'Заберите с кассы ещё ' + fmt(getQuestTarget('earn_l7')) + ' ₽ выручки', metric:'total_earned', target:45000, electronicsTarget:25000, fromActivation:true, reward:{ money:4000, xp:400 } },
   { id:'sell_thirty_products', minLevel:7, icon:'🛍️', title:'Поток покупателей', text:() => questSellText('sell_thirty_products'), metric:'total_sold', target:50, electronicsTarget:15, fromActivation:true, reward:{ money:2500, xp:220 } },
   { id:'reach_level_8', minLevel:7, icon:'⭐', title:'Опытный владелец', text:'Достигните 8 уровня магазина', event:'level_reached', metric:'level', target:8, absolute:true, reward:{ money:1500 } },
 
@@ -3588,9 +3611,9 @@ const QUEST_DEFINITIONS = [
   { id:'reach_rating_30', minLevel:8, icon:'💖', title:'Хорошая репутация', text:'Достигните рейтинга магазина 30%', metric:'rating', target:30, absolute:true, reward:{ money:2500, xp:250 } },
   { id:'sell_l8_extra', minLevel:8, icon:'🛍️', title:'Стабильный поток', text:() => questSellText('sell_l8_extra'), metric:'total_sold', target:30, electronicsTarget:10, fromActivation:true, reward:{ money:4000, xp:450 } },
   { id:'premium_aquarium', minLevel:8, icon:'🐠', title:'Аквариум', text:'Купите и установите аквариум', metric:'decor_type_count', decorType:'aquarium', target:1, absolute:true, reward:{ money:10000, xp:500 } },
-  { id:'earn_l8', minLevel:8, icon:'💰', title:'Удачный месяц', text:() => 'После появления квеста получите ' + fmt(getQuestTarget('earn_l8')) + ' денег выручки', metric:'total_earned', target:60000, electronicsTarget:35000, fromActivation:true, reward:{ money:6000, xp:500 } },
+  { id:'earn_l8', minLevel:8, icon:'💰', title:'Удачный месяц', text:() => 'Заберите с кассы ещё ' + fmt(getQuestTarget('earn_l8')) + ' ₽ выручки', metric:'total_earned', target:60000, electronicsTarget:35000, fromActivation:true, reward:{ money:6000, xp:500 } },
   { id:'sell_forty_products', minLevel:8, icon:'🛍️', title:'Проверенный магазин', text:() => questSellText('sell_forty_products'), metric:'total_sold', target:30, electronicsTarget:10, fromActivation:true, reward:{ money:3000, xp:280 } },
-  { id:'earn_l8b', minLevel:8, icon:'💰', title:'Доход растёт', text:() => 'После появления квеста получите ' + fmt(getQuestTarget('earn_l8b')) + ' денег выручки', metric:'total_earned', target:40000, electronicsTarget:22000, fromActivation:true, reward:{ money:5000, xp:450 } },
+  { id:'earn_l8b', minLevel:8, icon:'💰', title:'Доход растёт', text:() => 'Заберите с кассы ещё ' + fmt(getQuestTarget('earn_l8b')) + ' ₽ выручки', metric:'total_earned', target:40000, electronicsTarget:22000, fromActivation:true, reward:{ money:5000, xp:450 } },
   { id:'sell_l8_final', minLevel:8, icon:'🛍️', title:'Последний рывок', text:() => questSellText('sell_l8_final'), metric:'total_sold', target:25, electronicsTarget:8, fromActivation:true, reward:{ money:4000, xp:400 } },
   { id:'reach_level_9', minLevel:8, icon:'⭐', title:'Девятый уровень', text:'Достигните 9 уровня магазина', event:'level_reached', metric:'level', target:9, absolute:true, reward:{ money:2000 } },
 
@@ -3599,11 +3622,11 @@ const QUEST_DEFINITIONS = [
   { id:'second_wardrobe', minLevel:9, icon:'🪟', title:'Второй большой шкаф', text:() => getQuestShelfGoalText('level9'), metric:'shelf_goal', shelfGoal:'level9', target:1, absolute:true, reward:{ money:2500, xp:280 } },
   { id:'reach_rating_35', minLevel:9, icon:'🌟', title:'Известный магазин', text:'Достигните рейтинга магазина 35%', metric:'rating', target:35, absolute:true, reward:{ money:3000, xp:300 } },
   { id:'sell_l9_extra', minLevel:9, icon:'🏅', title:'Лидер продаж', text:() => questSellText('sell_l9_extra'), metric:'total_sold', target:50, electronicsTarget:15, fromActivation:true, reward:{ money:6000, xp:550 } },
-  { id:'earn_sixty_thousand', minLevel:9, icon:'💰', title:'Крупная выручка', text:() => 'После появления квеста получите ' + fmt(getQuestTarget('earn_sixty_thousand')) + ' денег выручки', metric:'total_earned', target:100000, electronicsTarget:55000, fromActivation:true, reward:{ money:4000, xp:320 } },
+  { id:'earn_sixty_thousand', minLevel:9, icon:'💰', title:'Крупная выручка', text:() => 'Заберите с кассы ещё ' + fmt(getQuestTarget('earn_sixty_thousand')) + ' ₽ выручки', metric:'total_earned', target:100000, electronicsTarget:55000, fromActivation:true, reward:{ money:4000, xp:320 } },
   { id:'premium_fountain', minLevel:9, icon:'⛲', title:'Фонтан', text:'Купите и установите фонтан', metric:'decor_type_count', decorType:'fountain', target:1, absolute:true, reward:{ money:15000, xp:650 } },
   { id:'reach_rating_40', minLevel:9, icon:'🌟', title:'Любимый магазин района', text:'Достигните рейтинга магазина 40%', metric:'rating', target:40, absolute:true, reward:{ money:6000, xp:550 } },
   { id:'sell_sixty_products', minLevel:9, icon:'🛍️', title:'Большая серия', text:() => questSellText('sell_sixty_products'), metric:'total_sold', target:60, electronicsTarget:18, fromActivation:true, reward:{ money:4000, xp:300 } },
-  { id:'earn_l9b', minLevel:9, icon:'💰', title:'Серьёзный бизнес', text:() => 'После появления квеста получите ' + fmt(getQuestTarget('earn_l9b')) + ' денег выручки', metric:'total_earned', target:80000, electronicsTarget:45000, fromActivation:true, reward:{ money:8000, xp:600 } },
+  { id:'earn_l9b', minLevel:9, icon:'💰', title:'Серьёзный бизнес', text:() => 'Заберите с кассы ещё ' + fmt(getQuestTarget('earn_l9b')) + ' ₽ выручки', metric:'total_earned', target:80000, electronicsTarget:45000, fromActivation:true, reward:{ money:8000, xp:600 } },
   { id:'sell_l9_final', minLevel:9, icon:'🛍️', title:'Финальный рывок', text:() => questSellText('sell_l9_final'), metric:'total_sold', target:40, electronicsTarget:12, fromActivation:true, reward:{ money:6000, xp:550 } },
   { id:'reach_level_10', minLevel:9, icon:'🏆', title:'Владелец развивающегося бизнеса', text:'Достигните 10 уровня магазина', event:'level_reached', metric:'level', target:10, absolute:true, reward:{ money:5000, crystals:3 } },
 ];
@@ -5440,8 +5463,8 @@ function getTutorialObjectScreenRect(object, extraPad = 10) {
     let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
     corners.forEach(([x,y,z]) => {
       const point = new THREE.Vector3(x,y,z).project(camera);
-      const sx = (point.x * 0.5 + 0.5) * window.innerWidth;
-      const sy = (-point.y * 0.5 + 0.5) * window.innerHeight;
+      const sx = (point.x * 0.5 + 0.5) * getViewW();
+      const sy = (-point.y * 0.5 + 0.5) * getViewH();
       left = Math.min(left, sx);
       right = Math.max(right, sx);
       top = Math.min(top, sy);
@@ -7183,25 +7206,99 @@ function getExpandedShopCameraBounds() {
 
 function clampCameraOffsets() {
   const bounds = getExpandedShopCameraBounds();
+  // Границы подобраны для портрета, где видимая полувысота равна camZoom.
+  // В горизонтальном режиме кадр ниже, поэтому расширяем допустимый сдвиг так,
+  // чтобы верхний и нижний края кадра доходили до тех же мест, что и в портрете.
+  const halfH = camZoom * ((typeof getCameraExtentFactors === 'function') ? getCameraExtentFactors().ky : 1);
+  const extraZ = Math.max(0, camZoom - halfH);
   camOffsetX = Math.max(-bounds.maxX, Math.min(bounds.maxX, camOffsetX));
-  camOffsetZ = Math.max(bounds.minZ, Math.min(bounds.maxZ, camOffsetZ));
+  camOffsetZ = Math.max(bounds.minZ - extraZ, Math.min(bounds.maxZ + extraZ, camOffsetZ));
+}
+
+// Размер области игры. Берём его у обёртки канваса (она на весь экран),
+// а не только у window.innerWidth/innerHeight: после поворота телефона
+// браузер иногда какое-то время отдаёт старые значения.
+const canvasWrapEl = document.getElementById('canvas-wrap');
+let viewW = Math.max(1, window.innerWidth || 1);
+let viewH = Math.max(1, window.innerHeight || 1);
+function measureView() {
+  const w = (canvasWrapEl && canvasWrapEl.clientWidth) || window.innerWidth || viewW;
+  const h = (canvasWrapEl && canvasWrapEl.clientHeight) || window.innerHeight || viewH;
+  viewW = Math.max(1, Math.round(w));
+  viewH = Math.max(1, Math.round(h));
+}
+function getViewW() { return viewW; }
+function getViewH() { return viewH; }
+// camZoom — половина видимого размера по ДЛИННОЙ стороне экрана (в портрете — высота,
+// в горизонтальном режиме — ширина). Так магазин одного размера при любом повороте телефона:
+// раньше в горизонтальном режиме всё становилось в 2 с лишним раза мельче, и в витрины было трудно попасть.
+function getCameraExtentFactors() {
+  const a = viewW / viewH;
+  return a <= 1 ? { kx: a, ky: 1 } : { kx: 1, ky: 1 / a };
+}
+// Сколько единиц мира приходится на один пиксель экрана — чтобы камера шла ровно за пальцем.
+function getWorldUnitsPerPixel() { return (2 * camZoom) / Math.max(viewW, viewH); }
+
+// Приближение к точке экрана: точка под пальцами (или под курсором) остаётся на месте.
+function zoomCameraAt(newZoom, screenX = viewW / 2, screenY = viewH / 2) {
+  newZoom = Math.max(CAM_ZOOM_MIN, Math.min(CAM_ZOOM_MAX, newZoom));
+  const dz = newZoom - camZoom;
+  if (Math.abs(dz) < 1e-6) return;
+  const { kx, ky } = getCameraExtentFactors();
+  const u = (screenX / viewW) * 2 - 1;
+  const v = 1 - (screenY / viewH) * 2;
+  camOffsetX -= u * kx * dz;
+  camOffsetZ += v * ky * dz;
+  camZoom = newZoom;
+  updateCamera();
 }
 
 function updateCamera() {
   clampCameraOffsets();
-  const a = window.innerWidth / window.innerHeight;
-  camera.left   = -camZoom * a + camOffsetX;
-  camera.right  =  camZoom * a + camOffsetX;
-  camera.top    =  camZoom     - camOffsetZ;
-  camera.bottom = -camZoom     - camOffsetZ;
+  const { kx, ky } = getCameraExtentFactors();
+  const halfW = camZoom * kx, halfH = camZoom * ky;
+  camera.left   = -halfW + camOffsetX;
+  camera.right  =  halfW + camOffsetX;
+  camera.top    =  halfH - camOffsetZ;
+  camera.bottom = -halfH - camOffsetZ;
   camera.updateProjectionMatrix();
 }
+let lastAppliedViewW = 0, lastAppliedViewH = 0;
 function onResize() {
+  measureView();
   updateRendererPixelRatio();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(viewW, viewH);
+  lastAppliedViewW = viewW; lastAppliedViewH = viewH;
   updateCamera();
 }
-window.addEventListener('resize', onResize);
+let resizeFollowUpTimers = [];
+function scheduleResize() {
+  onResize();
+  // После поворота экрана размеры устаканиваются не сразу — перепроверяем ещё несколько раз.
+  resizeFollowUpTimers.forEach(clearTimeout);
+  resizeFollowUpTimers = [120, 350, 800].map(ms => setTimeout(onResize, ms));
+}
+window.addEventListener('resize', scheduleResize);
+window.addEventListener('orientationchange', () => { resetCameraGesture(); scheduleResize(); });
+if (window.screen && screen.orientation && screen.orientation.addEventListener) {
+  screen.orientation.addEventListener('change', () => { resetCameraGesture(); scheduleResize(); });
+}
+// iPhone (Safari) не слушается запрета масштабирования в <meta viewport>: щипок по кнопкам или меню
+// увеличивал всю страницу, после чего все нажатия «промахивались». Запрещаем масштаб страницы —
+// приближение камеры двумя пальцами на игровом поле работает как обычно.
+['gesturestart', 'gesturechange', 'gestureend'].forEach(type => {
+  document.addEventListener(type, e => e.preventDefault(), { passive:false });
+});
+document.addEventListener('touchmove', e => {
+  if (e.touches && e.touches.length > 1) e.preventDefault();
+}, { passive:false });
+if (window.visualViewport) window.visualViewport.addEventListener('resize', scheduleResize);
+if (window.ResizeObserver && canvasWrapEl) {
+  new ResizeObserver(() => {
+    measureView();
+    if (viewW !== lastAppliedViewW || viewH !== lastAppliedViewH) onResize();
+  }).observe(canvasWrapEl);
+}
 onResize();
 
 // ── TOUCH / MOUSE CONTROLS ──
@@ -7209,6 +7306,20 @@ onResize();
 let touch1=null, touch2=null, lastTouchX=0, lastTouchY=0;
 let lastPinchDist=0, isDragging=false;
 let pointerDownTime=0, pointerDownPos={x:0,y:0};
+// Нажатие считается тапом, пока палец сдвинулся меньше чем на TAP_MOVE_TOLERANCE_PX:
+// пальцы на телефоне всегда чуть дрожат, и раньше любое дрожание отменяло нажатие.
+const TAP_MOVE_TOLERANCE_PX = 10;
+const TAP_MAX_DURATION_MS = 500;
+let cameraPanStarted = false;   // палец ушёл дальше допуска — это уже движение камеры
+let gestureHadTwoFingers = false; // в этом касании был щипок — тап не засчитываем
+let lastPinchMidX = 0, lastPinchMidY = 0;
+function resetCameraGesture() {
+  touch1 = touch2 = null;
+  isDragging = false;
+  cameraPanStarted = false;
+  gestureHadTwoFingers = false;
+  lastPinchDist = 0;
+}
 
 // Для режима перемещения витрин
 let dragShelfIdx = null; // какую витрину тащим
@@ -7232,8 +7343,8 @@ function pinchDist(t1,t2){
 // Получаем точку на полу из экранных координат
 function getFloorPoint(clientX, clientY) {
   const m = new THREE.Vector2(
-    (clientX / window.innerWidth)  * 2 - 1,
-   -(clientY / window.innerHeight) * 2 + 1
+    (clientX / getViewW())  * 2 - 1,
+   -(clientY / getViewH()) * 2 + 1
   );
   const rc = new THREE.Raycaster();
   rc.setFromCamera(m, camera);
@@ -7247,6 +7358,8 @@ canvas.addEventListener('touchstart', e=>{
     touch1=e.touches[0];
     lastTouchX=touch1.clientX; lastTouchY=touch1.clientY;
     isDragging=false;
+    cameraPanStarted=false;
+    gestureHadTwoFingers=false;
     pointerDownTime=Date.now();
     pointerDownPos={x:touch1.clientX,y:touch1.clientY};
 
@@ -7290,8 +7403,8 @@ canvas.addEventListener('touchstart', e=>{
     // Старый режим перемещения оставлен для размещения объектов из магазина/склада.
     if(moveMode && !editorObjectMoveMode){
       const m2=new THREE.Vector2(
-        (touch1.clientX/window.innerWidth)*2-1,
-       -(touch1.clientY/window.innerHeight)*2+1
+        (touch1.clientX/ getViewW())*2-1,
+       -(touch1.clientY/ getViewH())*2+1
       );
       raycaster.setFromCamera(m2, camera);
 
@@ -7360,8 +7473,8 @@ canvas.addEventListener('touchstart', e=>{
     // Режим перемещения окон
     if (winMoveMode && !editorObjectMoveMode) {
       const m2 = new THREE.Vector2(
-        (touch1.clientX / window.innerWidth) * 2 - 1,
-       -(touch1.clientY / window.innerHeight) * 2 + 1
+        (touch1.clientX / getViewW()) * 2 - 1,
+       -(touch1.clientY / getViewH()) * 2 + 1
       );
 
       raycaster.setFromCamera(m2, camera);
@@ -7399,11 +7512,30 @@ canvas.addEventListener('touchstart', e=>{
   if(e.touches.length===2 && dragShelfIdx===null && dragWinIdx===null && dragDoorIdx===null && dragCashierIdx===null && dragInternalWallId===null && dragDecorId===null){
     touch1=e.touches[0]; touch2=e.touches[1];
     lastPinchDist=pinchDist(touch1,touch2);
+    lastPinchMidX=(touch1.clientX+touch2.clientX)/2;
+    lastPinchMidY=(touch1.clientY+touch2.clientY)/2;
+    gestureHadTwoFingers=true;
+    isDragging=true;
   }
 },{passive:false});
 
 canvas.addEventListener('touchmove', e=>{
   e.preventDefault();
+  if(e.touches.length===1 && touch1===null){
+    // Начало касания до нас не дошло (браузер иногда теряет touchstart):
+    // начинаем жест с текущей точки, иначе камера прыгнула бы от старой позиции пальца.
+    touch1=e.touches[0];
+    lastTouchX=touch1.clientX; lastTouchY=touch1.clientY;
+    pointerDownPos={x:touch1.clientX,y:touch1.clientY};
+    pointerDownTime=Date.now();
+    cameraPanStarted=false;
+    return;
+  }
+  if(e.touches.length===2 && touch1===null){
+    touch1=e.touches[0]; touch2=e.touches[1];
+    gestureHadTwoFingers=true;
+    isDragging=true;
+  }
   if(e.touches.length===1){
     const t=e.touches[0];
     const dx=t.clientX-lastTouchX, dy=t.clientY-lastTouchY;
@@ -7498,24 +7630,57 @@ canvas.addEventListener('touchmove', e=>{
 
       isDragging = true;
     } else if(!moveMode || dragShelfIdx===null){
-      // Движение камеры
-      const sens=camZoom/200;
-      camOffsetX = camOffsetX - dx * sens;
-      camOffsetZ = camOffsetZ - dy * sens;
+      // Движение камеры. Пока палец не ушёл дальше допуска, это ещё нажатие:
+      // камеру не трогаем и тап не отменяем.
+      const movedFromStart = Math.hypot(t.clientX - pointerDownPos.x, t.clientY - pointerDownPos.y);
+      if (!cameraPanStarted && !gestureHadTwoFingers && movedFromStart < TAP_MOVE_TOLERANCE_PX) {
+        return;
+      }
+      cameraPanStarted = true;
+      // Камера идёт ровно за пальцем: сдвиг в пикселях переводим в единицы мира.
+      const wpp = getWorldUnitsPerPixel();
+      camOffsetX = camOffsetX - dx * wpp;
+      camOffsetZ = camOffsetZ - dy * wpp;
       updateCamera();
       isDragging=true;
     }
     lastTouchX=t.clientX; lastTouchY=t.clientY;
   }
   if(e.touches.length===2 && dragShelfIdx===null && dragWinIdx===null && dragDoorIdx===null && dragCashierIdx===null && dragInternalWallId===null && dragDecorId===null){
-    const dist=pinchDist(e.touches[0],e.touches[1]);
-    camZoom=Math.max(CAM_ZOOM_MIN,Math.min(CAM_ZOOM_MAX, camZoom+(lastPinchDist-dist)*0.04));
+    const t0=e.touches[0], t1=e.touches[1];
+    const dist=pinchDist(t0,t1);
+    const midX=(t0.clientX+t1.clientX)/2, midY=(t0.clientY+t1.clientY)/2;
+    if (lastPinchDist > 0 && dist > 0) {
+      // Сдвиг двумя пальцами — камера идёт за серединой между пальцами.
+      const wpp = getWorldUnitsPerPixel();
+      camOffsetX -= (midX - lastPinchMidX) * wpp;
+      camOffsetZ -= (midY - lastPinchMidY) * wpp;
+      // Масштаб меняется во столько раз, во сколько изменилось расстояние между пальцами
+      // (а не на фиксированный шаг), и вокруг точки между пальцами.
+      // Ограничение на одно событие убирает рывки от «скачущих» координат касаний.
+      const ratio = Math.max(0.85, Math.min(1.18, lastPinchDist / dist));
+      zoomCameraAt(camZoom * ratio, midX, midY);
+    }
     lastPinchDist=dist;
-    updateCamera();
+    lastPinchMidX=midX; lastPinchMidY=midY;
+    gestureHadTwoFingers=true;
+    isDragging=true;
   }
 },{passive:false});
 
-canvas.addEventListener('touchend', e=>{
+function onCanvasTouchEnd(e, cancelled = false){
+  const remainingTouches = e && e.touches ? e.touches.length : 0;
+  const draggingObject = dragShelfIdx!==null || dragWinIdx!==null || dragDoorIdx!==null
+    || dragCashierIdx!==null || dragInternalWallId!==null || dragDecorId!==null;
+  if (remainingTouches > 0 && !draggingObject) {
+    // Убрали один палец из двух: продолжаем двигать камеру оставшимся пальцем
+    // с его текущего места — без рывка и без случайного тапа.
+    const t = e.touches[0];
+    lastTouchX = t.clientX; lastTouchY = t.clientY;
+    if (remainingTouches === 1) lastPinchDist = 0;
+    gestureHadTwoFingers = true;
+    return;
+  }
   if(moveMode && dragDecorId!==null){
     const decor = decorations.find(d => d.id === dragDecorId);
     if (decor) {
@@ -7633,21 +7798,26 @@ canvas.addEventListener('touchend', e=>{
     dragWinIdx = null;
     dragWinStartPos = null;
     dragWinPreviewPos = null;
-  } else if(!moveMode && !winMoveMode && !isDragging && Date.now()-pointerDownTime<300){
+  } else if(!cancelled && !moveMode && !winMoveMode && !isDragging && !gestureHadTwoFingers
+            && Date.now()-pointerDownTime<TAP_MAX_DURATION_MS){
     handleTap(pointerDownPos.x, pointerDownPos.y);
   }
 
-  if (editorObjectMoveMode && e.touches.length === 0) {
+  if (editorObjectMoveMode && remainingTouches === 0) {
     finishEditorObjectMove();
   }
 
-  touch1=touch2=null; isDragging=false;
-});
+  resetCameraGesture();
+}
+canvas.addEventListener('touchend', e => onCanvasTouchEnd(e, false));
+// Система может прервать касание (шторка уведомлений, поворот экрана) — завершаем жест без тапа.
+canvas.addEventListener('touchcancel', e => onCanvasTouchEnd(e, true));
 
 canvas.addEventListener('wheel', e=>{
-  camZoom=Math.max(CAM_ZOOM_MIN,Math.min(CAM_ZOOM_MAX, camZoom+e.deltaY*0.02));
-  updateCamera();
-},{passive:true});
+  e.preventDefault();
+  const delta = Math.max(-120, Math.min(120, e.deltaY));
+  zoomCameraAt(camZoom * Math.exp(delta * 0.0015), e.clientX, e.clientY);
+},{passive:false});
 
 // Мышь — только если не в режиме перемещения
 canvas.addEventListener('click', e=>{
@@ -7690,8 +7860,8 @@ function handleTap(clientX, clientY) {
   // Следующее отдельное нажатие по витрине уже обрабатывается нормально.
   if (placingMode && Date.now() < placementInputGuardUntil) return;
 
-  mouse2D.x =  (clientX / window.innerWidth)  * 2 - 1;
-  mouse2D.y = -(clientY / window.innerHeight) * 2 + 1;
+  mouse2D.x =  (clientX / getViewW())  * 2 - 1;
+  mouse2D.y = -(clientY / getViewH()) * 2 + 1;
   raycaster.setFromCamera(mouse2D, camera);
 
   // Размещение нового объекта имеет приоритет даже после автоматического входа в редактор.
@@ -7921,13 +8091,319 @@ function box(w, h, d, color, x, y, z, rx=0, ry=0) {
 }
 
 // ══════════════════════════════════════
+//  ВНЕШНИЙ ВИД: скруглённые края, материалы, свет
+// ══════════════════════════════════════
+// Всё здесь — только графика, на правила игры не влияет.
+// 1) Витрины, декор, касса, товары и люди строятся из коробок со скруглёнными краями.
+// 2) Их материалы становятся «физическими» (MeshStandardMaterial): матовое дерево,
+//    гладкий пластик, блестящее стекло.
+// 3) Сцена освещается картой окружения (мягкий студийный свет и отражения)
+//    и солнцем с мягкими тенями. Под людьми и витринами — мягкая контактная тень.
+const VISUAL = {
+  rounded: true,          // скруглять края коробок у предметов
+  environment: true,      // мягкий свет и отражения от карты окружения
+  contactShadows: true,   // мягкое пятно тени под людьми и витринами
+  toneMapping: 'none',    // 'aces' (кино-тонирование) делало картинку блёклой — оставляем без него
+  exposure: 1.0,
+  envIntensity: 0.75,     // отражения у предметов
+  envScale: 0.25,         // общий множитель отражений: немного, чтобы цвета не выцветали
+  hemi: 0.45, sun: 1.0, warm: 0.12, cool: 0.05,  // подобрано по скриншотам
+  // Цвета в коде заданы «как в палитре». При sRGB-выводе Three.js r128 их высветлял,
+  // и всё выглядело блёкло-пастельным (бежевый пол становился почти белым).
+  // Линейный вывод показывает цвета такими, какими их выбрали.
+  linearOutput: true,
+};
+
+const _BaseBoxGeometry = THREE.BoxGeometry;
+const _BasePhongMaterial = THREE.MeshPhongMaterial;
+const _BaseLambertMaterial = THREE.MeshLambertMaterial;
+const _BaseStandardMaterial = THREE.MeshStandardMaterial;
+
+// Все физические материалы получают одинаково приглушённые отражения окружения,
+// где бы в коде они ни создавались (иначе новые витрины выглядели бы ярче старых).
+function ScaledStandardMaterial(params) {
+  const m = new _BaseStandardMaterial(params);
+  const base = params && params.envMapIntensity !== undefined ? params.envMapIntensity : 1;
+  m.userData.baseEnvIntensity = base;
+  m.envMapIntensity = base * VISUAL.envScale;
+  return m;
+}
+ScaledStandardMaterial.prototype = _BaseStandardMaterial.prototype;
+THREE.MeshStandardMaterial = ScaledStandardMaterial;
+// Пока счётчик > 0, мы внутри постройки предмета: коробки скругляются, материалы улучшаются.
+// Стены, пол и улица строятся вне этого режима и остаются как были.
+let styledBuildDepth = 0;
+
+// Коробка со скруглёнными рёбрами (по мотивам RoundedBoxGeometry из примеров Three.js).
+// segments = 1 даёт одну фаску на каждом ребре, но нормали сглажены, поэтому
+// под светом ребро выглядит закруглённым. Это всего 108 треугольников на коробку.
+const _rbTmpNormal = new THREE.Vector3();
+function makeRoundedBoxGeometry(width, height, depth, radius, segments = 1) {
+  try {
+    return buildRoundedBoxGeometry(width, height, depth, radius, segments);
+  } catch (error) {
+    // Если что-то пошло не так — обычная коробка: игра важнее красоты.
+    return new _BaseBoxGeometry(width, height, depth);
+  }
+}
+function buildRoundedBoxGeometry(width, height, depth, radius, segments = 1) {
+  const seg = segments * 2 + 1;
+  radius = Math.min(width / 2, height / 2, depth / 2, radius);
+  const geometry = new _BaseBoxGeometry(1, 1, 1, seg, seg, seg);
+  const flat = geometry.toNonIndexed();
+  geometry.index = null;
+  geometry.setAttribute('position', flat.attributes.position);
+  geometry.setAttribute('normal', flat.attributes.normal);
+  geometry.setAttribute('uv', flat.attributes.uv);
+  const inner = new THREE.Vector3(width, height, depth).divideScalar(2).subScalar(radius);
+  const positions = geometry.attributes.position.array;
+  const normals = geometry.attributes.normal.array;
+  const half = 0.5 / seg;
+  const p = new THREE.Vector3();
+  for (let i = 0; i < positions.length; i += 3) {
+    p.fromArray(positions, i);
+    _rbTmpNormal.copy(p);
+    _rbTmpNormal.x -= Math.sign(_rbTmpNormal.x) * half;
+    _rbTmpNormal.y -= Math.sign(_rbTmpNormal.y) * half;
+    _rbTmpNormal.z -= Math.sign(_rbTmpNormal.z) * half;
+    _rbTmpNormal.normalize();
+    positions[i]     = inner.x * Math.sign(p.x) + _rbTmpNormal.x * radius;
+    positions[i + 1] = inner.y * Math.sign(p.y) + _rbTmpNormal.y * radius;
+    positions[i + 2] = inner.z * Math.sign(p.z) + _rbTmpNormal.z * radius;
+    normals[i] = _rbTmpNormal.x; normals[i + 1] = _rbTmpNormal.y; normals[i + 2] = _rbTmpNormal.z;
+  }
+  geometry.attributes.position.needsUpdate = true;
+  geometry.attributes.normal.needsUpdate = true;
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  // Остальной код читает размеры коробки из parameters — оставляем настоящие.
+  geometry.parameters = { width, height, depth, widthSegments: 1, heightSegments: 1, depthSegments: 1 };
+  geometry.userData = { rounded: true };
+  return geometry;
+}
+
+// Радиус скругления: заметный у крупных деталей, совсем маленький у тонких полок.
+// Очень тонкие детали и огромные плоскости (стены) не трогаем.
+function pickBevelRadius(w, h, d) {
+  const minDim = Math.min(w, h, d), maxDim = Math.max(w, h, d);
+  if (minDim < 0.045 || maxDim > 6) return 0;
+  return Math.min(0.06, minDim * 0.22);
+}
+
+function StyledBoxGeometry(width = 1, height = 1, depth = 1, ws, hs, ds) {
+  if (styledBuildDepth > 0 && VISUAL.rounded && !(ws > 1 || hs > 1 || ds > 1)) {
+    const r = pickBevelRadius(width, height, depth);
+    if (r > 0) return makeRoundedBoxGeometry(width, height, depth, r, 1);
+  }
+  return new _BaseBoxGeometry(width, height, depth, ws, hs, ds);
+}
+StyledBoxGeometry.prototype = _BaseBoxGeometry.prototype;
+THREE.BoxGeometry = StyledBoxGeometry;
+
+// Перевод старых материалов (Phong — «пластиковый блеск», Lambert — матовый без бликов)
+// в физический материал с похожим видом.
+function toStandardMaterialParams(params = {}, kind = 'lambert') {
+  const p = Object.assign({}, params);
+  const shininess = p.shininess;
+  ['shininess', 'specular', 'combine', 'reflectivity', 'refractionRatio', 'specularMap', 'envMap'].forEach(k => delete p[k]);
+  const opacity = p.opacity === undefined ? 1 : p.opacity;
+  const glassy = !!p.transparent && opacity < 0.6;
+  if (glassy) {
+    p.roughness = 0.06; p.metalness = 0.0; p.envMapIntensity = 1.8;
+  } else if (kind === 'phong') {
+    p.roughness = shininess >= 90 ? 0.28 : shininess >= 50 ? 0.42 : 0.62;
+    p.metalness = 0.0; p.envMapIntensity = VISUAL.envIntensity;
+  } else {
+    p.roughness = 0.82; p.metalness = 0.0; p.envMapIntensity = VISUAL.envIntensity * 0.85;
+  }
+  return p;
+}
+function StyledPhongMaterial(params) {
+  if (styledBuildDepth > 0) {
+    const p = toStandardMaterialParams(params, 'phong');
+    if (p.roughness <= 0.06) {
+      // Стекло: отражения не приглушаем — именно они делают его похожим на стекло.
+      const glass = new _BaseStandardMaterial(p);
+      glass.envMapIntensity = 1.0;
+      glass.userData.noEnvScale = true;
+      return glass;
+    }
+    return new THREE.MeshStandardMaterial(p);
+  }
+  return new _BasePhongMaterial(params);
+}
+StyledPhongMaterial.prototype = _BasePhongMaterial.prototype;
+THREE.MeshPhongMaterial = StyledPhongMaterial;
+function StyledLambertMaterial(params) {
+  if (styledBuildDepth > 0) return new THREE.MeshStandardMaterial(toStandardMaterialParams(params, 'lambert'));
+  return new _BaseLambertMaterial(params);
+}
+StyledLambertMaterial.prototype = _BaseLambertMaterial.prototype;
+THREE.MeshLambertMaterial = StyledLambertMaterial;
+
+function withStyledBuild(fn) {
+  if (typeof fn !== 'function' || fn.__styled) return fn;
+  const wrapped = function (...args) {
+    styledBuildDepth++;
+    try { return fn.apply(this, args); }
+    finally { styledBuildDepth--; }
+  };
+  wrapped.__styled = true;
+  return wrapped;
+}
+
+// ── Мягкая контактная тень (пятно под предметом) ──
+let contactShadowTexture = null;
+function getContactShadowTexture() {
+  if (contactShadowTexture) return contactShadowTexture;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 4, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(0,0,0,0.55)');
+  grad.addColorStop(0.45, 'rgba(0,0,0,0.30)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  contactShadowTexture = new THREE.CanvasTexture(c);
+  return contactShadowTexture;
+}
+const contactShadowGeometry = new THREE.PlaneGeometry(1, 1);
+const contactShadowMaterialCache = new Map();
+function getContactShadowMaterial(opacity) {
+  const key = Math.round(opacity * 100);
+  if (!contactShadowMaterialCache.has(key)) {
+    contactShadowMaterialCache.set(key, new THREE.MeshBasicMaterial({
+      map: getContactShadowTexture(), transparent: true, opacity, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    }));
+  }
+  return contactShadowMaterialCache.get(key);
+}
+// Пятно лежит на полу. localY — высота пола в координатах родителя.
+function addContactShadow(parent, width, depth, localY = 0.012, opacity = 0.6) {
+  if (!VISUAL.contactShadows || !parent) return null;
+  const blob = new THREE.Mesh(contactShadowGeometry, getContactShadowMaterial(opacity));
+  blob.rotation.x = -Math.PI / 2;
+  blob.scale.set(width, depth, 1);
+  blob.position.y = localY;
+  blob.castShadow = false;
+  blob.receiveShadow = false;
+  blob.renderOrder = -1;
+  blob.userData.contactShadow = true;
+  blob.raycast = () => {}; // не мешает нажатиям
+  parent.add(blob);
+  return blob;
+}
+
+// ── Карта окружения: мягкий «студийный» свет со всех сторон и отражения ──
+// Сцена-комната по мотивам RoomEnvironment из примеров Three.js.
+function buildRoomEnvironmentScene() {
+  const envScene = new THREE.Scene();
+  const geometry = new _BaseBoxGeometry();
+  geometry.deleteAttribute('uv');
+  const roomMaterial = new THREE.MeshStandardMaterial({ side: THREE.BackSide });
+  const boxMaterial = new THREE.MeshStandardMaterial();
+  const mainLight = new THREE.PointLight(0xffffff, 5.0, 28, 2);
+  mainLight.position.set(0.418, 16.199, 0.300);
+  envScene.add(mainLight);
+  const room = new THREE.Mesh(geometry, roomMaterial);
+  room.position.set(-0.757, 13.219, 0.717);
+  room.scale.set(31.713, 28.305, 28.591);
+  envScene.add(room);
+  [
+    [-10.906, 2.009, 1.846, -0.195, 2.328, 7.905, 4.651],
+    [-5.607, -0.754, -0.758, 0.994, 1.970, 1.534, 3.955],
+    [6.167, 0.857, 7.803, 0.561, 3.927, 6.285, 3.687],
+    [-2.017, 0.018, 6.124, 0.333, 2.002, 4.566, 2.064],
+    [2.291, -0.756, -2.621, -0.286, 1.546, 1.552, 1.496],
+    [-2.193, -0.369, -5.547, 0.516, 3.875, 3.487, 2.986],
+  ].forEach(([x, y, z, ry, sx, sy, sz]) => {
+    const b = new THREE.Mesh(geometry, boxMaterial);
+    b.position.set(x, y, z); b.rotation.set(0, ry, 0); b.scale.set(sx, sy, sz);
+    envScene.add(b);
+  });
+  const areaLight = (intensity, pos, scale) => {
+    const m = new THREE.MeshBasicMaterial();
+    m.color.setScalar(intensity);
+    const l = new THREE.Mesh(geometry, m);
+    l.position.set(...pos); l.scale.set(...scale);
+    envScene.add(l);
+  };
+  areaLight(50, [-16.116, 14.37, 8.208], [0.1, 2.428, 2.739]);
+  areaLight(50, [-16.109, 18.021, -8.207], [0.1, 2.425, 2.751]);
+  areaLight(17, [14.904, 12.198, -1.832], [0.15, 4.265, 6.331]);
+  areaLight(43, [-0.462, 8.89, 14.520], [4.38, 5.441, 0.088]);
+  areaLight(20, [3.235, 11.486, -12.541], [2.5, 2.0, 0.1]);
+  areaLight(100, [0.0, 20.0, 0.0], [1.0, 0.1, 1.0]);
+  return envScene;
+}
+let sceneEnvironmentTexture = null;
+function setupSceneEnvironment() {
+  if (!VISUAL.environment || sceneEnvironmentTexture) return;
+  try {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    sceneEnvironmentTexture = pmrem.fromScene(buildRoomEnvironmentScene(), 0.04).texture;
+    pmrem.dispose();
+    scene.environment = sceneEnvironmentTexture;
+  } catch (error) {
+    console.warn('MiceShop: карта окружения не создана', error);
+    sceneEnvironmentTexture = null;
+  }
+}
+setupSceneEnvironment();
+
+function getVisualToneMapping() {
+  return VISUAL.toneMapping === 'aces' ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+}
+
+// Мягкие тени: PCFSoft и карта теней побольше, область теней плотнее к магазину.
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+sun.shadow.mapSize.width = isMobileRenderer ? 1024 : 2048;
+sun.shadow.mapSize.height = isMobileRenderer ? 1024 : 2048;
+sun.shadow.normalBias = 0.02;
+sun.shadow.bias = -0.0004;
+
+// Свет под новую картинку: карта окружения даёт мягкий общий свет,
+// поэтому «плоский» свет неба уменьшен, а солнце — тёплое и с чёткой, но мягкой тенью.
+function applyVisualLighting() {
+  const env = !!sceneEnvironmentTexture;
+  hemi.intensity = env ? VISUAL.hemi : 0.42;
+  ambient.intensity = env ? 0.0 : 0.08;
+  sun.intensity = env ? VISUAL.sun : 1.05;
+  sun.color.set(0xffe2b0);
+  warmFill.intensity = env ? VISUAL.warm : 0.10;
+  coolFill.intensity = env ? VISUAL.cool : 0.02;
+  renderer.toneMapping = getVisualToneMapping();
+  renderer.toneMappingExposure = VISUAL.exposure;
+  renderer.outputEncoding = VISUAL.linearOutput ? THREE.LinearEncoding : THREE.sRGBEncoding;
+  // Сила отражений окружения у всех физических материалов сцены.
+  scene.traverse(obj => {
+    const mats = obj.material ? (Array.isArray(obj.material) ? obj.material : [obj.material]) : [];
+    mats.forEach(m => {
+      if (!m || !m.isMeshStandardMaterial || m.userData.noEnvScale) return;
+      if (m.userData.baseEnvIntensity === undefined) m.userData.baseEnvIntensity = m.envMapIntensity;
+      m.envMapIntensity = m.userData.baseEnvIntensity * VISUAL.envScale;
+    });
+  });
+}
+applyVisualLighting();
+
+// Предметы строятся в «улучшенном» режиме (скругления + материалы).
+addShelfMesh = withStyledBuild(addShelfMesh);
+makeDecorMesh = withStyledBuild(makeDecorMesh);
+makeCashRegisterModel = withStyledBuild(makeCashRegisterModel);
+createItemMesh = withStyledBuild(createItemMesh);
+createSeller = withStyledBuild(createSeller);
+
+// ══════════════════════════════════════
 //  BUILD SHOP SCENE
 // ══════════════════════════════════════
 
 // ── ПОЛ ──
 // ── ПОЛ — светло-голубой ──
 const floorGeo = new THREE.PlaneGeometry(SHOP_HALF * 2 + 0.2, SHOP_HALF * 2 + 0.2);
-const floorMat = new THREE.MeshLambertMaterial({ color: 0xdec5a8 }); // тёплый бежевый как на фото
+const floorMat = new THREE.MeshStandardMaterial({ color: 0xdec5a8, roughness: 0.78, metalness: 0, envMapIntensity: 0.55 }); // тёплый бежевый как на фото
 const floor = new THREE.Mesh(floorGeo, floorMat);
 floor.rotation.x = -Math.PI / 2;
 floor.position.set(0, 0, 0);
@@ -9044,8 +9520,8 @@ function getWindowTargetFromFloorPoint(pt, preferredAxis = null, width = WINDOW_
 // именно в вертикальную плоскость стены: задняя стена z=-8 или левая стена x=-8.
 function getWindowTargetFromScreen(clientX, clientY, preferredAxis = null, width = WINDOW_W) {
   const ndc = new THREE.Vector2(
-    (clientX / window.innerWidth) * 2 - 1,
-   -(clientY / window.innerHeight) * 2 + 1
+    (clientX / getViewW()) * 2 - 1,
+   -(clientY / getViewH()) * 2 + 1
   );
 
   const rc = new THREE.Raycaster();
@@ -11631,6 +12107,7 @@ function createSeller(color, x, z, name, staffType = 'seller') {
 
   group.scale.setScalar(CHARACTER_SIZE_MULT);
   group.position.set(x, 0.6, z);
+  addContactShadow(group, 0.66, 0.5, -0.392, 0.55);
   scene.add(group);
 
   const seller = {
@@ -13631,7 +14108,7 @@ function getThoughtBubbleMaterial(emoji, mood) {
   }
 
   const texture = new THREE.CanvasTexture(canvas);
-  texture.encoding = THREE.sRGBEncoding;
+  texture.encoding = VISUAL.linearOutput ? THREE.LinearEncoding : THREE.sRGBEncoding;
   const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false });
   THOUGHT_BUBBLE_MATERIAL_CACHE.set(key, material);
   return material;
@@ -13667,7 +14144,11 @@ function noteMissedDemand(productId) {
 // Покупатели приходят и уходят постоянно. Раньше каждый создавал 4 новые
 // геометрии и 4 материала, а при уходе они не освобождались из памяти видеокарты
 // (утечка за долгую игру). Теперь все покупатели используют общие ресурсы.
-const CUSTOMER_GEOMETRY = {
+const CUSTOMER_GEOMETRY = VISUAL.rounded ? {
+  body: makeRoundedBoxGeometry(0.35, 0.6, 0.25, 0.09),
+  head: makeRoundedBoxGeometry(0.3, 0.3, 0.3, 0.1),
+  leg:  makeRoundedBoxGeometry(0.13, 0.4, 0.13, 0.05),
+} : {
   body: new THREE.BoxGeometry(0.35, 0.6, 0.25),
   head: new THREE.BoxGeometry(0.3, 0.3, 0.3),
   leg:  new THREE.BoxGeometry(0.13, 0.4, 0.13),
@@ -13675,7 +14156,7 @@ const CUSTOMER_GEOMETRY = {
 const CUSTOMER_MATERIAL_CACHE = new Map();
 function getCustomerMaterial(color) {
   if (!CUSTOMER_MATERIAL_CACHE.has(color)) {
-    CUSTOMER_MATERIAL_CACHE.set(color, new THREE.MeshLambertMaterial({ color }));
+    CUSTOMER_MATERIAL_CACHE.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0, envMapIntensity: VISUAL.envIntensity }));
   }
   return CUSTOMER_MATERIAL_CACHE.get(color);
 }
@@ -13703,6 +14184,7 @@ class Customer {
     });
 
     this.group.scale.setScalar(CHARACTER_SIZE_MULT);
+    addContactShadow(this.group, 0.62, 0.48, -0.392, 0.55);
 
     this.entryDoor = getRandomDoor();
     this.doorTrafficOrder = nextDoorTrafficOrder++;
@@ -17797,6 +18279,12 @@ function addShelfMesh(i, x, z, bodyColor, topColor, variantId = 'shelf_brown') {
   }
 
   if (group) group.scale.setScalar(SHELF_SIZE_MULT);
+  {
+    // Мягкая тень под витриной: у витрин-групп — внутри группы, у простого прилавка — под основанием.
+    const fp0 = getShelfBaseFootprint(i);
+    if (group) addContactShadow(group, (fp0.w / SHELF_SIZE_MULT) + 0.45, (fp0.d / SHELF_SIZE_MULT) + 0.45, 0.012, 0.5);
+    else if (base) addContactShadow(base, fp0.w + 0.45, fp0.d + 0.45, -base.position.y + 0.012, 0.5);
+  }
 
   // Служебная метка витрины остаётся только как невидимый технический объект.
   // Розовый/фиолетовый квадратик больше никогда не показывается в игровом мире.
@@ -18566,8 +19054,8 @@ function removeCashRegisterForStorage(idx, force = false) {
 }
 
 function storeEquipmentFromTap(clientX, clientY) {
-  mouse2D.x =  (clientX / window.innerWidth)  * 2 - 1;
-  mouse2D.y = -(clientY / window.innerHeight) * 2 + 1;
+  mouse2D.x =  (clientX / getViewW())  * 2 - 1;
+  mouse2D.y = -(clientY / getViewH()) * 2 + 1;
   raycaster.setFromCamera(mouse2D, camera);
 
   const decorHits = raycaster.intersectObjects(decorClickTargets || [], false);
@@ -19039,8 +19527,8 @@ function updateEditorActionPosition(fallbackX = null, fallbackY = null) {
   let y = fallbackY;
   if (anchor) {
     anchor.project(camera);
-    x = (anchor.x * 0.5 + 0.5) * window.innerWidth;
-    y = (-anchor.y * 0.5 + 0.5) * window.innerHeight;
+    x = (anchor.x * 0.5 + 0.5) * getViewW();
+    y = (-anchor.y * 0.5 + 0.5) * getViewH();
   }
   if (x === null || y === null) return;
   x = Math.max(105, Math.min(window.innerWidth - 105, x));
@@ -19499,8 +19987,8 @@ function rotateDecor(id, silent = false) {
 }
 
 function rotateObjectFromTap(clientX, clientY) {
-  mouse2D.x =  (clientX / window.innerWidth)  * 2 - 1;
-  mouse2D.y = -(clientY / window.innerHeight) * 2 + 1;
+  mouse2D.x =  (clientX / getViewW())  * 2 - 1;
+  mouse2D.y = -(clientY / getViewH()) * 2 + 1;
   raycaster.setFromCamera(mouse2D, camera);
 
   const decorHits = raycaster.intersectObjects(decorClickTargets || [], false);
@@ -21290,8 +21778,8 @@ function animate(now = performance.now()) {
 
   // Защита: туманность всегда выключена.
   scene.fog = null;
-  renderer.toneMapping = THREE.NoToneMapping;
-  renderer.toneMappingExposure = 0.95;
+  renderer.toneMapping = getVisualToneMapping();
+  renderer.toneMappingExposure = VISUAL.exposure;
   frame++;
   updateNavigationFrameScale();
   const animationTick = now / 16.6667;
