@@ -13147,10 +13147,34 @@ function getExteriorBrickMaterial(surfaceWidth = 1, surfaceHeight = 1) {
   return material;
 }
 
+// Верхний срез наружных стен (горизонтальная плоскость сверху) всегда светлый:
+// он не перекрашивается вместе со стенами и не получает их текстуру.
+// Материал без освещения: срез ровного цвета, на нём не видны тени и стыки между кусками стены.
+const WALL_TOP_MATERIAL = new THREE.MeshBasicMaterial({ color: 0xeeeeea });
+const WALL_TOP_FACE_INDEX = 2;   // грань +Y у коробки
+
 function getLayeredWallMaterials(exteriorFaceIndex, surfaceWidth = 1, surfaceHeight = WALL_H) {
   const materials = Array(6).fill(WALL_INTERIOR_MATERIAL);
+  materials[WALL_TOP_FACE_INDEX] = WALL_TOP_MATERIAL;
   materials[exteriorFaceIndex] = getExteriorBrickMaterial(surfaceWidth, surfaceHeight);
   return materials;
+}
+
+// Кирпич для узких деталей (уголки стен): размер грани не округляется, поэтому кирпичи
+// того же масштаба, что и на стенах. offsetY сдвигает рисунок по высоте, если деталь начинается не от пола.
+function getExactBrickMaterial(faceWidth, faceHeight, offsetY = 0) {
+  const key = 'exact:' + faceWidth.toFixed(3) + 'x' + faceHeight.toFixed(3) + '@' + offsetY.toFixed(3);
+  if (EXTERIOR_BRICK_MATERIAL_CACHE.has(key)) return EXTERIOR_BRICK_MATERIAL_CACHE.get(key);
+  const texture = EXTERIOR_BRICK_BASE_TEXTURE.clone();
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(faceWidth / EXTERIOR_BRICK_TILE_UNITS, faceHeight / EXTERIOR_BRICK_TILE_UNITS);
+  if (texture.offset && texture.offset.set) texture.offset.set(0, offsetY / EXTERIOR_BRICK_TILE_UNITS);
+  texture.needsUpdate = true;
+  const material = new THREE.MeshLambertMaterial({ color: 0xffffff, map: texture });
+  material.userData.sharedBrickMaterial = true;
+  EXTERIOR_BRICK_MATERIAL_CACHE.set(key, material);
+  return material;
 }
 
 function markLayeredExteriorWall(mesh, exteriorFaceIndex) {
@@ -13253,7 +13277,7 @@ wallMeshes.push(lowRightWall, lowFrontWall);
 
 // Уголок на стыке двух низких стен. Стены сходятся «крестом», и в наружном углу оставалась
 // выемка, в которой были видны их торцы цвета внутренних стен. Уголок закрывает выемку:
-// две наружные грани (+X и +Z) кирпичные, верх — как верх стен.
+// две наружные грани (+X и +Z) кирпичные, верх — светлый, как верх стен.
 const LOW_WALL_CORNER_SIZE = 0.08;   // половина толщины низкой стены (0.16)
 function getLowWallCornerBrickMaterial() {
   const key = 'low-corner';
@@ -13273,7 +13297,7 @@ const lowWallCorner = new THREE.Mesh(new THREE.BoxGeometry(LOW_WALL_CORNER_SIZE,
 {
   const brick = getLowWallCornerBrickMaterial();
   // Порядок граней коробки: +X, -X, +Y, -Y, +Z, -Z.
-  lowWallCorner.material = [brick, WALL_INTERIOR_MATERIAL, WALL_INTERIOR_MATERIAL, WALL_INTERIOR_MATERIAL, brick, WALL_INTERIOR_MATERIAL];
+  lowWallCorner.material = [brick, WALL_INTERIOR_MATERIAL, WALL_TOP_MATERIAL, WALL_INTERIOR_MATERIAL, brick, WALL_INTERIOR_MATERIAL];
   lowWallCorner.userData.layeredExteriorWall = true;   // при смене цвета стен кирпич не перекрашивается
   lowWallCorner.receiveShadow = true;
   lowWallCorner.raycast = () => {};                     // на нажатия не влияет
@@ -13284,6 +13308,51 @@ function updateLowWallCornerPosition() {
   lowWallCorner.position.set(SHOP_HALF + LOW_WALL_CORNER_SIZE / 2, 0, LOW_WALL_CORNER_SIZE / 2);
 }
 updateLowWallCornerPosition();
+
+// Уголки в остальных трёх углах магазина. Причина та же: стены сходятся «крестом»,
+// и в наружном углу оставалась выемка, в которой видны торцы стен.
+//   • задний левый угол — две высокие стены;
+//   • задний правый и передний левый — высокая стена встречается с низкой: торец высокой стены
+//     выступал уступом. Нижний брусок закрывает выемку, верхний выравнивает торец над низкой стеной.
+// Порядок граней коробки: 0 = +X, 1 = -X, 2 = +Y (верх), 3 = -Y, 4 = +Z, 5 = -Z.
+const TALL_WALL_HALF_THICKNESS = 0.15;   // половина толщины высокой стены (0.3)
+const wallCornerPosts = [];
+function makeWallCornerPost(w, h, d, brickFaces, baseY, place) {
+  const materials = Array(6).fill(WALL_INTERIOR_MATERIAL);
+  materials[WALL_TOP_FACE_INDEX] = WALL_TOP_MATERIAL;
+  brickFaces.forEach(face => {
+    const faceWidth = (face === 0 || face === 1) ? d : w;
+    materials[face] = getExactBrickMaterial(faceWidth, h, baseY);
+  });
+  const post = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), materials);
+  post.userData.layeredExteriorWall = true;
+  post.userData.cornerPlace = place;       // функция: половина магазина → [x, z] центра
+  post.userData.cornerY = baseY + h / 2;
+  post.castShadow = true;
+  post.receiveShadow = true;
+  post.raycast = () => {};                 // на нажатия не влияет
+  scene.add(post);
+  wallCornerPosts.push(post);
+  return post;
+}
+{
+  const T = TALL_WALL_HALF_THICKNESS, t = LOW_WALL_CORNER_SIZE, upperH = WALL_H - LOW_WALL_H;
+  // Задний левый: наружные грани -X и -Z.
+  makeWallCornerPost(T, WALL_H, T, [1, 5], 0, H => [-H - T / 2, -H - T / 2]);
+  // Задний правый: наружные грани +X и -Z; верхний брусок — над низкой правой стеной, наружная грань +X.
+  makeWallCornerPost(t, WALL_H, T, [0, 5], 0, H => [H + t / 2, -H - T / 2]);
+  makeWallCornerPost(t, upperH, T, [0], LOW_WALL_H, H => [H + t / 2, -H + T / 2]);
+  // Передний левый: наружные грани +Z и -X; верхний брусок — над низкой передней стеной, наружная грань +Z.
+  makeWallCornerPost(T, WALL_H, t, [4, 1], 0, H => [-H - T / 2, H + t / 2]);
+  makeWallCornerPost(T, upperH, t, [4], LOW_WALL_H, H => [-H + T / 2, H + t / 2]);
+}
+function updateWallCornerPosts() {
+  wallCornerPosts.forEach(post => {
+    const [x, z] = post.userData.cornerPlace(SHOP_HALF);
+    post.position.set(x, post.userData.cornerY, z);
+  });
+}
+updateWallCornerPosts();
 
 
 function getWindowWorldPosition(axis, pos) {
@@ -20921,6 +20990,7 @@ function applyShopStageVisuals() {
   setLayeredWallMaterials(lowFrontWall, 4, SHOP_HALF * 2, LOW_WALL_H);
   lowFrontWall.position.set(0, LOW_WALL_H / 2, SHOP_HALF);
   updateLowWallCornerPosition();
+  updateWallCornerPosts();
 
   // Двери/окна остаются на своих местах, но стены под них пересчитываются.
   windows.forEach(w => {
