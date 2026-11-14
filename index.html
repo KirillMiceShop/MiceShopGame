@@ -2871,6 +2871,359 @@ body[data-menu-style="standard"] .achievement-claim-btn {
   #season-change-banner { top:calc(env(safe-area-inset-top, 0px) + 8px); padding:8px 13px; }
 }
 
+/* НИЖНИЕ КНОПКИ — РАЗМЕР «8 ИЗ 10».
+   Все числа здесь — прежние размеры, умноженные на 0,8.
+   Блок стоит после старых правил, поэтому заменяет их. Работает во всех стилях меню.
+   Кнопку «Выйти» в редакторе этот блок не меняет. */
+#bottom-left-hud { width:69px; height:69px; }
+#shop-main-btn {
+  width:69px;
+  height:69px;
+  padding:10px 13px 6px 6px;
+  border-radius:0 46px 0 0!important;
+}
+#shop-main-btn .corner-hud-icon { font-size:34px; transform:translate(-2px,3px); }
+#bottom-right-hud { width:176px; height:114px; }
+#shelves-main-btn {
+  width:77px;
+  height:77px;
+  padding:12px 6px 6px 16px;
+  border-radius:46px 0 0 0!important;
+}
+#shelves-main-btn .corner-hud-icon { font-size:31px; transform:translate(4px,5px); }
+#warehouse-main-btn {
+  right:74px; bottom:0; width:53px; height:26px;
+  border-radius:8px 0 0 0!important; padding:3px 5px; font-size:8px;
+}
+#editor-toggle-btn {
+  right:58px; bottom:22px; width:56px; height:25px;
+  border-radius:8px 0 0 0!important; padding:3px 5px; font-size:18px!important;
+}
+#walls-toggle-btn {
+  right:42px; bottom:44px; width:53px; height:24px;
+  border-radius:8px 0 0 0!important; padding:3px 5px; font-size:18px!important;
+}
+@media (orientation:landscape) and (max-height:600px) {
+  #bottom-left-hud { width:58px; height:58px; }
+  #shop-main-btn { width:58px; height:58px; border-radius:0 38px 0 0!important; }
+  #shop-main-btn .corner-hud-icon { font-size:27px; }
+  #bottom-right-hud { width:155px; height:99px; }
+  #shelves-main-btn { width:66px; height:66px; border-radius:38px 0 0 0!important; }
+  #shelves-main-btn .corner-hud-icon { font-size:26px; }
+  #warehouse-main-btn { right:63px; bottom:0; width:53px; height:26px; font-size:8px; }
+  #editor-toggle-btn { right:47px; bottom:21px; width:56px; height:25px; font-size:15px!important; }
+  #walls-toggle-btn { right:31px; bottom:42px; width:53px; height:24px; font-size:15px!important; }
+}
+/* Маленькие кнопки стали ниже, попасть в них труднее. Поэтому невидимая зона
+   нажатия слева от них шире, чем была. Вверх и вниз расширить нельзя:
+   там соседние кнопки. */
+/* У склада значок был 12 px (а не 10): старое правило #bottom-btns .bot-btn сильнее. */
+#bottom-btns #warehouse-main-btn { font-size:10px; }
+#warehouse-main-btn::after { left:-24px; }
+#editor-toggle-btn::after { left:-48px; }
+#walls-toggle-btn::after { left:-46px; top:-14px; }
+
+/* ============================================================
+   СТИЛЬ МЕНЮ «KENNEY»
+   Картинки кнопок и панелей взяты из набора Kenney UI Pack (лицензия CC0).
+   Стиль включается в окне «Стиль меню» и ничего не меняет в остальных стилях.
+
+   Как это устроено:
+   1) картинки хранятся прямо здесь, в переменных --k-...;
+   2) border-image растягивает картинку на кнопку или окно любого размера:
+      углы остаются как есть, а середина и стороны тянутся;
+   3) :not(#k1):not(#k2):not(#k3) ничего не выбирает — это приём, который
+      делает правила этого блока «сильнее» старых правил с !important.
+   ============================================================ */
+body[data-menu-style="kenney"] {
+  --menu-bg:#dadce7;
+  --menu-card:#ffffff;
+  --menu-card-strong:#ffffff;
+  --menu-border:#989aaf;
+  --menu-text:#2b2f45;
+  --menu-muted:#5f6279;
+  --menu-accent:#1c9fd7;
+  --menu-accent-text:#ffffff;
+  --menu-secondary:#167da8;
+  --menu-secondary-text:#ffffff;
+  --menu-profit:#029357;
+  --menu-close:#ffffff;
+  --k-window:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAACACAMAAAA1bk45AAAABGdBTUEAALGPC/xhBQAAAKJQTFRFZmiBZ2eCZmeAmJqvmpqumJqvZmiAZGeBmJmvnJytZmmBmJmvZWmCZmeAZWiAZWiAZWeAmJuumJqvmJqvAAAA4+Tt6+zw7u/05ebu8vL1aWuC3N7of4GXb3GIy8zXiIqgxcbSdXeOi42j8/T3eHqRsbPD6uvxe32U7O3z3uDq3t/mkZOp2NnhhYed5eXrlJas0dLcpKa5ZmiA////mJqv2tznYsPX4gAAABV0Uk5Tfy+Pzz9v30+PH1/fP6+fv+9Pn78AsYwrOAAAAfpJREFUeNrt1Vdu4zAARVGm9ziWOSW9J25xbEWz/60NKcMDzAZIIDj3g5B+3wGlEPuO9prRaNSpSGnqZu9ovXzIx67pazDsbgAOjVGnwzVAY4laNRlg2D+u7hY/v1SoxfRh1c8+TAAn+WFplNI95N1PYhjav1J3/RUI+Q+wskaN8leoCTvpnOfX5x9/VKbr38958Xmafifke3CZ3sZ2KdmvNPll3r4HyBzXRinZJG/+H4BNygYAAAAAAAAAAAAAAAAAAAAAEAAAAgBAAAAIAAABACAAAAQAgAAAEAAAAgBAAAAIAAABACAAAAQAgAAAEAAAAgBAAAAIAAABACAAAAQAgAAAEAAAAgBAAAAAAAAAAAAAAAAAAAAAAACTAAAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAfD+AiU1KNvkHMEvHIr2MjVKycZp8kaafhad0LjPHm1XK9ZYXX6bpn8JNOldfqtAqTX8TbrvNFVDZ8gXobkObfwLd3B6lm+fdZ21oH/ND9zo1Scmmr/3sjwmg/ehUqY82AxCouH8b9tPx/mmM8n2+p+n3wyCd7dXLPYOy69+/XOXlByF/g1StELaMULOtEAdWqNcghnhqhnqdJoC4bYdabccMEM8tUafzuAaIBxfGKN/FQdwAxHh8xqDs+mfH6+X/As30W/JQ2/F7AAAAAElFTkSuQmCC);
+  --k-card:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAACACAMAAAA1bk45AAAABGdBTUEAALGPC/xhBQAAAGxQTFRF////////////////////////////////////////////////////////AAAAnqC00dLc7u/01dfj3t/m5+nwsLLEpKa5ubvLuLnIycvZy8zX9fb55eXrvr/N8vL1sbPDxcbS2tznmJqv////p+ffNgAAAA90Uk5TH69fL2/Pf4/f7z9Pn78AS4VGugAAAcxJREFUeNrt18lu4kAUhtHKCAG7OnOYTTfv/45d14RILbat6835Fsbe/kdli1LHyn3X9/1JKbWpu/vyvXxcFqafgmFxAZgZY5pmZ4DOElPVBcByvD08r4bhj1IahtXzYZx92QDmcbOxSnab2H1ey3gAjvbI7zgegRJfgJ01pmgXX4Hy0K77ePxYr38rpfX6Ixbft+kfSpyDz/b0ZZfMvtrkn7H9CBAcr0bJ7DU2/wfAJrldA7xvt/4Z5bTdvl8DvNgls5crAJvkBgAAAAAAAAAAAAAAAAAAAAAQAAACAEAAAAgAAAEAIAAABACAAAAQAAACAEAAAAgAAAEAIAAABACAAAAQAAACAEAAAAgAAAEAIAAABACAAAAQAAACAEAAAAAAAAAAAAAAAAAAAAAAAJMAACAAAAQAgAAAEAAAAgBAAAAIAAABACAAAAQAgAAAEAAAAgBA/wngYJPMDj8A83YZ2sPGKJlt2uRD+52Xvl2PwfFmlbzeYvFju+nL4+U8KLt46z+Wu9PlCCi3OACnu1J7ApO0j937WupifCnt9r9skthqN86+aAB15ps4VbMaALWzxDR19QxQl0/GyO9pWS8Atd7eMMhd/+b2vPxfTzEZrjDS0AoAAAAASUVORK5CYII=);
+  --k-btn:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAACACAMAAAA1bk45AAAABGdBTUEAALGPC/xhBQAAAJxQTFRFdXWGcnKIc3OHlZWjc3OGlZWjlpaidHSHc3OHlpaidHSIlJSlc3OGdHSGlpaidHSHlJShc3OGlZWilpajAAAAysrR8/T37u/06+vttra/w8PLjY2cgoKTfn6P6uvxi4uadnaIsLC63t7igICRenqMhYWV3uDq4+TtkZGfk5OhiYmY7O3z19fco6Ou0dHW5OTodHSH2tznlpaj////gZQgwwAAABV0Uk5TPy/fb6/Pj3+f308fX48/v0/vn78AxkKJbwAAAgVJREFUeNrt1tluGjEAhlFn30MCbtJmX4EEhplO3//dag+iUtV7O6rOd2Ext/+RZUIcOtkZTyaTXkVKU493TtbLh3ycm74Gw/kGYN8YddpfA4wtUatxBrgYfjY3bdv+UpHS1DfNMPtFAjjKP75ZpXSrvPtRDMMFWNmjfMvhCoT8AjTWqNGP/AqEvXQu8+f1bPZTRZrNroanIE2/F/I9+J6+FnYp2SIL5O0HgPz3Z2qUov0FkD9M8gUAvItlAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgBAAAAIAAABACAAAAQAgAAAEAAAAgBAAAAIAAABACAAAAQAgAAAEAAAAgBAAAAIAAABACAAAAQAgAAAEAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAApgEAQAAACAAAAQAgAAAEAIAAABAAAALwfwOoXP8ATG1SsukfgHk62vSxMErJFmnyNk0/D7fpXGWOB6uU6yEvvkrT34b3dDbexRo1afr38NZvroDKli9A/xa6/Aj0S3uUbpl3n3ehu88/+ucXk5Ts5XmY/T4BdJ+9KvXZZQACFffvwnY67j6MUb6PuzT9dhils3t6fWRQdv3H16e8/CgcdKrYQdgyQs22QhxZoV6jGGIwQ73S/DGe2aFWZzEDxENL1OkwrgHi8aUxynd5HDcAMZ7uMii7/u7pevnfbb3d7QOsV6QAAAAASUVORK5CYII=);
+  --k-blue:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAACACAMAAAA1bk45AAAABGdBTUEAALGPC/xhBQAAAJNQTFRFE2WHFGSHE2OGEGKIE2WHFX2oFXyoFGWGFn2oFGSGFXyoE2WGE2SIEHutFH2qE2SGE36oFGSHFX2oFXyoAAAAMLHoFG6TJ6zlFGyRFGmNHo27FXefFG+VFXGXMrXtJp3PH6LbFXWdKa7nFGaJJJnKLKneLq3jFXulKqXZFXqjFXSbGoWxKKHUFGWHFn2oHJ/XNr33lbkXAQAAABV0Uk5Tn39fL9+Pzz/fj2+vTx8/70+/n78AmkwYjgAAAeNJREFUeNrt3MluwjAARVF3nlsI7jzQCQoNSfv/X1c7iO67sVXpXAkrbN+RyY4Qh86Om8lk0qtIaerm+Gy9fMjHuelrMJxvAPaMUae9NUBjiVo1GWA0PLbT+eW3CjWfvbfD7KMEcJgfVkYp3Xve/TCGkf0rNR2uQMhvgNYaNcq/Qk3YT+fCGDVapOn3Q74HT8ao0VPefgCwRZ0AAAAAAAAAAAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAANBfAL5UNAAAAAAAAAAAAAAAAAAAAACAAAAQAAACAEAAAAgAAAEAIAAABACAAAAQAAACAEAAAAgAAAEAIAAABACAAAAQAAAC8A8Bnm1SsudfgGU65unLq1FK9pomn6fpl+E+navMcW2Vcl3nxVdp+vvwmM7W/+fVqE3TP4bbfnMFVLZ8Afrb0OWXQL+wR+kWefdlF7qb/NDfzUxSstndMPtNAug+e1Xqs8sABCru34XddDx8GKN8Hw9p+t0wTmf3dvXCoOz6L1dveflx2OpUsa2wY4Sa7YQ4tkK9xjHEAzPU6yABxCM71OooZoAYLFGnYfz0iacXxijfxWncAMS4fcKg7Pon2+vlfwCQe2LMWIOKFwAAAABJRU5ErkJggg==);
+  --k-green:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAACACAMAAAA1bk45AAAABGdBTUEAALGPC/xhBQAAAJNQTFRFAG1BAJRSAJNXA21ABG1AAZNWApJWBG1BA25BAZJXAJJVBGxAA2tAA21AA2xABGxAA21AAJFXApJXAZNXAAAAJsqGIMeCA3tJAolRA3RFFbBwA29CDaRlA31KGLV0IsmEA3hHA4BMGb56AodQKc6KIMF/Ao5UHr17ApBVAoROI8aDB5teG7l4BG1BApNXFrt3L9eSfkXewAAAABV0Uk5TLx9v34/Pjz9P3z9/X5+vv+9Pn78AQsW3IAAAAeNJREFUeNrt3MmO4jAYhdG/5rkowDXPA1AFJN3v/3RtB9H73thq6XwLK2zvkZMdkYZ2difT6bRXlfLUk92dzfJRjlPTt2A43QIcGqNNhxuAiSVaNSkA4+Fx9bK8/q1KLWcPq2H2cQY4KQ9ro9Tuoex+kmJs/0a9DFcgyhdgZY0WlbfQJA7yuTBGixZ5+oMo9+DLGC36KtsPALZoEwAAAAAAAAAAAAABACAAAAQAgAAAEAAAAgBAAAAIAAABACAAAAQAgAAAEAAAAgBAAAAIAAABACAAAAQAgAAAEAAA+heAX6oaAAAAAAAAAAAAAAAAAAAAAEAAAAgAAAEAIAAABACAAAAQAAACAEAAAAgAAAEAIAAABACAAAAQAAACAEAAAAgAAAH4DwE+bFKzj78A83ws849Xo9TsNU++zNPP4y6f68JxY5V63ZTF13n6u3jP58r/57Volad/j/t+ewVUt3IB+vvoykegX9ijdouy+7yL7q089E8zk9Rs9jTM/pYBup9ejfrpCgCBhvt3sZeP529j1O/7OU+/F6N8do+3nwzqrv95+1iWH8VZp4adRRihZRFpZIV2jVKkIzO06ygDpH07tGo/FYB0YYk2XaQNQDq+Mkb9ro7TFiCl80sGdde/PN8s/wfAamLMuh28SgAAAABJRU5ErkJggg==);
+  --k-red:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAAABGdBTUEAALGPC/xhBQAAAJxQTFRFhhAghxAihhAjzggohxAiiBAgzAkphhAizAoqiBAhzggpzQspzQophhAjhxAihhAizwoqhxAjzQoqzAspAAAA+U9q90hk5jZS9VFr3CZDnA4loQ4lpQ0mtwwniw8jqg0m4jFNuwwo70Zh2SA+9UBdlA8k8C5NyAspsgwnxAsp8jVU9kRh7EFc0xU06TtX8kxmhxAj/2J7zQsq7idHnEzcsAAAABV0Uk5TP9+vP59Pb4/PLx+P319/70+/n78Amek4bgAAAXpJREFUeNrt28eSgzAQBNBxzsaETc4Zg40R8P//thqxuMo/MHPY7oMKnfoVpWtT5DLuB2EYlkKxVUF/XDcTHx2x6jdGpwFMSqVMakBQqiVgwMJ9Zvs8zwuh2Kp95moXFjDlj69CPE/unUbkfsCzUMjD/QLiF5AVKvnhV0BDez74+pmmlVDS9MM9BVs9JP4P3/Z2r0RzZwF3OwA//6ssoHoD8KUCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD49wDhicf1BUj+NiYKIxde2SR0aHZOZ8n+c7O1OtBOb+jEc7MdXdSmXm5sdiHDj6DeWilMzRJDZul2d6ejbP3x5GqXFmBueoPHm2GAnsD2G2rZYx1r1MdrW90i355mu9oIG+LNasvNPs2NauY00gWMKPI1+327uiVNAPHweaDXP6in312t/m4zfu95GvVe77W+j6JZW9jgtWd18y/9OIu8QLUrRAAAAABJRU5ErkJggg==);
+  --k-selected:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAACACAMAAAA1bk45AAAABGdBTUEAALGPC/xhBQAAAHJQTFRFlZWjlpajmZmqlpaimJijlpaklJSll5ejlpailZWilZWjlpailJShlpajlZWiAAAA6+vt7u/05ebu4+Tt3N7ow8PLysrRsLC66uvx8fHz8/T33t7i3uDq7O3z5OTo19fco6Ou0dHWNr33////lpaj2tzn2vjtBgAAABB0Uk5Tz68Pjy9fH38/72/fT7+fAHn2FDIAAAHNSURBVHja7dVZT9wwGIZRs8NkcWnZZ8uU8P//Yv0ZTSVEb3GQep4LK759j5KkXLtcjcMwzGpSmXpcXb4vn+K4Nv0SDNdHgDNjLNPZO8BoiaUaA6Cvj9PD7serGrVb30919r4AdPFwMErr7mP3Lqfe/gv1UF+BFH+AyRpLFF+hMaVy7uP68utNbbr7+RKL78v0df/5udy2dmnZbZn8ObavAMFxZ5SWbWLzDwA2ads/AX6rSQAAAADwXQH8Hr82AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAICJAAAQAAACAEAAAAgAAAEAIAD/B4C+PgAAAAD4jgBq1yeAjU1atvkL0JVjVy5bo7RsWybflem7NJTzEBxPVmnXUyx+KNMP6aqc06sWaCrTX6Xz+fgKqG3xAsznKcdPYN7bo3X72L3LKffxMD+uTdKy9WOdvS8AeZy1UGMOAAIL7l8B8urGGO27WeUjQD69OGHQdv2Ti9M6/R/trVuz0uS4JQAAAABJRU5ErkJggg==);
+}
+
+/* Шрифт: на iPhone это округлый системный шрифт. Шрифт из набора Kenney
+   не содержит русских букв, поэтому здесь не используется. */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box * {
+  font-family:ui-rounded,'SF Pro Rounded','Segoe UI',system-ui,sans-serif!important;
+}
+
+/* ТЕКСТ. Окна светлые, поэтому весь текст по умолчанию тёмный
+   (иначе жёлтые цифры из тёмных стилей не читаются на белом). */
+body[data-menu-style="kenney"] .modal-box,
+body[data-menu-style="kenney"] .modal-box *,
+body[data-menu-style="kenney"] #shopModal .modal-box,
+body[data-menu-style="kenney"] #shopModal .modal-box * {
+  color:var(--menu-text)!important;
+}
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .setting-sub,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box #developerLevelStatus,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box #developerMoneyStatus,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box #developerRatingStatus,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .worker-sub,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .quest-card-sub,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .quest-card-foot,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .quest-empty,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .menu-style-sub,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .item-modal-cat,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .item-stat-lbl,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .stats-breakdown,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .pr-sub,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .achievement-tier,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .achievement-foot {
+  color:var(--menu-muted)!important;
+}
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .pr-price,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .item-stat-val,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .rating-percent,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .quest-reward,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .achievement-reward {
+  color:var(--menu-secondary)!important;
+}
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .pr-profit {
+  color:var(--menu-profit)!important;
+}
+
+/* ОКНО */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box {
+  background:none!important;
+  border:solid transparent!important;
+  border-width:4px 4px 8px 4px!important;
+  border-image:var(--k-window) 16 16 24 16 fill / 8px 8px 12px 8px!important;
+  border-radius:8px!important;
+  box-shadow:none!important;
+}
+
+/* КАРТОЧКИ И СТРОКИ */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .setting-row,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .developer-settings-card,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .rating-main,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .stats-card,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .worker-card,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .worker-row,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .style-chip,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .quest-card,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .quest-empty,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .prod-row,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .prod-card,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .item-stat,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .menu-style-option,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .achievement-card,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .subcat-tab,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box #shelves-info-list > div {
+  background:none!important;
+  border:1px solid transparent!important;
+  border-image:var(--k-card) 16 fill / 8px!important;
+  border-radius:8px!important;
+  box-shadow:none!important;
+  color:var(--menu-text)!important;
+}
+
+/* ВЫБРАННАЯ КАРТОЧКА */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .subcat-tab.active,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .style-chip.active,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .menu-style-option.active,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .quest-card.active {
+  border-image:var(--k-selected) 20 fill / 10px!important;
+  color:var(--menu-text)!important;
+}
+
+/* ОБЫЧНЫЕ КНОПКИ */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .rating-action-btn,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .btn-back,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .quest-show-btn,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .developer-level-step,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .developer-level-apply,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .warehouse-auto-stock-btn,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box #shop-content-back,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .cat-tab {
+  background:none!important;
+  border:solid transparent!important;
+  border-width:2px 2px 6px 2px!important;
+  border-image:var(--k-btn) 16 16 24 16 fill / 8px 8px 12px 8px!important;
+  border-radius:8px!important;
+  box-shadow:none!important;
+  color:var(--menu-text)!important;
+  font-weight:800!important;
+}
+
+/* ГЛАВНЫЕ КНОПКИ */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .btn-buy,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .cat-tab.active,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .warehouse-tab-btn.active,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .warehouse-product-tab-btn.active {
+  background:none!important;
+  border:solid transparent!important;
+  border-width:2px 2px 6px 2px!important;
+  border-image:var(--k-blue) 16 16 24 16 fill / 8px 8px 12px 8px!important;
+  border-radius:8px!important;
+  box-shadow:none!important;
+  color:#ffffff!important;
+  font-weight:900!important;
+  text-shadow:0 1px 0 rgba(20,101,135,.85);
+}
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .btn-buy *,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .cat-tab.active *,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .warehouse-tab-btn.active *,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .warehouse-product-tab-btn.active * {
+  color:#ffffff!important;
+}
+
+/* КНОПКИ НАГРАДЫ */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .quest-claim-btn,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .achievement-claim-btn,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .level-up-claim-btn {
+  background:none!important;
+  border:solid transparent!important;
+  border-width:2px 2px 6px 2px!important;
+  border-image:var(--k-green) 16 16 24 16 fill / 8px 8px 12px 8px!important;
+  border-radius:8px!important;
+  box-shadow:none!important;
+  color:#ffffff!important;
+  font-weight:900!important;
+  text-shadow:0 1px 0 rgba(4,109,65,.85);
+}
+
+/* КНОПКА ЗАКРЫТИЯ */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .modal-close {
+  width:32px!important;
+  height:34px!important;
+  background:none!important;
+  border:solid transparent!important;
+  border-width:2px 2px 6px 2px!important;
+  border-image:var(--k-red) 16 16 24 16 fill / 8px 8px 12px 8px!important;
+  border-radius:8px!important;
+  box-shadow:none!important;
+  color:#ffffff!important;
+  font-size:14px!important;
+  -webkit-backdrop-filter:none!important;
+  backdrop-filter:none!important;
+}
+
+/* МАГАЗИН: боковой список разделов и линии */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) #shopModal #cat-tabs {
+  gap:6px!important;
+  padding:8px 6px!important;
+  background:rgba(152,154,175,.20)!important;
+  border-right:2px solid #989aaf!important;
+}
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) #shopModal #modal-header {
+  border-bottom:2px solid #989aaf!important;
+}
+
+/* ПЕРЕКЛЮЧАТЕЛИ */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .toggle-switch {
+  background:#989aaf!important;
+  box-shadow:inset 0 0 0 2px #ffffff, 0 0 0 2px #989aaf;
+}
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .toggle-switch.on {
+  background:#1c9fd7!important;
+  box-shadow:inset 0 0 0 2px #36bdf7, 0 0 0 2px #167da8;
+}
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .toggle-switch::after,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .toggle-switch.on::after {
+  background:#ffffff!important;
+}
+
+/* ПОЛОСКИ ПРОГРЕССА */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .rating-bar,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .quest-progress-bar,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .achievement-progress-bar {
+  background:#989aaf!important;
+  border:2px solid #ffffff!important;
+  border-radius:8px!important;
+  box-shadow:0 0 0 2px #989aaf;
+}
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .quest-progress-bar,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .achievement-progress-bar {
+  height:12px!important;
+}
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .quest-progress-fill,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .achievement-progress-fill {
+  background:#36bdf7!important;
+  border-radius:4px!important;
+}
+
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .rating-bar-text {
+  color:#ffffff!important;
+}
+
+/* ПОЛЯ ВВОДА И ГРАФИК */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box input,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box select,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) .modal-box .stats-chart {
+  background:#ffffff!important;
+  border:2px solid #989aaf!important;
+  border-radius:8px!important;
+  color:var(--menu-text)!important;
+}
+
+/* НИЖНИЕ КНОПКИ (магазин, витрины, склад, редактор, стены) в стиле «Kenney».
+   Форма и места кнопок прежние. Меняются только цвета: вместо золотого
+   градиента с сильной тенью — ровная заливка, белая и серая линии по краю
+   и слабая тень, как у кнопок в окнах. */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) #bottom-btns .bot-btn {
+  background:linear-gradient(180deg,#f1f2f8 0 50%,#dfe1eb 50% 100%)!important;
+  border:2px solid #ffffff!important;
+  box-shadow:0 0 0 2px #989aaf, 0 3px 8px rgba(43,47,69,.20)!important;
+  color:#2b2f45!important;
+  text-shadow:none!important;
+  -webkit-backdrop-filter:none!important;
+  backdrop-filter:none!important;
+}
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) #bottom-btns #shop-main-btn,
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) #bottom-btns #shelves-main-btn {
+  background:linear-gradient(180deg,#f1f2f8 0 50%,#dfe1eb 50% 100%)!important;
+  border:2px solid #ffffff!important;
+  box-shadow:0 0 0 2px #989aaf, 0 3px 8px rgba(43,47,69,.20)!important;
+  color:#2b2f45!important;
+}
+/* У угловых кнопок нет линии со стороны края экрана — как и раньше. */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) #bottom-btns #shop-main-btn {
+  border-left:0!important;
+  border-bottom:0!important;
+}
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) #bottom-btns #shelves-main-btn {
+  border-right:0!important;
+  border-bottom:0!important;
+}
+/* Включённая прозрачность стен — синяя кнопка. */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) #bottom-btns #walls-toggle-btn.active {
+  background:linear-gradient(180deg,#36bdf7 0 50%,#1c9fd7 50% 100%)!important;
+  border:2px solid #36bdf7!important;
+  box-shadow:0 0 0 2px #167da8, 0 3px 8px rgba(20,101,135,.24)!important;
+  color:#ffffff!important;
+}
+/* Кнопка «Выйти» в редакторе — обычная синяя объёмная кнопка. */
+body[data-menu-style="kenney"]:not(#k1):not(#k2):not(#k3) #bottom-btns #editor-toggle-btn.editor-active {
+  height:38px!important;
+  background:none!important;
+  border:solid transparent!important;
+  border-width:2px 2px 6px 2px!important;
+  border-image:var(--k-blue) 16 16 24 16 fill / 8px 8px 12px 8px!important;
+  border-radius:8px!important;
+  box-shadow:none!important;
+  color:#ffffff!important;
+  font-weight:900!important;
+  text-shadow:0 1px 0 rgba(20,101,135,.85)!important;
+}
+
 </style>
 </head>
 <body data-menu-style="standard">
@@ -19232,6 +19585,11 @@ const MENU_STYLE_OPTIONS = [
   {
     id:'burgundy', name:'Бордовый', sub:'Глубокий красно-винный стиль',
     preview:'linear-gradient(145deg,#32101e,#8d2947)'
+  },
+  {
+    // Не только цвета: объёмные кнопки и панели из набора Kenney UI Pack (CC0).
+    id:'kenney', name:'Kenney', sub:'Объёмные кнопки и панели',
+    preview:'linear-gradient(180deg,#36bdf7 0 50%,#1c9fd7 50% 100%)'
   }
 ];
 
